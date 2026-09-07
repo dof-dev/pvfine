@@ -3,6 +3,8 @@ version: '3'
 vars:
   APP_NAME: "pvfine"
   BIN_DIR: "bin"
+  VERSION: '{{.VERSION | default "0.0.0"}}'
+  REPOSITORY: '{{.REPOSITORY | default "dof-dev/pvfine"}}'
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   # Target OS for build/package/run. Defaults to the host OS, and is overridden
@@ -23,11 +25,17 @@ tasks:
     summary: Builds the application
     cmds:
       - task: "{{.GOOS}}:build"
+        vars:
+          VERSION: '{{.VERSION}}'
+          REPOSITORY: '{{.REPOSITORY}}'
 
   package:
     summary: Packages a production build of the application
     cmds:
       - task: "{{.GOOS}}:package"
+        vars:
+          VERSION: '{{.VERSION}}'
+          REPOSITORY: '{{.REPOSITORY}}'
 
   run:
     summary: Runs the application

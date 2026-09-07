@@ -198,10 +198,15 @@ APP=${APP_NAME:-$(basename $(pwd))}
 mkdir -p bin
 
 EXT=""
-LDFLAGS="-s -w"
+LDFLAGS="-s -w -X main.appVersion=${VERSION:-0.0.0}"
+if [ -n "$REPOSITORY" ]; then
+    LDFLAGS="$LDFLAGS -X main.githubRepository=$REPOSITORY"
+else
+    LDFLAGS="$LDFLAGS -X main.githubRepository=dof-dev/pvfine"
+fi
 if [ "$GOOS" = "windows" ]; then
     EXT=".exe"
-    LDFLAGS="-s -w -H windowsgui"
+    LDFLAGS="$LDFLAGS -H windowsgui"
 fi
 
 TAGS="production"
