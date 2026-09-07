@@ -11,12 +11,14 @@ import {
   Search24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
+  ArrowSync24Regular,
 } from "@vicons/fluent";
 import { NButton, NIcon, NTooltip, NProgress, NText, useDialog } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useFileSetStore } from "../stores/fileSets";
+import { UpdateService } from "../../bindings/pvfine/services";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -24,6 +26,7 @@ const advancedSearch = useAdvancedSearchStore();
 const fileSets = useFileSetStore();
 const message = useMessage();
 const dialog = useDialog();
+const checkingUpdates = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
@@ -102,6 +105,18 @@ function toggleFileSetSidebar() {
   fileSets.visible = !fileSets.visible;
 }
 
+async function onCheckUpdates() {
+  if (checkingUpdates.value) return;
+  checkingUpdates.value = true;
+  try {
+    await UpdateService.CheckForUpdates();
+  } catch (e: any) {
+    message.error(`检查更新失败: ${e?.message ?? e}`);
+  } finally {
+    checkingUpdates.value = false;
+  }
+}
+
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -175,6 +190,21 @@ function isCancel(e: any): boolean {
     </div>
 
     <div class="tb-spacer" />
+
+    <NTooltip trigger="hover">
+      <template #trigger>
+        <NButton
+          quaternary
+          :loading="checkingUpdates"
+          aria-label="检查更新"
+          @click="onCheckUpdates"
+        >
+          <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
+          检查更新
+        </NButton>
+      </template>
+      检查 pvfine 更新
+    </NTooltip>
 
     <div v-if="archive.unpacking" class="unpack-progress">
       <NText depth="3">

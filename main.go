@@ -46,6 +46,7 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	app.RegisterService(application.NewService(services.NewUpdateService(app)))
 
 	updaterEnabled := configureUpdater(app)
 

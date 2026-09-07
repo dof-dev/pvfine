@@ -3,9 +3,11 @@
 
 import * as ArchiveService from "./archiveservice.js";
 import * as EditorService from "./editorservice.js";
+import * as UpdateService from "./updateservice.js";
 export {
     ArchiveService,
-    EditorService
+    EditorService,
+    UpdateService
 };
 
 export type {
