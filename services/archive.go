@@ -88,7 +88,15 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 	if list == nil {
 		return []*TreeNode{}, nil
 	}
-	return list, nil
+	result := make([]*TreeNode, len(list))
+	for i, node := range list {
+		copyNode := *node
+		if !copyNode.IsDir {
+			copyNode.Tags = cloneTreeTags(s.c.treeTagsByFile[copyNode.FileIndex])
+		}
+		result[i] = &copyNode
+	}
+	return result, nil
 }
 
 // SearchResult 是一页搜索命中;NextCursor < 0 表示已扫完。

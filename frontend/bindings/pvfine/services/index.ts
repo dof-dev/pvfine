@@ -14,5 +14,6 @@ export type {
     IndexStatus,
     SearchHit,
     SearchResult,
-    TreeNode
+    TreeNode,
+    TreeTag
 } from "./models.js";

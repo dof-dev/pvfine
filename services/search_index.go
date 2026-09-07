@@ -43,6 +43,13 @@ type SearchHit struct {
 	FileIndex int32  `json:"fileIndex"`
 }
 
+// TreeTag is one list mapping displayed after a file name in the explorer.
+type TreeTag struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
 type searchRecord struct {
 	hit       SearchHit
 	lowerName string
@@ -185,6 +192,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 	}
 
 	records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
+	treeTagsByFile := buildTreeTags(records, recordsByFile)
 
 	c.mu.Lock()
 	locked = true
@@ -210,6 +218,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 	}
 	c.searchRecords = records
 	c.searchByFile = recordsByFile
+	c.treeTagsByFile = treeTagsByFile
 	c.indexStatus = IndexStatus{
 		State:   IndexStateReady,
 		Stage:   "ready",
@@ -290,6 +299,7 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.searchRecords[recordIndex].lowerName = strings.ToLower(name)
 		updated = true
 	}
+	c.treeTagsByFile[index] = treeTagsForRecords(c.searchRecords, recordIndexes)
 	c.mu.Unlock()
 	if updated {
 		emitEvent("archive:index-updated", map[string]any{
@@ -449,6 +459,45 @@ func appendSearchRecord(records *[]searchRecord, recordsByFile *map[int32][]int,
 	*records = append(*records, record)
 	index := len(*records) - 1
 	(*recordsByFile)[hit.FileIndex] = append((*recordsByFile)[hit.FileIndex], index)
+}
+
+func buildTreeTags(records []searchRecord, recordsByFile map[int32][]int) map[int32][]TreeTag {
+	tagsByFile := make(map[int32][]TreeTag)
+	for fileIndex, recordIndexes := range recordsByFile {
+		tags := treeTagsForRecords(records, recordIndexes)
+		if len(tags) > 0 {
+			tagsByFile[fileIndex] = tags
+		}
+	}
+	return tagsByFile
+}
+
+func treeTagsForRecords(records []searchRecord, recordIndexes []int) []TreeTag {
+	var tags []TreeTag
+	for _, recordIndex := range recordIndexes {
+		if recordIndex < 0 || recordIndex >= len(records) {
+			continue
+		}
+		hit := records[recordIndex].hit
+		if hit.Category == SearchCategoryFile {
+			continue
+		}
+		tags = append(tags, TreeTag{
+			ID:       hit.ID,
+			Name:     hit.Name,
+			Category: hit.Category,
+		})
+	}
+	return tags
+}
+
+func cloneTreeTags(tags []TreeTag) []TreeTag {
+	if len(tags) == 0 {
+		return nil
+	}
+	cloned := make([]TreeTag, len(tags))
+	copy(cloned, tags)
+	return cloned
 }
 
 func resolveListPath(listPath, relative string) (string, bool) {

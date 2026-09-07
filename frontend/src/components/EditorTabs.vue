@@ -40,9 +40,6 @@ function sizeText(n: number): string {
     <!-- 无标签时 -->
     <div v-if="editor.tabs.length === 0" class="editor-empty">
       <NEmpty size="large" :description="archive.open ? '从左侧选择一个文件开始编辑' : '打开一个 PVF 归档开始'">
-        <template #extra>
-          <span class="empty-hint">脚本与文本类型文件可直接编辑;编辑内容保存在内存中,通过「保存」写回文件</span>
-        </template>
       </NEmpty>
     </div>
 
@@ -65,7 +62,6 @@ function sizeText(n: number): string {
           <span class="tab-label" :title="tab.path">
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
             {{ tab.title }}
-            <NTag size="tiny" :bordered="false" round>{{ typeTag(tab.dataType) }}</NTag>
             <NTooltip>
               <template #trigger>
                 <NButton

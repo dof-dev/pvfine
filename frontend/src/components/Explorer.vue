@@ -6,28 +6,20 @@ import {
   NInput,
   NSpin,
   NTag,
-  NTree,
-  NVirtualList,
-  type TreeOption,
 } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
+import FileTree from "./FileTree.vue";
 
 const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const editor = useEditorStore();
 
 const searchInput = ref("");
-let searchDebounce: number | undefined;
-
-watch(
-  () => [searchInput.value, archive.indexReady] as const,
-  ([v, ready]) => {
-    window.clearTimeout(searchDebounce);
-    if (!ready) return;
-    searchDebounce = window.setTimeout(() => explorer.search(v), 300);
-  }
+const searchTreeItems = computed(() => buildSearchTree(explorer.hits));
+const visibleTreeItems = computed(() =>
+  explorer.mode === "search" ? searchTreeItems.value : explorer.roots
 );
 
 watch(
@@ -43,50 +35,99 @@ watch(
   }
 );
 
-// n-tree 数据适配(递归映射为 TreeOption,未加载目录 children=undefined)
-function toOption(item: TreeItem): NTreeNode {
-  return {
-    key: item.key,
-    label: item.label,
-    isLeaf: item.isLeaf,
-    children: item.children ? item.children.map(toOption) : undefined,
-  };
-}
-const treeData = computed(() => explorer.roots.map(toOption));
-
-type NTreeNode = { key: string; label: string; isLeaf?: boolean; children?: NTreeNode[] };
-
-async function onTreeLoad(node: TreeOption): Promise<void> {
-  if (typeof node.key !== "string") return;
-  const item = explorer.getItem(node.key);
-  if (item) await explorer.loadChildren(item);
+function submitSearch(event: KeyboardEvent): void {
+  if (event.isComposing || !archive.indexReady) return;
+  void explorer.search(searchInput.value);
 }
 
-function onTreeSelect(keys: string[]) {
-  const key = keys[0];
-  if (!key) return;
-  const item = explorer.getItem(key);
+function clearSearch(): void {
+  searchInput.value = "";
+  explorer.clearSearch();
+}
+
+async function onTreeLoad(item: TreeItem): Promise<void> {
+  await explorer.loadChildren(item);
+}
+
+function onTreeSelect(item: TreeItem): void {
   if (item && !item.isDir) editor.openFile(item.fileIndex);
 }
 
-function onHitClick(item: SearchItem) {
-  editor.openFile(item.fileIndex);
+function buildSearchTree(items: SearchItem[]): TreeItem[] {
+  const roots: TreeItem[] = [];
+  const nodesByPath = new Map<string, TreeItem>();
+
+  for (const item of items) {
+    const parts = item.path
+      .replaceAll("\\", "/")
+      .split("/")
+      .filter(Boolean);
+    if (parts.length === 0) continue;
+
+    let children = roots;
+    let parentPath = "";
+    for (const part of parts.slice(0, -1)) {
+      const path = parentPath ? `${parentPath}/${part}` : part;
+      let directory = nodesByPath.get(path);
+      if (!directory) {
+        directory = {
+          key: path,
+          label: part,
+          isDir: true,
+          isLeaf: false,
+          children: [],
+          fileIndex: -1,
+          size: 0,
+          dataType: 0,
+          childCount: 0,
+          tags: [],
+        };
+        nodesByPath.set(path, directory);
+        children.push(directory);
+      }
+      children = directory.children ?? [];
+      parentPath = path;
+    }
+
+    const filePath = parts.join("/");
+    let file = nodesByPath.get(filePath);
+    if (!file) {
+      file = {
+        key: filePath,
+        label: parts[parts.length - 1],
+        isDir: false,
+        isLeaf: true,
+        children: [],
+        fileIndex: item.fileIndex,
+        size: item.size,
+        dataType: item.dataType,
+        childCount: 0,
+        tags: [],
+      };
+      nodesByPath.set(filePath, file);
+      children.push(file);
+    }
+
+    if (item.category !== "file") {
+      file.tags.push({
+        id: item.id,
+        name: item.label,
+        category: item.category,
+      });
+    }
+  }
+
+  sortTree(roots);
+  return roots;
 }
 
-function sizeText(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function categoryLabel(category: string): string {
-  switch (category) {
-    case "equipment":
-      return "装备";
-    case "stackable":
-      return "道具";
-    default:
-      return "文件";
+function sortTree(items: TreeItem[]): void {
+  items.sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+  });
+  for (const item of items) {
+    if (item.children) sortTree(item.children);
   }
 }
 </script>
@@ -100,6 +141,8 @@ function categoryLabel(category: string): string {
         clearable
         size="small"
         :disabled="!archive.open || !archive.indexReady"
+        @clear="clearSearch"
+        @keydown.enter.prevent="submitSearch"
       />
     </div>
 
@@ -113,53 +156,32 @@ function categoryLabel(category: string): string {
           size="small"
         />
 
-        <!-- 搜索结果 -->
-        <template v-else-if="explorer.mode === 'search'">
-          <div class="search-meta">
+        <template v-else>
+          <div v-if="explorer.mode === 'search'" class="search-meta">
             <NTag size="tiny" :bordered="false">命中 {{ explorer.hits.length.toLocaleString() }} 条</NTag>
-            <NButton quaternary size="tiny" @click="explorer.clearSearch(); searchInput = ''">
-              返回目录
-            </NButton>
+            <NButton quaternary size="tiny" @click="clearSearch">返回目录</NButton>
           </div>
-          <NVirtualList
-            :items="explorer.hits"
-            :item-size="32"
-            class="search-list"
-            v-if="explorer.hits.length"
-          >
-            <template #default="{ item }">
-              <div class="hit-row" :title="(item as SearchItem).path" @click="onHitClick(item as SearchItem)">
-                <NTag size="tiny" :bordered="false">{{ categoryLabel((item as SearchItem).category) }}</NTag>
-                <span v-if="(item as SearchItem).id" class="hit-id">{{ (item as SearchItem).id }}</span>
-                <span class="hit-name">{{ (item as SearchItem).label }}</span>
-                <span class="hit-path">{{ (item as SearchItem).path }}</span>
-              </div>
-            </template>
-          </NVirtualList>
-          <NEmpty v-else description="无匹配结果" size="small" class="exp-empty" />
-          <div v-if="explorer.nextCursor >= 0" class="load-more">
+          <NEmpty
+            v-if="explorer.mode === 'search' && !explorer.searching && !searchTreeItems.length"
+            description="无匹配结果"
+            size="small"
+            class="exp-empty"
+          />
+          <div v-else class="tree-viewport">
+            <FileTree
+              :key="explorer.mode"
+              :items="visibleTreeItems"
+              :expand-all="explorer.mode === 'search'"
+              :load-children="onTreeLoad"
+              @select="onTreeSelect"
+            />
+          </div>
+          <div v-if="explorer.mode === 'search' && explorer.nextCursor >= 0" class="load-more">
             <NButton size="tiny" quaternary :loading="explorer.searching" @click="explorer.loadMore()">
               加载更多
             </NButton>
           </div>
         </template>
-
-        <!-- 目录树 -->
-        <div v-else class="tree-viewport">
-          <NTree
-            block-line
-            selectable
-            :animated="false"
-            virtual-scroll
-            class="explorer-tree"
-            :data="treeData"
-            :expanded-keys="undefined"
-            :on-load="onTreeLoad"
-            :on-update:selected-keys="onTreeSelect"
-            style="height: 100%"
-            expand-on-click
-          />
-        </div>
       </div>
     </NSpin>
   </div>
@@ -224,16 +246,7 @@ function categoryLabel(category: string): string {
   min-width: 0;
   min-height: 0;
   display: flex;
-  overflow: hidden;
-}
-.explorer-tree,
-.search-list {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-.explorer-tree {
-  height: 100%;
+  overflow: auto;
 }
 .exp-empty {
   margin-top: 80px;
@@ -243,36 +256,6 @@ function categoryLabel(category: string): string {
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
-}
-.hit-row {
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.hit-row:hover {
-  background: rgba(128, 128, 128, 0.15);
-}
-.hit-name {
-  flex-shrink: 0;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.hit-id {
-  color: #f2c97d;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.hit-path {
-  color: rgba(128, 128, 128, 0.7);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .load-more {
   display: flex;

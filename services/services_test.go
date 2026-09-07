@@ -150,6 +150,25 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	if byPath.Hits[0].Category != SearchCategoryFile || byPath.Hits[0].Name != "readme.txt" {
 		t.Fatalf("path hit = %#v", byPath.Hits[0])
 	}
+
+	amulet, err := svc.ListChildren("equipment/character/common/amulet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var amuletFile *TreeNode
+	for _, node := range amulet {
+		if node.Path == "equipment/character/common/amulet/1008.equ" {
+			amuletFile = node
+			break
+		}
+	}
+	if amuletFile == nil || len(amuletFile.Tags) != 2 {
+		t.Fatalf("tree tags = %#v, want two equipment mappings", amuletFile)
+	}
+	if amuletFile.Tags[0].ID != "1008" || amuletFile.Tags[0].Name != "烈火之心项链" ||
+		amuletFile.Tags[1].ID != "1010" || amuletFile.Tags[1].Name != "烈火之心项链" {
+		t.Fatalf("tree tags = %#v", amuletFile.Tags)
+	}
 }
 
 func TestSearchRequiresReadyIndex(t *testing.T) {

@@ -72,4 +72,14 @@ export interface TreeNode {
      * -1 for directories
      */
     "fileIndex": number;
+    "tags"?: TreeTag[] | null;
+}
+
+/**
+ * TreeTag is one list mapping displayed after a file name in the explorer.
+ */
+export interface TreeTag {
+    "id": string;
+    "name": string;
+    "category": string;
 }

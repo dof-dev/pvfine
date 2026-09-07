@@ -30,13 +30,14 @@ var (
 
 // TreeNode is one entry in the explorer tree: either a directory or a file.
 type TreeNode struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	IsDir      bool   `json:"isDir"`
-	Size       int32  `json:"size"`
-	DataType   int32  `json:"dataType"`
-	ChildCount int32  `json:"childCount"`
-	FileIndex  int32  `json:"fileIndex"` // -1 for directories
+	Name       string    `json:"name"`
+	Path       string    `json:"path"`
+	IsDir      bool      `json:"isDir"`
+	Size       int32     `json:"size"`
+	DataType   int32     `json:"dataType"`
+	ChildCount int32     `json:"childCount"`
+	FileIndex  int32     `json:"fileIndex"` // -1 for directories
+	Tags       []TreeTag `json:"tags,omitempty"`
 }
 
 // pathEntry feeds the search scanner.
@@ -51,18 +52,19 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
-	mu            sync.RWMutex
-	archive       *pvf.Archive
-	dirChildren   map[string][]*TreeNode // dirPath -> ordered children ("" = root)
-	sortedPaths   []pathEntry
-	searchRecords []searchRecord
-	searchByFile  map[int32][]int
-	indexStatus   IndexStatus
-	indexCancel   context.CancelFunc
-	indexDirty    map[int32]struct{}
-	indexGen      uint64
-	unpackCancel  atomic.Bool
-	unpackRunning atomic.Bool
+	mu             sync.RWMutex
+	archive        *pvf.Archive
+	dirChildren    map[string][]*TreeNode // dirPath -> ordered children ("" = root)
+	sortedPaths    []pathEntry
+	searchRecords  []searchRecord
+	searchByFile   map[int32][]int
+	treeTagsByFile map[int32][]TreeTag
+	indexStatus    IndexStatus
+	indexCancel    context.CancelFunc
+	indexDirty     map[int32]struct{}
+	indexGen       uint64
+	unpackCancel   atomic.Bool
+	unpackRunning  atomic.Bool
 }
 
 func newCore() *core { return &core{} }
@@ -88,6 +90,7 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	c.sortedPaths = paths
 	c.searchRecords = nil
 	c.searchByFile = make(map[int32][]int)
+	c.treeTagsByFile = make(map[int32][]TreeTag)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = make(map[int32]struct{})
 	c.unpackCancel.Store(false)
@@ -108,6 +111,7 @@ func (c *core) closeArchive() {
 	c.sortedPaths = nil
 	c.searchRecords = nil
 	c.searchByFile = nil
+	c.treeTagsByFile = nil
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = nil
 	c.unpackCancel.Store(false)

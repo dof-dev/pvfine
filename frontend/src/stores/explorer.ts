@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService } from "../../bindings/pvfine/services";
-import type { SearchHit, TreeNode } from "../../bindings/pvfine/services/models";
+import type { SearchHit, TreeNode, TreeTag } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
 export interface TreeItem {
@@ -15,6 +15,7 @@ export interface TreeItem {
   size: number;
   dataType: number;
   childCount: number;
+  tags: TreeTag[];
 }
 
 export interface SearchItem {
@@ -43,6 +44,7 @@ export const useExplorerStore = defineStore("explorer", () => {
   const mode = ref<"tree" | "search">("tree");
   let searchRequest = 0;
   let refreshTimer: number | undefined;
+  let treeRefreshRequest = 0;
 
   function toTreeItem(n: TreeNode): TreeItem {
     return {
@@ -55,6 +57,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       size: n.size,
       dataType: n.dataType,
       childCount: n.childCount,
+      tags: (n.tags ?? []).filter((tag): tag is TreeTag => !!tag),
     };
   }
 
@@ -100,12 +103,43 @@ export const useExplorerStore = defineStore("explorer", () => {
 
   function reset() {
     searchRequest++;
+    treeRefreshRequest++;
     window.clearTimeout(refreshTimer);
     roots.value = [];
     itemsByKey.clear();
     expanded.value = new Set([""]);
     clearSearch();
     mode.value = "tree";
+  }
+
+  /** 刷新当前已加载文件的索引标签;未展开的目录在下次加载时自然获得最新标签。 */
+  async function refreshTreeTags() {
+    if (!archive.open || !archive.indexReady) return;
+    const request = ++treeRefreshRequest;
+    const loadedDirectories = Array.from(itemsByKey.values())
+      .filter((item) => item.isDir && item.children !== null)
+      .map((item) => item.key);
+    const paths = ["", ...loadedDirectories];
+    const nodeLists = await Promise.all(
+      paths.map(async (path) => (await ArchiveService.ListChildren(path)) ?? [])
+    );
+    if (request !== treeRefreshRequest || !archive.open || !archive.indexReady) return;
+
+    const tagsByFile = new Map<number, TreeTag[]>();
+    for (const nodes of nodeLists) {
+      for (const node of nodes) {
+        if (!node || node.isDir || node.fileIndex < 0) continue;
+        tagsByFile.set(
+          node.fileIndex,
+          (node.tags ?? []).filter((tag): tag is TreeTag => !!tag)
+        );
+      }
+    }
+    for (const item of itemsByKey.values()) {
+      if (item.isDir) continue;
+      const tags = tagsByFile.get(item.fileIndex);
+      if (tags) item.tags = tags;
+    }
   }
 
   /** 执行新搜索(从第一页开始) */
@@ -152,9 +186,13 @@ export const useExplorerStore = defineStore("explorer", () => {
   }
 
   Events.On("archive:index-updated", () => {
+    void refreshTreeTags();
     if (mode.value !== "search" || !query.value.trim() || !archive.indexReady) return;
     window.clearTimeout(refreshTimer);
     refreshTimer = window.setTimeout(() => void search(query.value), 0);
+  });
+  Events.On("archive:index-ready", () => {
+    void refreshTreeTags();
   });
 
   return {
@@ -170,6 +208,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     getItem,
     loadRoots,
     loadChildren,
+    refreshTreeTags,
     reset,
     search,
     loadMore,
