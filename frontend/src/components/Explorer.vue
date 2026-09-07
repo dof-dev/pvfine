@@ -60,13 +60,6 @@ async function onTreeLoad(node: TreeOption): Promise<void> {
   if (item) await explorer.loadChildren(item);
 }
 
-function renderSuffix({ option }: { option: any }): string {
-  // 目录显示子节点数,文件在标题栏展示详情
-  const item = typeof option.key === "string" ? explorer.getItem(option.key) : undefined;
-  if (item?.isDir && item.childCount > 0) return String(item.childCount);
-  return "";
-}
-
 function onTreeSelect(keys: string[]) {
   const key = keys[0];
   if (!key) return;
@@ -147,7 +140,6 @@ function sizeText(n: number): string {
             :data="treeData"
             :expanded-keys="undefined"
             :on-load="onTreeLoad"
-            :render-suffix="renderSuffix"
             :on-update:selected-keys="onTreeSelect"
             style="height: 100%"
             expand-on-click
