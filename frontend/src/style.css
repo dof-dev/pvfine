@@ -9,13 +9,25 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 13px;
-  user-select: none;
+}
+
+/* 只允许输入框和编辑器选中文字。 */
+input,
+textarea,
+[contenteditable="true"],
+[contenteditable="plaintext-only"],
+.cm-editor,
+.cm-editor * {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* 全局滚动条 */

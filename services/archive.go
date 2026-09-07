@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -95,6 +96,83 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 			copyNode.Tags = cloneTreeTags(s.c.treeTagsByFile[copyNode.FileIndex])
 		}
 		result[i] = &copyNode
+	}
+	return result, nil
+}
+
+// ListDescendantFiles returns all files below a directory path. An empty path
+// returns every file in the archive. Results preserve the archive path order.
+func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, error) {
+	scopePath = strings.Trim(strings.ReplaceAll(scopePath, "\\", "/"), "/")
+
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+
+	prefix := scopePath
+	start := 0
+	if scopePath != "" {
+		prefix += "/"
+		start = sort.Search(len(s.c.sortedPaths), func(i int) bool {
+			return s.c.sortedPaths[i].path >= prefix
+		})
+	}
+
+	result := make([]*TreeNode, 0)
+	for _, entry := range s.c.sortedPaths[start:] {
+		if scopePath != "" && !strings.HasPrefix(entry.path, prefix) {
+			break
+		}
+		result = append(result, &TreeNode{
+			Name:      pathBase(entry.path),
+			Path:      entry.path,
+			Size:      entry.size,
+			DataType:  entry.typ,
+			FileIndex: entry.idx,
+			Tags:      cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+		})
+	}
+	return result, nil
+}
+
+// ResolveFiles resolves archive files by their normalized paths. Missing
+// paths are omitted and duplicate input paths are returned only once.
+func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+
+	result := make([]*TreeNode, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, rawPath := range paths {
+		filePath := strings.Trim(strings.ReplaceAll(rawPath, "\\", "/"), "/")
+		if filePath == "" {
+			continue
+		}
+		if _, ok := seen[filePath]; ok {
+			continue
+		}
+		seen[filePath] = struct{}{}
+
+		index := sort.Search(len(s.c.sortedPaths), func(i int) bool {
+			return s.c.sortedPaths[i].path >= filePath
+		})
+		if index >= len(s.c.sortedPaths) || s.c.sortedPaths[index].path != filePath {
+			continue
+		}
+		entry := s.c.sortedPaths[index]
+		result = append(result, &TreeNode{
+			Name:      pathBase(entry.path),
+			Path:      entry.path,
+			Size:      entry.size,
+			DataType:  entry.typ,
+			FileIndex: entry.idx,
+			Tags:      cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+		})
 	}
 	return result, nil
 }

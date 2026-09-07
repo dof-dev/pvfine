@@ -9,15 +9,19 @@ import {
   FolderArrowUp24Regular,
   Stop24Regular,
   Search24Regular,
+  PanelRight24Regular,
+  PanelRightContract24Regular,
 } from "@vicons/fluent";
 import { NButton, NIcon, NTooltip, NProgress, NText, useDialog } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
+import { useFileSetStore } from "../stores/fileSets";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
+const fileSets = useFileSetStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -92,6 +96,10 @@ function onUnpack() {
 
 function onCancelUnpack() {
   archive.cancelUnpack();
+}
+
+function toggleFileSetSidebar() {
+  fileSets.visible = !fileSets.visible;
 }
 
 function isCancel(e: any): boolean {
@@ -184,6 +192,20 @@ function isCancel(e: any): boolean {
         style="width: 160px"
       />
     </div>
+
+    <NTooltip>
+      <template #trigger>
+        <NButton quaternary aria-label="切换文件集侧栏" @click="toggleFileSetSidebar">
+          <template #icon>
+            <NIcon>
+              <PanelRightContract24Regular v-if="fileSets.visible" />
+              <PanelRight24Regular v-else />
+            </NIcon>
+          </template>
+        </NButton>
+      </template>
+      {{ fileSets.visible ? "收起文件集" : "显示文件集" }}
+    </NTooltip>
   </div>
 </template>
 

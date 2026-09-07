@@ -171,6 +171,97 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	}
 }
 
+func TestListDescendantFiles(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "descendants.pvf")
+	if _, err := svc.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer c.closeArchive()
+
+	root, err := svc.ListDescendantFiles("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root) != 5 {
+		t.Fatalf("root files = %d, want 5", len(root))
+	}
+	seenIndexes := make(map[int32]bool, len(root))
+	for i, node := range root {
+		if node == nil || node.IsDir || node.FileIndex < 0 {
+			t.Fatalf("root file %d invalid: %#v", i, node)
+		}
+		if i > 0 && root[i-1].Path >= node.Path {
+			t.Fatalf("root files are not sorted: %q then %q", root[i-1].Path, node.Path)
+		}
+		if seenIndexes[node.FileIndex] {
+			t.Fatalf("duplicate file index %d", node.FileIndex)
+		}
+		seenIndexes[node.FileIndex] = true
+	}
+
+	equipment, err := svc.ListDescendantFiles("equipment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(equipment) != 2 {
+		t.Fatalf("equipment files = %d, want 2", len(equipment))
+	}
+	for _, node := range equipment {
+		if !strings.HasPrefix(node.Path, "equipment/") {
+			t.Fatalf("equipment scope escaped: %q", node.Path)
+		}
+	}
+
+	amulet, err := svc.ListDescendantFiles("equipment/character/common/amulet/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(amulet) != 1 || amulet[0].Path != "equipment/character/common/amulet/1008.equ" {
+		t.Fatalf("amulet files = %#v", amulet)
+	}
+
+	missing, err := svc.ListDescendantFiles("does/not/exist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("missing scope files = %d, want 0", len(missing))
+	}
+}
+
+func TestResolveFiles(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "resolve-files.pvf")
+	if _, err := svc.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer c.closeArchive()
+	waitForSearchIndex(t, c)
+
+	resolved, err := svc.ResolveFiles([]string{
+		"misc/readme.txt",
+		"equipment/character/common/amulet/1008.equ",
+		"misc/readme.txt",
+		"does/not/exist",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 2 {
+		t.Fatalf("resolved files = %d, want 2", len(resolved))
+	}
+	if resolved[0].Path != "misc/readme.txt" || resolved[0].Name != "readme.txt" {
+		t.Fatalf("first resolved file = %#v", resolved[0])
+	}
+	if resolved[1].Path != "equipment/character/common/amulet/1008.equ" ||
+		len(resolved[1].Tags) != 2 {
+		t.Fatalf("second resolved file = %#v", resolved[1])
+	}
+}
+
 func TestSearchRequiresReadyIndex(t *testing.T) {
 	c := NewCore()
 	svc := NewArchiveService(c)

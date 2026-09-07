@@ -2,25 +2,47 @@
 import { computed, ref, watch } from "vue";
 import {
   NButton,
+  NDropdown,
   NEmpty,
   NInput,
   NSpin,
   NTag,
+  useMessage,
 } from "naive-ui";
+import { ArchiveService } from "../../bindings/pvfine/services";
+import type { TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
+import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 import FileTree from "./FileTree.vue";
 
 const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const editor = useEditorStore();
+const fileSets = useFileSetStore();
+const message = useMessage();
 
 const searchInput = ref("");
+const adding = ref(false);
+const contextMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  items: [] as TreeItem[],
+});
 const searchTreeItems = computed(() => buildSearchTree(explorer.hits));
 const visibleTreeItems = computed(() =>
   explorer.mode === "search" ? searchTreeItems.value : explorer.roots
 );
+const treeKey = computed(() => `${explorer.mode}:${explorer.query}`);
+const contextMenuOptions = computed(() => [
+  {
+    label: `加入“${fileSets.activeSet?.name ?? "当前文件集"}”`,
+    key: "add",
+    disabled: adding.value || !archive.open || contextMenu.value.items.length === 0,
+  },
+]);
 
 watch(
   () => archive.info?.path ?? "",
@@ -51,6 +73,112 @@ async function onTreeLoad(item: TreeItem): Promise<void> {
 
 function onTreeSelect(item: TreeItem): void {
   if (item && !item.isDir) editor.openFile(item.fileIndex);
+}
+
+function hideContextMenu(): void {
+  contextMenu.value.show = false;
+  contextMenu.value.items = [];
+}
+
+function onTreeContextMenu(
+  event: MouseEvent,
+  item: TreeItem | null,
+  items: TreeItem[]
+): void {
+  if (!item || items.length === 0) {
+    hideContextMenu();
+    return;
+  }
+  contextMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+    items,
+  };
+}
+
+function serviceEntry(node: TreeNode): FileSetEntry {
+  const names = [
+    ...new Set((node.tags ?? []).map((tag) => tag.name.trim()).filter(Boolean)),
+  ];
+  return {
+    fileIndex: node.fileIndex,
+    path: node.path,
+    name: names.join(" / ") || node.name || node.path.slice(node.path.lastIndexOf("/") + 1),
+    ids: [...new Set((node.tags ?? []).map((tag) => tag.id).filter(Boolean))],
+    size: node.size,
+    dataType: node.dataType,
+  };
+}
+
+function appendSearchPaths(item: TreeItem, paths: string[]): void {
+  if (!item.isDir) {
+    if (item.fileIndex >= 0) paths.push(item.key);
+    return;
+  }
+  for (const child of item.children ?? []) appendSearchPaths(child, paths);
+}
+
+async function collectFilePaths(items: TreeItem[]): Promise<string[]> {
+  const paths: string[] = [];
+  const directoryRequests = new Map<string, Promise<TreeNode[]>>();
+
+  for (const item of items) {
+    if (!item.isDir) {
+      if (item.fileIndex >= 0) paths.push(item.key);
+      continue;
+    }
+    if (explorer.mode === "search") {
+      appendSearchPaths(item, paths);
+      continue;
+    }
+    let request = directoryRequests.get(item.key);
+    if (!request) {
+      request = ArchiveService.ListDescendantFiles(item.key).then(
+        (nodes) =>
+          (nodes ?? []).filter(
+            (node): node is TreeNode => !!node && !node.isDir && node.fileIndex >= 0
+          )
+      );
+      directoryRequests.set(item.key, request);
+    }
+    for (const node of await request) paths.push(node.path);
+  }
+  return paths;
+}
+
+async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
+  const paths = await collectFilePaths(items);
+  const nodes = await ArchiveService.ResolveFiles(paths);
+  return (nodes ?? [])
+    .filter((node): node is TreeNode => !!node && !node.isDir && node.fileIndex >= 0)
+    .map(serviceEntry);
+}
+
+async function onContextMenuSelect(key: string | number): Promise<void> {
+  if (key !== "add" || adding.value) return;
+  const selectedItems = contextMenu.value.items;
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  hideContextMenu();
+  adding.value = true;
+  try {
+    const entries = await collectFiles(selectedItems);
+    if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
+    const result = fileSets.addEntries(entries);
+    if (result.added === 0 && result.skipped === 0) {
+      message.info("选中的目录中没有文件");
+      return;
+    }
+    const duplicateText = result.skipped > 0 ? `，跳过 ${result.skipped} 个重复项` : "";
+    message.success(`已加入 ${result.added} 个文件${duplicateText}`);
+  } catch (error: any) {
+    if (session === fileSets.sessionId && archive.info?.path === archivePath) {
+      message.error(`加入文件集失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    adding.value = false;
+  }
 }
 
 function buildSearchTree(items: SearchItem[]): TreeItem[] {
@@ -146,7 +274,7 @@ function sortTree(items: TreeItem[]): void {
       />
     </div>
 
-    <NSpin class="exp-spin" :show="archive.loading || explorer.searching">
+    <NSpin class="exp-spin" :show="archive.loading || explorer.searching || adding">
       <div class="exp-body">
         <!-- 空态 -->
         <NEmpty
@@ -169,11 +297,12 @@ function sortTree(items: TreeItem[]): void {
           />
           <div v-else class="tree-viewport">
             <FileTree
-              :key="explorer.mode"
+              :key="treeKey"
               :items="visibleTreeItems"
               :expand-all="explorer.mode === 'search'"
               :load-children="onTreeLoad"
               @select="onTreeSelect"
+              @contextmenu="onTreeContextMenu"
             />
           </div>
           <div v-if="explorer.mode === 'search' && explorer.nextCursor >= 0" class="load-more">
@@ -184,6 +313,16 @@ function sortTree(items: TreeItem[]): void {
         </template>
       </div>
     </NSpin>
+    <NDropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="contextMenu.show"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      :options="contextMenuOptions"
+      @select="onContextMenuSelect"
+      @clickoutside="hideContextMenu"
+    />
   </div>
 </template>
 

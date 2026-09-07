@@ -16,6 +16,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   select: [item: TreeItem];
+  contextmenu: [event: MouseEvent, item: TreeItem | null, items: TreeItem[]];
 }>();
 
 const archive = useArchiveStore();
@@ -51,7 +52,7 @@ const itemsByKey = computed(() => {
 });
 
 const expandedKeys = ref<Array<string | number>>([]);
-const selectedKeys = ref<Array<string | number>>([]);
+const checkedKeys = ref<string[]>([]);
 
 function collectExpandedKeys(items: TreeItem[], result: Array<string | number>): void {
   for (const item of items) {
@@ -62,9 +63,9 @@ function collectExpandedKeys(items: TreeItem[], result: Array<string | number>):
 }
 
 watch(
-  () => [props.expandAll, props.items] as const,
-  () => {
-    if (!props.expandAll) {
+  () => props.expandAll,
+  (expandAll) => {
+    if (!expandAll) {
       expandedKeys.value = [];
       return;
     }
@@ -75,6 +76,18 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => props.items,
+  () => {
+    if (props.expandAll) {
+      const next: Array<string | number> = [];
+      collectExpandedKeys(props.items, next);
+      expandedKeys.value = next;
+    }
+  },
+  { deep: true }
+);
+
 async function onLoad(node: TreeOption): Promise<void> {
   const item = (node as FileTreeNode).treeItem;
   if (item?.isDir && item.children === null) {
@@ -82,20 +95,37 @@ async function onLoad(node: TreeOption): Promise<void> {
   }
 }
 
-function onSelect(keys: Array<string | number>): void {
-  selectedKeys.value = keys;
+function onChecked(keys: Array<string | number>): void {
+  checkedKeys.value = keys.map(String);
 }
 
-function onDoubleClick(): void {
-  const selectedKey = selectedKeys.value[0];
-  if (selectedKey === undefined) return;
+function onNodeContextMenu(event: MouseEvent, item: TreeItem): void {
+  event.preventDefault();
+  event.stopPropagation();
+  const checkedItems = checkedKeys.value
+    .map((selectedKey) => itemsByKey.value.get(selectedKey))
+    .filter((selectedItem): selectedItem is TreeItem => !!selectedItem);
+  emit("contextmenu", event, item, checkedItems.length > 0 ? checkedItems : [item]);
+}
 
-  const item = itemsByKey.value.get(String(selectedKey));
-  if (item && !item.isDir) emit("select", item);
+function nodeProps({ option }: { option: TreeOption }) {
+  const item = (option as FileTreeNode).treeItem;
+  return {
+    onContextmenu: (event: MouseEvent) => onNodeContextMenu(event, item),
+    onDblclick: (event: MouseEvent) => {
+      event.stopPropagation();
+      if (!item.isDir) emit("select", item);
+    },
+  };
+}
+
+function onShellContextMenu(event: MouseEvent): void {
+  event.preventDefault();
+  emit("contextmenu", event, null, []);
 }
 
 function onExpandedKeys(keys: Array<string | number>): void {
-  if (props.expandAll) expandedKeys.value = keys;
+  expandedKeys.value = keys;
 }
 
 function renderLabel({ option }: { option: TreeOption }): VNodeChild {
@@ -144,27 +174,40 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
 </script>
 
 <template>
-  <NTree
-    block-line
-    selectable
-    :animated="false"
-    virtual-scroll
-    class="file-tree"
-    :data="treeData"
-    :expanded-keys="expandAll ? expandedKeys : undefined"
-    :selected-keys="selectedKeys"
-    :on-load="onLoad"
-    :on-update:expanded-keys="expandAll ? onExpandedKeys : undefined"
-    :on-update:selected-keys="onSelect"
-    :render-label="renderLabel"
-    :scrollbar-props="{ xScrollable: true }"
-    :style="{ height }"
-    @dblclick="onDoubleClick"
-    expand-on-click
-  />
+  <div
+    class="file-tree-shell"
+    @contextmenu="onShellContextMenu"
+  >
+    <NTree
+      block-line
+      checkable
+      cascade
+      :selectable="false"
+      :animated="false"
+      virtual-scroll
+      class="file-tree"
+      :data="treeData"
+      :expanded-keys="expandedKeys"
+      :checked-keys="checkedKeys"
+      :on-load="onLoad"
+      :on-update:expanded-keys="onExpandedKeys"
+      :on-update:checked-keys="onChecked"
+      :node-props="nodeProps"
+      :render-label="renderLabel"
+      :scrollbar-props="{ xScrollable: true }"
+      :style="{ height }"
+      expand-on-click
+    />
+  </div>
 </template>
 
 <style scoped>
+.file-tree-shell {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
 .file-tree {
   width: 100%;
   min-width: 0;

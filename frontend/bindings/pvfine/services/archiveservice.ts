@@ -58,6 +58,14 @@ export function ListChildren(path: string): $CancellablePromise<($models.TreeNod
 }
 
 /**
+ * ListDescendantFiles returns all files below a directory path. An empty path
+ * returns every file in the archive. Results preserve the archive path order.
+ */
+export function ListDescendantFiles(scopePath: string): $CancellablePromise<($models.TreeNode | null)[] | null> {
+    return $Call.ByID(1570903299, scopePath);
+}
+
+/**
  * Open 加载指定路径的归档并构建目录索引。
  */
 export function Open(path: string): $CancellablePromise<$models.ArchiveInfo> {
@@ -69,6 +77,14 @@ export function Open(path: string): $CancellablePromise<$models.ArchiveInfo> {
  */
 export function OpenDialog(): $CancellablePromise<$models.ArchiveInfo | null> {
     return $Call.ByID(4043575243);
+}
+
+/**
+ * ResolveFiles resolves archive files by their normalized paths. Missing
+ * paths are omitted and duplicate input paths are returned only once.
+ */
+export function ResolveFiles(paths: string[] | null): $CancellablePromise<($models.TreeNode | null)[] | null> {
+    return $Call.ByID(2727375736, paths);
 }
 
 /**

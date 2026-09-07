@@ -188,6 +188,43 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     }
   }
 
+  /** 加载剩余分页，调用方在成功后再一次性使用完整结果。 */
+  async function loadAll(): Promise<AdvancedSearchItem[] | null> {
+    if (searching.value || !query.value.trim()) return [...hits.value];
+    if (stale.value) return null;
+    const request = requestId;
+    searching.value = true;
+    error.value = "";
+    try {
+      let cursor = nextCursor.value;
+      while (cursor >= 0) {
+        const result = await ArchiveService.AdvancedSearch(
+          mode.value,
+          query.value,
+          scopePath.value,
+          regexEnabled.value,
+          cursor,
+          200
+        );
+        if (request !== requestId || stale.value) return null;
+        const page = (result?.hits ?? [])
+          .filter((hit): hit is AdvancedSearchHit => !!hit)
+          .map(toItem);
+        hits.value.push(...page);
+        const next = result?.nextCursor ?? -1;
+        nextCursor.value = next;
+        if (next === cursor) break;
+        cursor = next;
+      }
+      return [...hits.value];
+    } catch (value) {
+      if (request === requestId) error.value = errorMessage(value);
+      throw value;
+    } finally {
+      if (request === requestId) searching.value = false;
+    }
+  }
+
   function markStale() {
     indexStatus.value = readIndexStatus(null);
     if (query.value.trim() || hits.value.length > 0) stale.value = true;
@@ -229,5 +266,6 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     clear,
     search,
     loadMore,
+    loadAll,
   };
 });

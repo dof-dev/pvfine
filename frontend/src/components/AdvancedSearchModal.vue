@@ -14,22 +14,30 @@ import {
   NSpin,
   NTag,
   NText,
+  useMessage,
   type DataTableColumns,
 } from "naive-ui";
-import { Search24Regular } from "@vicons/fluent";
+import { Add24Regular, Search24Regular } from "@vicons/fluent";
 import { ArchiveService } from "../../bindings/pvfine/services";
 import {
   useAdvancedSearchStore,
   type AdvancedSearchItem,
 } from "../stores/advancedSearch";
-import type { AdvancedSearchDetail } from "../../bindings/pvfine/services/models";
+import type {
+  AdvancedSearchDetail,
+  TreeNode,
+} from "../../bindings/pvfine/services/models";
 import { useEditorStore } from "../stores/editor";
+import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 
 const search = useAdvancedSearchStore();
 const editor = useEditorStore();
+const fileSets = useFileSetStore();
+const message = useMessage();
 const expandedRowKeys = ref<string[]>([]);
 const directoryOptions = ref<string[]>([]);
 const directorySuggesting = ref(false);
+const addingResults = ref(false);
 let directoryRequest = 0;
 
 const modeOptions = [
@@ -191,6 +199,48 @@ async function openFile(row: AdvancedSearchItem): Promise<void> {
   search.close();
 }
 
+function serviceEntry(node: TreeNode): FileSetEntry {
+  const names = [
+    ...new Set((node.tags ?? []).map((tag) => tag.name.trim()).filter(Boolean)),
+  ];
+  return {
+    fileIndex: node.fileIndex,
+    path: node.path,
+    name: names.join(" / ") || node.name || node.path.slice(node.path.lastIndexOf("/") + 1),
+    ids: [...new Set((node.tags ?? []).map((tag) => tag.id).filter(Boolean))],
+    size: node.size,
+    dataType: node.dataType,
+  };
+}
+
+async function addAllResults(): Promise<void> {
+  if (!search.hasResults || search.searching || search.stale || addingResults.value) return;
+  const session = fileSets.sessionId;
+  addingResults.value = true;
+  try {
+    const results = await search.loadAll();
+    if (!results || session !== fileSets.sessionId || search.stale) return;
+    const nodes = await ArchiveService.ResolveFiles(results.map((row) => row.path));
+    if (session !== fileSets.sessionId || search.stale) return;
+    const entries = (nodes ?? [])
+      .filter((node): node is TreeNode => !!node && !node.isDir && node.fileIndex >= 0)
+      .map(serviceEntry);
+    const result = fileSets.addEntries(entries);
+    if (result.added === 0 && result.skipped === 0) {
+      message.info("当前搜索没有可加入的文件");
+      return;
+    }
+    const duplicateText = result.skipped > 0 ? `，跳过 ${result.skipped} 个重复项` : "";
+    message.success(`已加入 ${result.added} 个文件${duplicateText}`);
+  } catch (error: any) {
+    if (session === fileSets.sessionId) {
+      message.error(`加入文件集失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    addingResults.value = false;
+  }
+}
+
 function onKeydown(event: KeyboardEvent): void {
   if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
   event.preventDefault();
@@ -281,6 +331,15 @@ function onKeydown(event: KeyboardEvent): void {
       <div class="advanced-search-footer">
         <NButton quaternary @click="search.clear">清空</NButton>
         <div class="advanced-search-footer-actions">
+          <NButton
+            quaternary
+            :disabled="!search.hasResults || search.searching || search.stale"
+            :loading="addingResults"
+            @click="addAllResults"
+          >
+            <template #icon><NIcon><Add24Regular /></NIcon></template>
+            全部加入文件集
+          </NButton>
           <NButton v-if="search.nextCursor >= 0" quaternary :loading="search.searching" @click="search.loadMore">
             加载更多
           </NButton>

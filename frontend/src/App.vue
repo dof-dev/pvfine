@@ -12,13 +12,16 @@ import {
 import ToolBar from "./components/ToolBar.vue";
 import Explorer from "./components/Explorer.vue";
 import EditorTabs from "./components/EditorTabs.vue";
+import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
+import { useFileSetStore } from "./stores/fileSets";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const fileSets = useFileSetStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -97,6 +100,7 @@ async function onKeydown(e: KeyboardEvent) {
             <div class="editor-pane">
               <EditorTabs />
             </div>
+            <FileSetSidebar v-if="fileSets.visible" />
           </div>
           <StatusBar />
         </div>
