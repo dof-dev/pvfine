@@ -40,9 +40,10 @@ const MagicSignature uint32 = 0x69706B6E
 const headerSize = 0x30
 
 var (
-	ErrTruncated    = errors.New("pvf: data too short to contain a header")
-	ErrBadSignature = errors.New("pvf: header decryption failed (unknown format or key)")
-	ErrOverflow     = errors.New("pvf: header sections exceed the file boundary")
-	ErrNotFound     = errors.New("pvf: file not found")
-	ErrBadIndex     = errors.New("pvf: file index out of range")
+	ErrTruncated            = errors.New("pvf: data too short to contain a header")
+	ErrBadSignature         = errors.New("pvf: header decryption failed (unknown format or key)")
+	ErrOverflow             = errors.New("pvf: header sections exceed the file boundary")
+	ErrNotFound             = errors.New("pvf: file not found")
+	ErrBadIndex             = errors.New("pvf: file index out of range")
+	ErrQueryStringNotInPool = errors.New("pvf: query string is not present in the string pool")
 )

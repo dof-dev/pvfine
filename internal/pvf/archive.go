@@ -256,24 +256,12 @@ func (a *Archive) Chunk(ci int32) ([]byte, error) {
 	if ch, ok := a.chunkCache[ci]; ok {
 		return ch, nil
 	}
-	if ci < 0 || ci >= int32(len(a.groups)) {
-		return nil, nil
-	}
-	prev := int64(0)
-	if ci > 0 {
-		prev = int64(a.groups[ci-1].compSize)
-	}
-	cur := int64(a.groups[ci].compSize)
-	size := cur - prev
-	if size <= 0 {
-		return nil, nil
-	}
-	enc := make([]byte, size)
-	copy(enc, a.data[a.bodyOff+int(prev):a.bodyOff+int(cur)])
-	crypt(keyBody, magicMain, enc)
-	raw, err := zlibDecompress(enc)
+	raw, err := a.decompressChunk(ci)
 	if err != nil {
 		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
 	}
 	a.chunkCache[ci] = raw
 	return raw, nil

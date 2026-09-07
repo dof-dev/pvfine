@@ -13,6 +13,7 @@ import ToolBar from "./components/ToolBar.vue";
 import Explorer from "./components/Explorer.vue";
 import EditorTabs from "./components/EditorTabs.vue";
 import StatusBar from "./components/StatusBar.vue";
+import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 
@@ -87,6 +88,7 @@ async function onKeydown(e: KeyboardEvent) {
       <NDialogProvider>
         <div class="app-root" :class="{ 'app-root--mac': isMac }">
           <ToolBar />
+          <AdvancedSearchModal />
           <div class="app-body">
             <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">
               <Explorer />

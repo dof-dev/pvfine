@@ -15,6 +15,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AdvancedIndexStatus returns the lazy string reverse-index status.
+ */
+export function AdvancedIndexStatus(): $CancellablePromise<$models.AdvancedSearchIndexStatus> {
+    return $Call.ByID(2276700277);
+}
+
+/**
+ * AdvancedSearch searches raw token bytes or string-pool references.
+ * cursor is the result offset from the previous response; limit is 1..1000.
+ */
+export function AdvancedSearch(mode: string, query: string, scopePath: string, regex: boolean, cursor: number, limit: number): $CancellablePromise<$models.AdvancedSearchResult | null> {
+    return $Call.ByID(3108371697, mode, query, scopePath, regex, cursor, limit);
+}
+
+/**
  * Close 关闭当前归档,丢弃未保存的内存修改。
  */
 export function Close(): $CancellablePromise<void> {
@@ -62,4 +77,12 @@ export function OpenDialog(): $CancellablePromise<$models.ArchiveInfo | null> {
  */
 export function Search(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
     return $Call.ByID(685177899, query, cursor, limit);
+}
+
+/**
+ * SuggestDirectories returns directory paths with a case-insensitive prefix
+ * match. An empty prefix returns no suggestions to avoid flooding the UI.
+ */
+export function SuggestDirectories(prefix: string, limit: number): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1741104606, prefix, limit);
 }

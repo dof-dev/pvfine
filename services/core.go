@@ -55,6 +55,7 @@ type core struct {
 	mu             sync.RWMutex
 	archive        *pvf.Archive
 	dirChildren    map[string][]*TreeNode // dirPath -> ordered children ("" = root)
+	directories    []string
 	sortedPaths    []pathEntry
 	searchRecords  []searchRecord
 	searchByFile   map[int32][]int
@@ -63,6 +64,10 @@ type core struct {
 	indexCancel    context.CancelFunc
 	indexDirty     map[int32]struct{}
 	indexGen       uint64
+	advancedIndex  *pvf.StringPoolIndex
+	advancedStatus AdvancedSearchIndexStatus
+	advancedCancel context.CancelFunc
+	binaryCache    map[binarySearchKey][]advancedFileMatch
 	unpackCancel   atomic.Bool
 	unpackRunning  atomic.Bool
 }
@@ -84,15 +89,30 @@ func (c *core) setArchive(a *pvf.Archive) error {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	if c.advancedCancel != nil {
+		c.advancedCancel()
+		c.advancedCancel = nil
+	}
 	c.indexGen++
+	directories := make([]string, 0, len(children))
+	for path := range children {
+		if path != "" {
+			directories = append(directories, path)
+		}
+	}
+	sort.Strings(directories)
 	c.archive = a
 	c.dirChildren = children
+	c.directories = directories
 	c.sortedPaths = paths
 	c.searchRecords = nil
 	c.searchByFile = make(map[int32][]int)
 	c.treeTagsByFile = make(map[int32][]TreeTag)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = make(map[int32]struct{})
+	c.advancedIndex = nil
+	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
+	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
 	c.mu.Unlock()
@@ -105,15 +125,23 @@ func (c *core) closeArchive() {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	if c.advancedCancel != nil {
+		c.advancedCancel()
+		c.advancedCancel = nil
+	}
 	c.indexGen++
 	c.archive = nil
 	c.dirChildren = nil
+	c.directories = nil
 	c.sortedPaths = nil
 	c.searchRecords = nil
 	c.searchByFile = nil
 	c.treeTagsByFile = nil
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = nil
+	c.advancedIndex = nil
+	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
+	c.binaryCache = nil
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
 	c.mu.Unlock()

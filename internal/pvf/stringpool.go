@@ -102,6 +102,12 @@ func readUTF16(buf []byte, start int) string {
 // ensureStringIndexes builds value -> magic-offset maps for both pools
 // (first occurrence wins, mirroring the reference implementation).
 func (a *Archive) ensureStringIndexes() {
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
+	a.ensureStringIndexesLocked()
+}
+
+func (a *Archive) ensureStringIndexesLocked() {
 	if a.strAIdx != nil {
 		return
 	}
@@ -148,7 +154,9 @@ func (a *Archive) ensureStringIndexes() {
 // StringOffset returns the magic offset of s, appending it to the UTF-8 pool
 // when missing. It is the inverse of ResolveString.
 func (a *Archive) StringOffset(s string) int32 {
-	a.ensureStringIndexes()
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
+	a.ensureStringIndexesLocked()
 	if off, ok := a.strAIdx[s]; ok {
 		return off
 	}
@@ -166,7 +174,9 @@ func (a *Archive) StringOffset(s string) int32 {
 
 // UnicodeStringOffset is StringOffset for the UTF-16 pool.
 func (a *Archive) UnicodeStringOffset(s string) int32 {
-	a.ensureStringIndexes()
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
+	a.ensureStringIndexesLocked()
 	if off, ok := a.strWIdx[s]; ok {
 		return off
 	}

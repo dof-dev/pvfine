@@ -272,18 +272,21 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.mu.Unlock()
 		return false, "", err
 	}
+	c.invalidateAdvancedSearchLocked()
 	if c.indexStatus.State != IndexStateReady {
 		if c.indexDirty == nil {
 			c.indexDirty = make(map[int32]struct{})
 		}
 		c.indexDirty[index] = struct{}{}
 		c.mu.Unlock()
+		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 		return false, "", nil
 	}
 
 	recordIndexes := c.searchByFile[index]
 	if len(recordIndexes) == 0 {
 		c.mu.Unlock()
+		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 		return false, "", nil
 	}
 	name, _, err := c.archive.ScriptName(index)
@@ -301,6 +304,7 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	}
 	c.treeTagsByFile[index] = treeTagsForRecords(c.searchRecords, recordIndexes)
 	c.mu.Unlock()
+	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if updated {
 		emitEvent("archive:index-updated", map[string]any{
 			"fileIndex": index,

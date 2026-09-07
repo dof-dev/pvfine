@@ -99,6 +99,35 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 	return result, nil
 }
 
+// SuggestDirectories returns directory paths with a case-insensitive prefix
+// match. An empty prefix returns no suggestions to avoid flooding the UI.
+func (s *ArchiveService) SuggestDirectories(prefix string, limit int) ([]string, error) {
+	prefix = normalizeAdvancedScope(prefix)
+	if prefix == "" {
+		return []string{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+	result := make([]string, 0, limit)
+	for _, path := range s.c.directories {
+		if !strings.HasPrefix(strings.ToLower(path), prefix) {
+			continue
+		}
+		result = append(result, path)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
 // SearchResult 是一页搜索命中;NextCursor < 0 表示已扫完。
 type SearchResult struct {
 	Hits       []*SearchHit `json:"hits"`

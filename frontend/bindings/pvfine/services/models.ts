@@ -6,6 +6,55 @@
 import * as pvf$0 from "../internal/pvf/models.js";
 
 /**
+ * AdvancedSearchDetail explains why a file matched the query.
+ */
+export interface AdvancedSearchDetail {
+    "kind": string;
+    "value"?: string;
+    "pool"?: string;
+    "poolOffset"?: number;
+    "occurrences": number;
+    "tokenTypes"?: number[] | null;
+    "fileFields"?: string[] | null;
+    "byteOffsets"?: number[] | null;
+    "tokenOffsets"?: number[] | null;
+    "hex"?: string;
+    "offsetsTruncated"?: boolean;
+}
+
+/**
+ * AdvancedSearchHit is one file-level advanced-search result.
+ */
+export interface AdvancedSearchHit {
+    "name"?: string;
+    "path": string;
+    "size": number;
+    "dataType": number;
+    "fileIndex": number;
+    "details"?: (AdvancedSearchDetail | null)[] | null;
+}
+
+/**
+ * AdvancedSearchIndexStatus describes the lazy string reverse-index state.
+ */
+export interface AdvancedSearchIndexStatus {
+    "state": string;
+    "stage": string;
+    "done": number;
+    "total": number;
+    "error": string;
+}
+
+/**
+ * AdvancedSearchResult is a paged file-level advanced-search response.
+ */
+export interface AdvancedSearchResult {
+    "hits": (AdvancedSearchHit | null)[] | null;
+    "nextCursor": number;
+    "scanned": number;
+}
+
+/**
  * ArchiveInfo 是前端可观察的归档状态快照。
  */
 export type ArchiveInfo = pvf$0.ArchiveInfoView;

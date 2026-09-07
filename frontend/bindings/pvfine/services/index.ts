@@ -9,6 +9,10 @@ export {
 };
 
 export type {
+    AdvancedSearchDetail,
+    AdvancedSearchHit,
+    AdvancedSearchIndexStatus,
+    AdvancedSearchResult,
     ArchiveInfo,
     FileMeta,
     IndexStatus,

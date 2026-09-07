@@ -8,13 +8,16 @@ import {
   ArchiveMultiple24Regular,
   FolderArrowUp24Regular,
   Stop24Regular,
+  Search24Regular,
 } from "@vicons/fluent";
 import { NButton, NIcon, NTooltip, NProgress, NText, useDialog } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
+import { useAdvancedSearchStore } from "../stores/advancedSearch";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const advancedSearch = useAdvancedSearchStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -127,6 +130,16 @@ function isCancel(e: any): boolean {
           </NButton>
         </template>
         另存为新 PVF (Cmd+Shift+S)
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton quaternary :disabled="!archive.open" @click="advancedSearch.open">
+            <template #icon><NIcon><Search24Regular /></NIcon></template>
+            高级搜索
+          </NButton>
+        </template>
+        在当前归档中搜索二进制或字符串池
       </NTooltip>
     </div>
 

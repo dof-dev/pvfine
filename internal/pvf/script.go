@@ -20,6 +20,12 @@ type type1Token struct {
 // -> inline string, `{5=`...`}` / `{7=`...`}` -> block strings, integers /
 // floats -> numeric tokens, bare words -> string tokens. `#` starts a comment.
 func (a *Archive) encodeScript(text string) ([]byte, error) {
+	return a.encodeScriptWithResolver(text, func(value string) (int32, error) {
+		return a.StringOffset(value), nil
+	})
+}
+
+func (a *Archive) encodeScriptWithResolver(text string, resolve func(string) (int32, error)) ([]byte, error) {
 	var tokens []type1Token
 	rs := []rune(text)
 	n := len(rs)
@@ -42,7 +48,11 @@ func (a *Archive) encodeScript(text string) ([]byte, error) {
 		}
 		if ch == '`' {
 			if value, next, ok := readBacktickString(rs, i); ok {
-				tokens = append(tokens, type1Token{6, a.StringOffset(value)})
+				offset, err := resolve(value)
+				if err != nil {
+					return nil, err
+				}
+				tokens = append(tokens, type1Token{6, offset})
 				i = next
 				continue
 			}
@@ -50,7 +60,9 @@ func (a *Archive) encodeScript(text string) ([]byte, error) {
 		if ch == '{' {
 			if end := findMarkerEnd(rs, i+1); end > i {
 				marker := strings.TrimSpace(string(rs[i : end+1]))
-				if tok, ok := a.tryParseSpecialMarker(marker); ok {
+				if tok, ok, err := a.tryParseSpecialMarkerWithResolver(marker, resolve); err != nil {
+					return nil, err
+				} else if ok {
 					tokens = append(tokens, tok)
 					i = end + 1
 					continue
@@ -60,7 +72,11 @@ func (a *Archive) encodeScript(text string) ([]byte, error) {
 		if ch == '[' {
 			if end := indexRune(rs, i+1, ']'); end > i {
 				tag := string(rs[i : end+1])
-				tokens = append(tokens, type1Token{3, a.StringOffset(tag)})
+				offset, err := resolve(tag)
+				if err != nil {
+					return nil, err
+				}
+				tokens = append(tokens, type1Token{3, offset})
 				i = end + 1
 				continue
 			}
@@ -83,7 +99,11 @@ func (a *Archive) encodeScript(text string) ([]byte, error) {
 			tokens = append(tokens, type1Token{2, int32(math.Float32bits(float32(f)))})
 			continue
 		}
-		tokens = append(tokens, type1Token{3, a.StringOffset(token)})
+		offset, err := resolve(token)
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, type1Token{3, offset})
 	}
 
 	raw := make([]byte, len(tokens)*5)
@@ -95,9 +115,16 @@ func (a *Archive) encodeScript(text string) ([]byte, error) {
 }
 
 func (a *Archive) tryParseSpecialMarker(marker string) (type1Token, bool) {
+	tok, ok, err := a.tryParseSpecialMarkerWithResolver(marker, func(value string) (int32, error) {
+		return a.StringOffset(value), nil
+	})
+	return tok, ok && err == nil
+}
+
+func (a *Archive) tryParseSpecialMarkerWithResolver(marker string, resolve func(string) (int32, error)) (type1Token, bool, error) {
 	var tok type1Token
 	if len(marker) < 4 || marker[0] != '{' || marker[len(marker)-1] != '}' {
-		return tok, false
+		return tok, false, nil
 	}
 	var typ byte
 	switch {
@@ -106,7 +133,7 @@ func (a *Archive) tryParseSpecialMarker(marker string) (type1Token, bool) {
 	case strings.HasPrefix(marker, "{7="):
 		typ = 7
 	default:
-		return tok, false
+		return tok, false, nil
 	}
 	inner := strings.TrimSpace(marker[3 : len(marker)-1])
 	innerRunes := []rune(inner)
@@ -114,9 +141,13 @@ func (a *Archive) tryParseSpecialMarker(marker string) (type1Token, bool) {
 		inner = value
 	}
 	if v, err := strconv.ParseInt(inner, 10, 32); err == nil {
-		return type1Token{typ, int32(v)}, true
+		return type1Token{typ, int32(v)}, true, nil
 	}
-	return type1Token{typ, a.StringOffset(inner)}, true
+	offset, err := resolve(inner)
+	if err != nil {
+		return tok, false, err
+	}
+	return type1Token{typ, offset}, true, nil
 }
 
 // readBacktickString reads a quoted string starting at start and unescapes doubled backticks.
