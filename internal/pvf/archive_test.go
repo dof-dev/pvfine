@@ -12,9 +12,9 @@ import (
 
 const scriptText = "[name]\n`测试物品`\n[grade]\n74\n[rarity]\n3\n[price]\n12.5\n[icon]\n`item/x.img` 3\n"
 
-// Canonical decompiled form: tags are line-oriented; values are indented and
-// compact values on the same line are separated by a leading tab.
-const scriptTextDecoded = "[name]\n\t`测试物品`\n[grade]\n\t74\n[rarity]\n\t3\n[price]\n\t12.5\n[icon]\n\t`item/x.img`\t3"
+// Canonical decompiled form: top-level tags are separated by blank lines;
+// values are indented and compact values on the same line use leading tabs.
+const scriptTextDecoded = "[name]\n\t`测试物品`\n\n[grade]\n\t74\n\n[rarity]\n\t3\n\n[price]\n\t12.5\n\n[icon]\n\t`item/x.img`\t3"
 
 func TestSyntheticRoundTrip(t *testing.T) {
 	a := New()

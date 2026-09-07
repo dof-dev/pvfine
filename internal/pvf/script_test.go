@@ -19,12 +19,17 @@ func TestScriptCodecIsInverse(t *testing.T) {
 		{
 			name:    "unicode strings",
 			input:   "[name]\n`测试``物品`\n[icon]\n`item/测试.img`",
-			decoded: "[name]\n\t`测试``物品`\n[icon]\n\t`item/测试.img`",
+			decoded: "[name]\n\t`测试``物品`\n\n[icon]\n\t`item/测试.img`",
 		},
 		{
 			name:    "nested sections",
 			input:   "[if]\n[cooltime]\n30000\n[attack type]\n`physical`\n[attack success]\n1\n[/if]\n[then]\n[target]\n`myself` -1\n[/then]",
-			decoded: "[if]\n\t[cooltime]\n\t\t30000\n\t[attack type]\n\t\t`physical`\n\t[attack success]\n\t\t1\n[/if]\n[then]\n\t[target]\n\t\t`myself`\t-1\n[/then]\n",
+			decoded: "[if]\n\t[cooltime]\n\t\t30000\n\t[attack type]\n\t\t`physical`\n\t[attack success]\n\t\t1\n[/if]\n\n[then]\n\t[target]\n\t\t`myself`\t-1\n[/then]\n",
+		},
+		{
+			name:    "direct tokens in paired section",
+			input:   "[need material]\n3336 80\n[/need material]",
+			decoded: "[need material]\n\t3336\t80\n[/need material]\n",
 		},
 		{
 			name:    "empty script",

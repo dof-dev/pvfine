@@ -165,7 +165,12 @@ func (a *Archive) decodeScript(raw []byte) string {
 		}
 	}
 
-	sectionStack := []string{}
+	type sectionFrame struct {
+		name       string
+		firstToken bool
+	}
+	sectionStack := []sectionFrame{}
+	topLevelSectionSeen := false
 	atLineStart := true
 	writeIndent := func(depth int) {
 		for i := 0; i < depth; i++ {
@@ -181,13 +186,23 @@ func (a *Archive) decodeScript(raw []byte) string {
 		sb.WriteByte('\n')
 		atLineStart = true
 	}
-	writeValuePrefix := func(depth int) {
+	markSectionToken := func() {
+		if len(sectionStack) > 0 {
+			sectionStack[len(sectionStack)-1].firstToken = false
+		}
+	}
+	writeValuePrefix := func() {
+		depth := len(sectionStack) + 1
+		if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
+			depth--
+		}
 		if atLineStart {
-			writeIndent(depth + 1)
+			writeIndent(depth)
 		} else {
 			sb.WriteByte('\t')
 		}
 		atLineStart = false
+		markSectionToken()
 	}
 
 	for i := 0; i < n; i++ {
@@ -196,10 +211,10 @@ func (a *Archive) decodeScript(raw []byte) string {
 		v := int32(binary.LittleEndian.Uint32(raw[base+1:]))
 		switch typ {
 		case 0:
-			writeValuePrefix(len(sectionStack))
+			writeValuePrefix()
 			sb.WriteString(strconv.FormatInt(int64(v), 10))
 		case 2:
-			writeValuePrefix(len(sectionStack))
+			writeValuePrefix()
 			f := math.Float32frombits(uint32(v))
 			sb.WriteString(strconv.FormatFloat(float64(f), 'g', -1, 32))
 		case 3:
@@ -208,27 +223,46 @@ func (a *Archive) decodeScript(raw []byte) string {
 			isSectionOpening := isTag && !closing && sectionClosers[name]
 			if closing {
 				for i := len(sectionStack) - 1; i >= 0; i-- {
-					if sectionStack[i] == name {
+					if sectionStack[i].name == name {
 						sectionStack = sectionStack[:i]
 						break
 					}
 				}
 			}
+			isTopLevelSection := isTag && !closing && len(sectionStack) == 0
+			if isTopLevelSection && topLevelSectionSeen {
+				if !atLineStart {
+					sb.WriteByte('\n')
+				}
+				sb.WriteByte('\n')
+				atLineStart = true
+			}
 			writeLineTag(tag, len(sectionStack))
+			if isTag && !closing {
+				markSectionToken()
+			}
+			if isTopLevelSection {
+				topLevelSectionSeen = true
+			}
 			if isSectionOpening {
-				sectionStack = append(sectionStack, name)
+				sectionStack = append(sectionStack, sectionFrame{name: name, firstToken: true})
 			}
 		case 5:
 			if !atLineStart {
 				sb.WriteByte('\n')
 			}
-			writeIndent(len(sectionStack) + 1)
+			indent := len(sectionStack) + 1
+			if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
+				indent--
+			}
+			writeIndent(indent)
 			sb.WriteString("{5=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
 			atLineStart = false
+			markSectionToken()
 		case 6:
-			writeValuePrefix(len(sectionStack))
+			writeValuePrefix()
 			sb.WriteString("`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`")
@@ -236,11 +270,16 @@ func (a *Archive) decodeScript(raw []byte) string {
 			if !atLineStart {
 				sb.WriteByte('\n')
 			}
-			writeIndent(len(sectionStack) + 1)
+			indent := len(sectionStack) + 1
+			if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
+				indent--
+			}
+			writeIndent(indent)
 			sb.WriteString("{7=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
 			atLineStart = false
+			markSectionToken()
 		}
 	}
 	return sb.String()
