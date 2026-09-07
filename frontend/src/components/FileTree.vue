@@ -51,6 +51,7 @@ const itemsByKey = computed(() => {
 });
 
 const expandedKeys = ref<Array<string | number>>([]);
+const selectedKeys = ref<Array<string | number>>([]);
 
 function collectExpandedKeys(items: TreeItem[], result: Array<string | number>): void {
   for (const item of items) {
@@ -81,8 +82,15 @@ async function onLoad(node: TreeOption): Promise<void> {
   }
 }
 
-function onSelect(keys: string[]): void {
-  const item = itemsByKey.value.get(keys[0]);
+function onSelect(keys: Array<string | number>): void {
+  selectedKeys.value = keys;
+}
+
+function onDoubleClick(): void {
+  const selectedKey = selectedKeys.value[0];
+  if (selectedKey === undefined) return;
+
+  const item = itemsByKey.value.get(String(selectedKey));
   if (item && !item.isDir) emit("select", item);
 }
 
@@ -144,12 +152,14 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
     class="file-tree"
     :data="treeData"
     :expanded-keys="expandAll ? expandedKeys : undefined"
+    :selected-keys="selectedKeys"
     :on-load="onLoad"
     :on-update:expanded-keys="expandAll ? onExpandedKeys : undefined"
     :on-update:selected-keys="onSelect"
     :render-label="renderLabel"
     :scrollbar-props="{ xScrollable: true }"
     :style="{ height }"
+    @dblclick="onDoubleClick"
     expand-on-click
   />
 </template>
