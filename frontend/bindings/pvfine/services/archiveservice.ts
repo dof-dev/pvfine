@@ -22,6 +22,13 @@ export function Close(): $CancellablePromise<void> {
 }
 
 /**
+ * IndexStatus 返回当前归档的语义搜索索引状态。
+ */
+export function IndexStatus(): $CancellablePromise<$models.IndexStatus> {
+    return $Call.ByID(1258396651);
+}
+
+/**
  * Info 返回当前归档状态;未打开时 Path 为空。
  */
 export function Info(): $CancellablePromise<$models.ArchiveInfo> {
@@ -50,7 +57,7 @@ export function OpenDialog(): $CancellablePromise<$models.ArchiveInfo | null> {
 }
 
 /**
- * Search 在全部路径中做不区分大小写的子串匹配。
+ * Search 在路径、语义名称和 id 中做不区分大小写的子串匹配。
  * cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
  */
 export function Search(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {

@@ -11,7 +11,7 @@ import {
   type TreeOption,
 } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
-import { useExplorerStore, type TreeItem } from "../stores/explorer";
+import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
 
 const archive = useArchiveStore();
@@ -22,17 +22,19 @@ const searchInput = ref("");
 let searchDebounce: number | undefined;
 
 watch(
-  () => searchInput.value,
-  (v) => {
+  () => [searchInput.value, archive.indexReady] as const,
+  ([v, ready]) => {
     window.clearTimeout(searchDebounce);
+    if (!ready) return;
     searchDebounce = window.setTimeout(() => explorer.search(v), 300);
   }
 );
 
 watch(
-  () => archive.open,
-  async (isOpen) => {
-    if (isOpen) {
+  () => archive.info?.path ?? "",
+  async (archivePath) => {
+    if (archivePath) {
+      explorer.reset();
       searchInput.value = "";
       await explorer.loadRoots();
     } else {
@@ -67,7 +69,7 @@ function onTreeSelect(keys: string[]) {
   if (item && !item.isDir) editor.openFile(item.fileIndex);
 }
 
-function onHitClick(item: TreeItem) {
+function onHitClick(item: SearchItem) {
   editor.openFile(item.fileIndex);
 }
 
@@ -76,6 +78,17 @@ function sizeText(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+function categoryLabel(category: string): string {
+  switch (category) {
+    case "equipment":
+      return "装备";
+    case "stackable":
+      return "道具";
+    default:
+      return "文件";
+  }
+}
 </script>
 
 <template>
@@ -83,10 +96,10 @@ function sizeText(n: number): string {
     <div class="exp-search">
       <NInput
         v-model:value="searchInput"
-        placeholder="搜索文件路径…"
+        :placeholder="archive.indexReady ? '搜索路径、名称或 id…' : '索引完成后可搜索路径、名称或 id…'"
         clearable
         size="small"
-        :disabled="!archive.open"
+        :disabled="!archive.open || !archive.indexReady"
       />
     </div>
 
@@ -110,14 +123,16 @@ function sizeText(n: number): string {
           </div>
           <NVirtualList
             :items="explorer.hits"
-            :item-size="26"
+            :item-size="32"
             class="search-list"
             v-if="explorer.hits.length"
           >
             <template #default="{ item }">
-              <div class="hit-row" :title="(item as TreeItem).key" @click="onHitClick(item as TreeItem)">
-                <span class="hit-name">{{ (item as TreeItem).label }}</span>
-                <span class="hit-path">{{ (item as TreeItem).key }}</span>
+              <div class="hit-row" :title="(item as SearchItem).path" @click="onHitClick(item as SearchItem)">
+                <NTag size="tiny" :bordered="false">{{ categoryLabel((item as SearchItem).category) }}</NTag>
+                <span v-if="(item as SearchItem).id" class="hit-id">{{ (item as SearchItem).id }}</span>
+                <span class="hit-name">{{ (item as SearchItem).label }}</span>
+                <span class="hit-path">{{ (item as SearchItem).path }}</span>
               </div>
             </template>
           </NVirtualList>
@@ -181,6 +196,22 @@ function sizeText(n: number): string {
   padding: 8px;
   flex-shrink: 0;
 }
+.index-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  margin-top: 4px;
+  color: rgba(128, 128, 128, 0.9);
+  font-size: 11px;
+  line-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.index-status--error {
+  color: #e88080;
+}
 .exp-body {
   flex: 1;
   min-height: 0;
@@ -214,7 +245,7 @@ function sizeText(n: number): string {
   padding: 4px 8px;
 }
 .hit-row {
-  height: 26px;
+  height: 32px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -227,6 +258,14 @@ function sizeText(n: number): string {
   background: rgba(128, 128, 128, 0.15);
 }
 .hit-name {
+  flex-shrink: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hit-id {
+  color: #f2c97d;
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 .hit-path {

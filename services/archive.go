@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"os"
 	"strings"
 
@@ -53,6 +54,7 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	}
 	info := a.Info()
 	emitEvent("archive:opened", info)
+	s.c.startSearchIndex()
 	return info, nil
 }
 
@@ -66,6 +68,13 @@ func (s *ArchiveService) Close() {
 func (s *ArchiveService) Info() ArchiveInfo {
 	info, _ := s.c.archiveInfo()
 	return info
+}
+
+// IndexStatus 返回当前归档的语义搜索索引状态。
+func (s *ArchiveService) IndexStatus() IndexStatus {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	return s.c.indexStatus
 }
 
 // ListChildren 懒加载某目录的直接子节点;path 为空表示根。
@@ -84,17 +93,17 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 
 // SearchResult 是一页搜索命中;NextCursor < 0 表示已扫完。
 type SearchResult struct {
-	Hits       []*TreeNode `json:"hits"`
-	NextCursor int         `json:"nextCursor"`
-	Scanned    int         `json:"scanned"`
+	Hits       []*SearchHit `json:"hits"`
+	NextCursor int          `json:"nextCursor"`
+	Scanned    int          `json:"scanned"`
 }
 
-// Search 在全部路径中做不区分大小写的子串匹配。
+// Search 在路径、语义名称和 id 中做不区分大小写的子串匹配。
 // cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
 func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchResult, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
-	res := &SearchResult{Hits: []*TreeNode{}, NextCursor: -1}
+	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
 	}
@@ -102,26 +111,30 @@ func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchRes
 	if q == "" {
 		return res, nil
 	}
+	if s.c.indexStatus.State == IndexStateBuilding || s.c.indexStatus.State == IndexStateIdle {
+		return nil, ErrSearchIndexing
+	}
+	if s.c.indexStatus.State == IndexStateError {
+		return nil, errors.New(s.c.indexStatus.Error)
+	}
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
 	if cursor < 0 {
 		cursor = 0
 	}
-	paths := s.c.sortedPaths
+	records := s.c.searchRecords
 	i := cursor
-	for ; i < len(paths) && len(res.Hits) < limit; i++ {
-		if strings.Contains(paths[i].lower, q) {
-			p := &paths[i]
-			parent, name := splitParent(p.path)
-			_ = parent
-			res.Hits = append(res.Hits, &TreeNode{
-				Name: name, Path: p.path,
-				Size: p.size, DataType: p.typ, FileIndex: p.idx,
-			})
+	for ; i < len(records) && len(res.Hits) < limit; i++ {
+		record := &records[i]
+		if strings.Contains(record.lowerPath, q) ||
+			strings.Contains(record.lowerName, q) ||
+			strings.Contains(record.lowerID, q) {
+			hit := record.hit
+			res.Hits = append(res.Hits, &hit)
 		}
 	}
-	if i < len(paths) {
+	if i < len(records) {
 		res.NextCursor = i
 	}
 	res.Scanned = i

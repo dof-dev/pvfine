@@ -49,6 +49,8 @@ func (a *Archive) parseNameTable(nb []byte) {
 // Even values index the UTF-8 pool (byte offset = off>>1); odd values index
 // the UTF-16 pool (byte offset = (off>>1)*2).
 func (a *Archive) ResolveString(magicOff int32) string {
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
 	if magicOff < 0 {
 		return ""
 	}
@@ -136,7 +138,7 @@ func (a *Archive) ensureStringIndexes() {
 			}
 			v := string(utf16.Decode(u16))
 			if _, ok := a.strWIdx[v]; !ok {
-				a.strWIdx[v] = int32((pos >> 1) << 1) | 1
+				a.strWIdx[v] = int32((pos>>1)<<1) | 1
 			}
 		}
 		pos = end + 2

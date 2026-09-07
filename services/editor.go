@@ -69,29 +69,28 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 
 // SetText 把编辑后的文本写入内存 overlay(不落盘)。
 func (s *EditorService) SetText(index int32, text string) error {
-	return s.c.withArchive(func(a *pvf.Archive) error {
-		if index < 0 || index >= a.FileCount() {
-			return fmt.Errorf("文件索引越界: %d", index)
-		}
-		return a.SetText(index, text)
-	})
+	_, _, err := s.c.setText(index, text)
+	return err
 }
 
 // Save 把全部内存修改写回源文件(原子写:临时文件 + rename)。
 func (s *EditorService) Save() (ArchiveInfo, error) {
 	s.c.mu.Lock()
 	a := s.c.archive
-	s.c.mu.Unlock()
 	if a == nil {
+		s.c.mu.Unlock()
 		return ArchiveInfo{}, ErrNoArchive
 	}
 	if a.SourcePath() == "" {
+		s.c.mu.Unlock()
 		return ArchiveInfo{}, fmt.Errorf("归档没有源文件,请使用另存为")
 	}
 	if err := a.Save(); err != nil {
+		s.c.mu.Unlock()
 		return ArchiveInfo{}, err
 	}
 	info := a.Info()
+	s.c.mu.Unlock()
 	emitEvent("archive:saved", info)
 	return info, nil
 }
@@ -100,10 +99,11 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 func (s *EditorService) SaveAsDialog() (string, error) {
 	s.c.mu.RLock()
 	a := s.c.archive
-	s.c.mu.RUnlock()
 	if a == nil {
+		s.c.mu.RUnlock()
 		return "", ErrNoArchive
 	}
+	s.c.mu.RUnlock()
 	defName := "Script_new.pvf"
 	if src := a.SourcePath(); src != "" {
 		defName = filepath.Base(src)
@@ -119,10 +119,17 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	if path == "" {
 		return "", nil // 用户取消
 	}
+	s.c.mu.Lock()
+	if s.c.archive != a {
+		s.c.mu.Unlock()
+		return "", ErrNoArchive
+	}
 	if err := a.SaveAs(path); err != nil {
+		s.c.mu.Unlock()
 		return "", err
 	}
 	info := a.Info()
+	s.c.mu.Unlock()
 	emitEvent("archive:saved", info)
 	return path, nil
 }
@@ -131,10 +138,11 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 func (s *EditorService) ExportFileDialog(index int32) (string, error) {
 	s.c.mu.RLock()
 	a := s.c.archive
-	s.c.mu.RUnlock()
 	if a == nil {
+		s.c.mu.RUnlock()
 		return "", ErrNoArchive
 	}
+	s.c.mu.RUnlock()
 	if index < 0 || index >= a.FileCount() {
 		return "", fmt.Errorf("文件索引越界: %d", index)
 	}
@@ -149,11 +157,18 @@ func (s *EditorService) ExportFileDialog(index int32) (string, error) {
 	if path == "" {
 		return "", nil
 	}
+	s.c.mu.RLock()
+	if s.c.archive != a {
+		s.c.mu.RUnlock()
+		return "", ErrNoArchive
+	}
 	raw, err := a.RawBytes(index)
+	data := append([]byte(nil), raw...)
+	s.c.mu.RUnlock()
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", err
 	}
 	return path, nil

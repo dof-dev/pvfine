@@ -1,10 +1,13 @@
 package services
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"pvfine/internal/pvf"
 )
@@ -48,8 +51,177 @@ func testArchive(t *testing.T) *core {
 	if err := c.setArchive(a); err != nil {
 		t.Fatal(err)
 	}
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
 	t.Cleanup(c.closeArchive)
 	return c
+}
+
+func waitForSearchIndex(t *testing.T, c *core) IndexStatus {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	svc := NewArchiveService(c)
+	for time.Now().Before(deadline) {
+		status := svc.IndexStatus()
+		if status.State == IndexStateReady || status.State == IndexStateError {
+			if status.State == IndexStateError {
+				t.Fatalf("search index failed: %s", status.Error)
+			}
+			return status
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("search index did not finish: %#v", svc.IndexStatus())
+	return IndexStatus{}
+}
+
+func writeSearchFixture(t *testing.T, name string) string {
+	t.Helper()
+	a := pvf.New()
+	_, err := a.AddFileText("equipment/equipment.lst", "1008 `character/common/amulet/1008.equ` 1010 `character/common/amulet/1008.equ` 1011 `character/common/amulet/missing.equ`", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.AddFileText("stackable/stackable.lst", "1008 `consumable/1008.stk`", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.AddFileText("equipment/character/common/amulet/1008.equ", "[name]\n`烈火之心项链`\n[grade]\n1", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.AddFileText("stackable/consumable/1008.stk", "[name]\n`回复药`", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("misc/readme.txt", []byte("hello"), pvf.TypeScript)
+
+	path := filepath.Join(t.TempDir(), name)
+	var out bytes.Buffer
+	if err := a.SaveTo(&out); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestSyntheticSearchIndex(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "search.pvf")
+	if _, err := svc.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	status := waitForSearchIndex(t, c)
+	if status.Skipped != 1 {
+		t.Fatalf("skipped = %d, want 1", status.Skipped)
+	}
+
+	byID, err := svc.Search("1008", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byID.Hits) != 3 {
+		t.Fatalf("id hits = %d, want 3", len(byID.Hits))
+	}
+	counts := map[string]int{}
+	for _, hit := range byID.Hits {
+		counts[hit.Category]++
+	}
+	if counts[SearchCategoryEquipment] != 2 || counts[SearchCategoryStackable] != 1 {
+		t.Fatalf("id categories = %#v", counts)
+	}
+
+	byName, err := svc.Search("烈火之心项链", 0, 20)
+	if err != nil || len(byName.Hits) != 2 {
+		t.Fatalf("name hits = %d, err = %v", len(byName.Hits), err)
+	}
+	if byName.Hits[0].ID == "" || byName.Hits[0].Path != "equipment/character/common/amulet/1008.equ" {
+		t.Fatalf("name hit = %#v", byName.Hits[0])
+	}
+
+	byPath, err := svc.Search("misc/readme.txt", 0, 20)
+	if err != nil || len(byPath.Hits) != 1 {
+		t.Fatalf("path hits = %d, err = %v", len(byPath.Hits), err)
+	}
+	if byPath.Hits[0].Category != SearchCategoryFile || byPath.Hits[0].Name != "readme.txt" {
+		t.Fatalf("path hit = %#v", byPath.Hits[0])
+	}
+}
+
+func TestSearchRequiresReadyIndex(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	a := pvf.New()
+	if _, err := a.AddFileText("misc/readme.txt", "hello", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	defer c.closeArchive()
+	if _, err := svc.Search("readme", 0, 20); !errors.Is(err, ErrSearchIndexing) {
+		t.Fatalf("search error = %v, want ErrSearchIndexing", err)
+	}
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+	if res, err := svc.Search("readme", 0, 20); err != nil || len(res.Hits) != 1 {
+		t.Fatalf("ready search = %d hits, err = %v", len(res.Hits), err)
+	}
+}
+
+func TestSearchIndexNameRefresh(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "refresh.pvf")
+	if _, err := svc.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	waitForSearchIndex(t, c)
+
+	before, err := svc.Search("烈火之心项链", 0, 20)
+	if err != nil || len(before.Hits) != 2 {
+		t.Fatalf("before hits = %d, err = %v", len(before.Hits), err)
+	}
+	index := before.Hits[0].FileIndex
+	editor := NewEditorService(c)
+	if err := editor.SetText(index, "[name]\n`改名后的项链`\n[grade]\n1"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := svc.Search("改名后的项链", 0, 20)
+	if err != nil || len(after.Hits) != 2 {
+		t.Fatalf("after hits = %d, err = %v", len(after.Hits), err)
+	}
+	old, err := svc.Search("烈火之心项链", 0, 20)
+	if err != nil || len(old.Hits) != 0 {
+		t.Fatalf("old hits = %d, err = %v", len(old.Hits), err)
+	}
+}
+
+func TestSearchIndexResetOnCloseAndReopen(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	first := writeSearchFixture(t, "first.pvf")
+	second := writeSearchFixture(t, "second.pvf")
+	if _, err := svc.Open(first); err != nil {
+		t.Fatal(err)
+	}
+	svc.Close()
+	if status := svc.IndexStatus(); status.State != IndexStateIdle {
+		t.Fatalf("status after close = %#v", status)
+	}
+	if _, err := svc.Open(second); err != nil {
+		t.Fatal(err)
+	}
+	waitForSearchIndex(t, c)
+	res, err := svc.Search("1008", 0, 20)
+	if err != nil || len(res.Hits) != 3 {
+		t.Fatalf("reopen hits = %d, err = %v", len(res.Hits), err)
+	}
 }
 
 func TestArchiveServiceTreeAndSearch(t *testing.T) {

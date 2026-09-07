@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"os"
 	"strings"
+	"sync"
 )
 
 // Header is the decrypted 48-byte archive header (packed, little-endian).
@@ -31,6 +32,8 @@ type groupItem struct{ compSize, origSize int32 }
 // modification, but Chunk decompression is cached and read-only use of
 // accessors from multiple goroutines is fine.
 type Archive struct {
+	cacheMu sync.Mutex
+
 	data  []byte // original file bytes (nil for archives built from scratch)
 	hdr   Header
 	guard bool
@@ -248,6 +251,8 @@ func (a *Archive) Find(path string) (int32, bool) {
 
 // Chunk returns decompressed chunk ci, caching the result.
 func (a *Archive) Chunk(ci int32) ([]byte, error) {
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
 	if ch, ok := a.chunkCache[ci]; ok {
 		return ch, nil
 	}

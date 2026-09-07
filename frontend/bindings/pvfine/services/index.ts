@@ -11,6 +11,8 @@ export {
 export type {
     ArchiveInfo,
     FileMeta,
+    IndexStatus,
+    SearchHit,
     SearchResult,
     TreeNode
 } from "./models.js";

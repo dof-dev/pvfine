@@ -4,6 +4,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"strings"
@@ -22,7 +23,10 @@ func emitEvent(name string, data ...any) {
 	}
 }
 
-var ErrNoArchive = errors.New("尚未打开归档文件")
+var (
+	ErrNoArchive      = errors.New("尚未打开归档文件")
+	ErrSearchIndexing = errors.New("搜索索引正在构建")
+)
 
 // TreeNode is one entry in the explorer tree: either a directory or a file.
 type TreeNode struct {
@@ -51,6 +55,12 @@ type core struct {
 	archive       *pvf.Archive
 	dirChildren   map[string][]*TreeNode // dirPath -> ordered children ("" = root)
 	sortedPaths   []pathEntry
+	searchRecords []searchRecord
+	searchByFile  map[int32][]int
+	indexStatus   IndexStatus
+	indexCancel   context.CancelFunc
+	indexDirty    map[int32]struct{}
+	indexGen      uint64
 	unpackCancel  atomic.Bool
 	unpackRunning atomic.Bool
 }
@@ -68,29 +78,59 @@ func (c *core) setArchive(a *pvf.Archive) error {
 		return err
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.indexCancel != nil {
+		c.indexCancel()
+		c.indexCancel = nil
+	}
+	c.indexGen++
 	c.archive = a
 	c.dirChildren = children
 	c.sortedPaths = paths
+	c.searchRecords = nil
+	c.searchByFile = make(map[int32][]int)
+	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexDirty = make(map[int32]struct{})
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
+	c.mu.Unlock()
 	return nil
 }
 
 func (c *core) closeArchive() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.indexCancel != nil {
+		c.indexCancel()
+		c.indexCancel = nil
+	}
+	c.indexGen++
 	c.archive = nil
 	c.dirChildren = nil
 	c.sortedPaths = nil
+	c.searchRecords = nil
+	c.searchByFile = nil
+	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexDirty = nil
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
+	c.mu.Unlock()
 }
 
 // withArchive runs fn with the loaded archive under read lock.
 func (c *core) withArchive(fn func(a *pvf.Archive) error) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c.archive == nil {
+		return ErrNoArchive
+	}
+	return fn(c.archive)
+}
+
+// withArchiveWrite runs fn with the loaded archive under the write lock.
+// Archive edits and saves must exclude background index reads because the
+// archive overlay and rebuilt tables are mutable.
+func (c *core) withArchiveWrite(fn func(a *pvf.Archive) error) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.archive == nil {
 		return ErrNoArchive
 	}

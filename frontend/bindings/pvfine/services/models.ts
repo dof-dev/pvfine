@@ -24,10 +24,35 @@ export interface FileMeta {
 }
 
 /**
+ * IndexStatus is the current state of the semantic search index.
+ */
+export interface IndexStatus {
+    "state": string;
+    "stage": string;
+    "done": number;
+    "total": number;
+    "skipped": number;
+    "error": string;
+}
+
+/**
+ * SearchHit is one searchable file/list record.
+ */
+export interface SearchHit {
+    "name": string;
+    "id": string;
+    "path": string;
+    "category": string;
+    "size": number;
+    "dataType": number;
+    "fileIndex": number;
+}
+
+/**
  * SearchResult 是一页搜索命中;NextCursor < 0 表示已扫完。
  */
 export interface SearchResult {
-    "hits": (TreeNode | null)[] | null;
+    "hits": (SearchHit | null)[] | null;
     "nextCursor": number;
     "scanned": number;
 }

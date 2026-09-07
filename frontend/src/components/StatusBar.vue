@@ -19,6 +19,23 @@ const unpackPct = computed(() =>
     ? Math.round((archive.unpackProgress.done / archive.unpackProgress.total) * 100)
     : 0
 );
+const indexPct = computed(() =>
+  archive.indexStatus.total
+    ? Math.round((archive.indexStatus.done / archive.indexStatus.total) * 100)
+    : 0
+);
+const indexStateLabel = computed(() => {
+  switch (archive.indexStatus.state) {
+    case "building":
+      return "索引中";
+    case "ready":
+      return "索引就绪";
+    case "error":
+      return "索引失败";
+    default:
+      return "索引准备中";
+  }
+});
 </script>
 
 <template>
@@ -28,14 +45,24 @@ const unpackPct = computed(() =>
     </span>
     <template v-if="archive.open">
       <span class="sb-sep" />
-      <span class="sb-item">{{ archive.info?.fileCount.toLocaleString() }} 文件</span>
+      <span class="sb-item">{{ archive.info?.fileCount?.toLocaleString() }} 文件</span>
       <span class="sb-sep" />
-      <span class="sb-item">{{ archive.info?.groupCount.toLocaleString() }} 块</span>
+      <span class="sb-item">{{ archive.info?.groupCount?.toLocaleString() }} 块</span>
       <template v-if="archive.modifiedCount > 0">
         <span class="sb-sep" />
         <span class="sb-item sb-modified">{{ archive.modifiedCount }} 个已修改</span>
       </template>
       <span class="sb-spacer" />
+      <span v-if="archive.open" class="sb-item index-state" :class="{ 'sb-error': archive.indexStatus.state === 'error' }">
+        {{ indexStateLabel }}
+        <NProgress
+          v-if="archive.indexing"
+          type="line"
+          :show-indicator="false"
+          :percentage="indexPct"
+          style="width: 90px; display: inline-flex"
+        />
+      </span>
       <span v-if="archive.unpacking" class="sb-item unpack">
         解包中
         <NProgress
@@ -97,5 +124,13 @@ const unpackPct = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.index-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sb-error {
+  color: #e88080;
 }
 </style>
