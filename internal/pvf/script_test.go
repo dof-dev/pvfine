@@ -2,6 +2,7 @@ package pvf
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,33 @@ func TestScriptCodecIsInverse(t *testing.T) {
 				t.Errorf("encodeScript(decodeScript(encoded)) changed payload:\n got: % X\nwant: % X", reencoded, encoded)
 			}
 		})
+	}
+}
+
+func TestSkillDataUpFormatting(t *testing.T) {
+	rows := []string{
+		"`[at fighter]`\t233\t`[all]`\t`[level]`\t0\t`%`\t6",
+		"`[at fighter]`\t233\t`[all]`\t`[level]`\t1\t`%`\t6",
+		"`[at fighter]`\t233\t`[all]`\t`[cooltime]`\t0\t`%`\t-6",
+		"`[at fighter]`\t234\t`[all]`\t`[level]`\t0\t`%`\t10",
+		"`[at fighter]`\t234\t`[all]`\t`[level]`\t1\t`%`\t25",
+	}
+	input := "[skill data up]\n" + strings.Join(rows, "\t") + "\n[/skill data up]"
+	want := "[skill data up]\n\t" + strings.Join(rows, "\n\t") + "\n[/skill data up]\n"
+
+	a := New()
+	encoded, err := a.encodeScript(input)
+	if err != nil {
+		t.Fatalf("encodeScript() error = %v", err)
+	}
+	if got := a.decodeScript(encoded); got != want {
+		t.Errorf("skill data up formatting = %q, want %q", got, want)
+	}
+	reencoded, err := a.encodeScript(want)
+	if err != nil {
+		t.Fatalf("re-encode formatted skill data up: %v", err)
+	}
+	if !bytes.Equal(reencoded, encoded) {
+		t.Errorf("formatted skill data up changed payload:\n got: % X\nwant: % X", reencoded, encoded)
 	}
 }

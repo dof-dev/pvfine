@@ -150,6 +150,16 @@ func splitDirName(p string) (dir, name string) {
 	return "", p
 }
 
+type scriptSectionFormat struct {
+	// tokensPerLine wraps non-section tokens after this many tokens. Zero means
+	// that the section uses the default line layout.
+	tokensPerLine int
+}
+
+var scriptSectionFormats = map[string]scriptSectionFormat{
+	"skill data up": {tokensPerLine: 7},
+}
+
 // decodeScript decompiles a TypeScript payload back to readable form.
 func (a *Archive) decodeScript(raw []byte) string {
 	var sb strings.Builder
@@ -166,8 +176,10 @@ func (a *Archive) decodeScript(raw []byte) string {
 	}
 
 	type sectionFrame struct {
-		name       string
-		firstToken bool
+		name         string
+		firstToken   bool
+		format       scriptSectionFormat
+		tokensOnLine int
 	}
 	sectionStack := []sectionFrame{}
 	topLevelSectionSeen := false
@@ -186,15 +198,48 @@ func (a *Archive) decodeScript(raw []byte) string {
 		sb.WriteByte('\n')
 		atLineStart = true
 	}
-	markSectionToken := func() {
+	markSectionTag := func() {
 		if len(sectionStack) > 0 {
-			sectionStack[len(sectionStack)-1].firstToken = false
+			frame := &sectionStack[len(sectionStack)-1]
+			frame.firstToken = false
+			frame.tokensOnLine = 0
+		}
+	}
+	markSectionValue := func() {
+		if len(sectionStack) > 0 {
+			frame := &sectionStack[len(sectionStack)-1]
+			frame.firstToken = false
+			if frame.format.tokensPerLine > 0 {
+				frame.tokensOnLine++
+			}
+		}
+	}
+	prepareSectionValue := func(forceNewLine bool) {
+		if len(sectionStack) > 0 {
+			frame := &sectionStack[len(sectionStack)-1]
+			if frame.format.tokensPerLine > 0 && frame.tokensOnLine >= frame.format.tokensPerLine {
+				if !atLineStart {
+					sb.WriteByte('\n')
+				}
+				atLineStart = true
+				frame.tokensOnLine = 0
+			}
+		}
+		if forceNewLine && !atLineStart {
+			sb.WriteByte('\n')
+			atLineStart = true
 		}
 	}
 	writeValuePrefix := func() {
+		prepareSectionValue(false)
 		depth := len(sectionStack) + 1
-		if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
-			depth--
+		if len(sectionStack) > 0 {
+			frame := sectionStack[len(sectionStack)-1]
+			if frame.format.tokensPerLine > 0 {
+				depth = len(sectionStack)
+			} else if frame.firstToken {
+				depth--
+			}
 		}
 		if atLineStart {
 			writeIndent(depth)
@@ -202,7 +247,7 @@ func (a *Archive) decodeScript(raw []byte) string {
 			sb.WriteByte('\t')
 		}
 		atLineStart = false
-		markSectionToken()
+		markSectionValue()
 	}
 
 	for i := 0; i < n; i++ {
@@ -239,47 +284,58 @@ func (a *Archive) decodeScript(raw []byte) string {
 			}
 			writeLineTag(tag, len(sectionStack))
 			if isTag && !closing {
-				markSectionToken()
+				markSectionTag()
 			}
 			if isTopLevelSection {
 				topLevelSectionSeen = true
 			}
 			if isSectionOpening {
-				sectionStack = append(sectionStack, sectionFrame{name: name, firstToken: true})
+				sectionStack = append(sectionStack, sectionFrame{
+					name:         name,
+					firstToken:   true,
+					format:       scriptSectionFormats[name],
+					tokensOnLine: 0,
+				})
 			}
 		case 5:
-			if !atLineStart {
-				sb.WriteByte('\n')
-			}
+			prepareSectionValue(true)
 			indent := len(sectionStack) + 1
-			if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
-				indent--
+			if len(sectionStack) > 0 {
+				frame := sectionStack[len(sectionStack)-1]
+				if frame.format.tokensPerLine > 0 {
+					indent = len(sectionStack)
+				} else if frame.firstToken {
+					indent--
+				}
 			}
 			writeIndent(indent)
 			sb.WriteString("{5=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
 			atLineStart = false
-			markSectionToken()
+			markSectionValue()
 		case 6:
 			writeValuePrefix()
 			sb.WriteString("`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`")
 		case 7:
-			if !atLineStart {
-				sb.WriteByte('\n')
-			}
+			prepareSectionValue(true)
 			indent := len(sectionStack) + 1
-			if len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].firstToken {
-				indent--
+			if len(sectionStack) > 0 {
+				frame := sectionStack[len(sectionStack)-1]
+				if frame.format.tokensPerLine > 0 {
+					indent = len(sectionStack)
+				} else if frame.firstToken {
+					indent--
+				}
 			}
 			writeIndent(indent)
 			sb.WriteString("{7=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
 			atLineStart = false
-			markSectionToken()
+			markSectionValue()
 		}
 	}
 	return sb.String()
