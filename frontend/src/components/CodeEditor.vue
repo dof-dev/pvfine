@@ -19,6 +19,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 
 const props = defineProps<{
   doc: string;
@@ -68,6 +69,8 @@ function makeExtensions() {
     highlightSelectionMatches(),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
+    pvfLanguage.extension,
+    pvfHighlighting,
     darkTheme,
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {

@@ -1,4 +1,5 @@
-// Package pvf parses and packs DNF script archives ("Script.pvf", S4A21 variant).
+// Package pvf parses and packs script archives ("Script.pvf", S4A21 variant)
+// for a 2D side-scrolling action game.
 //
 // Layout:
 //
@@ -29,8 +30,8 @@ import "errors"
 
 // Content data types (File.DataType).
 const (
-	TypeScript   int32 = 1 // 5-byte token stream: u8 kind + i32 value
-	TypeUnicode  int32 = 3 // UTF-16LE text (localized .str etc.)
+	TypeScript  int32 = 1 // 5-byte token stream: u8 kind + i32 value
+	TypeUnicode int32 = 3 // UTF-16LE text (localized .str etc.)
 )
 
 // Header signature after decryption: bytes "nkpi" in file order.

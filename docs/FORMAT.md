@@ -1,7 +1,4 @@
-# Script.pvf 格式规格(S4A21 变体)
-
-逆向自 `/Users/zhyipeng/workspace/Script.pvf`(100,923,254 字节),与 `S4A21GmTool/PvfLib`(C#)实现一致。
-Python 实现:同目录 `pvflib.py`,CLI:`extract.py`。
+# 90US 格式规格
 
 ## 总体布局
 
@@ -123,4 +120,3 @@ UTF-16LE 明文。本文件存在韩服转制痕迹:内容实为 **EUC-KR 字节
 - 文件 1,008,171 个,分块 8,019 个,全部解压成功,0 引用越界
 - 扩展名分布:.ani 570,617 / .equ 148,594 / .act 77,955 / .stk 42,219 / .obj 21,974 / .ai 21,534 / .til 20,792 / .atk 18,896 / .key 16,322 / .map 15,921 …
 - 顶层目录:equipment 408,432 / monster 211,668 / passiveobject 162,065 / map 79,046 / stackable 46,390 / character 40,203 …
-- 内容为韩服 DNF 脚本(物品、任务、技能、怪物、副本、本地化文本),中文物品名等 token 字符串正常
