@@ -209,6 +209,10 @@ jobs:
           go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Build frontend before Go tests
+        shell: bash
+        run: wails3 task common:build:frontend
+
       - name: Run Go tests
         run: go test ./...
 
