@@ -37,6 +37,16 @@ func TestScriptCodecIsInverse(t *testing.T) {
 			input:   "",
 			decoded: "",
 		},
+		{
+			name:    "first token has no prefix",
+			input:   "`first` 2",
+			decoded: "`first`\t2",
+		},
+		{
+			name:    "first block token has no prefix",
+			input:   "{5=`first block`}",
+			decoded: "{5=`first block`}",
+		},
 	}
 
 	for _, tt := range tests {
@@ -87,5 +97,26 @@ func TestSkillDataUpFormatting(t *testing.T) {
 	}
 	if !bytes.Equal(reencoded, encoded) {
 		t.Errorf("formatted skill data up changed payload:\n got: % X\nwant: % X", reencoded, encoded)
+	}
+}
+
+func TestListFileFormatting(t *testing.T) {
+	input := "`one` `two` `three` `four` `five`"
+	want := "`one`\t`two`\n`three`\t`four`\n`five`"
+
+	a := New()
+	encoded, err := a.encodeScript(input)
+	if err != nil {
+		t.Fatalf("encodeScript() error = %v", err)
+	}
+	if got := a.decodeScriptForPath(encoded, "skill/test.lst"); got != want {
+		t.Errorf("lst formatting = %q, want %q", got, want)
+	}
+	reencoded, err := a.encodeScript(want)
+	if err != nil {
+		t.Fatalf("re-encode formatted lst: %v", err)
+	}
+	if !bytes.Equal(reencoded, encoded) {
+		t.Errorf("formatted lst changed payload:\n got: % X\nwant: % X", reencoded, encoded)
 	}
 }

@@ -56,7 +56,7 @@ func (a *Archive) Text(i int32) (string, error) {
 	case TypeUnicode:
 		return fixKoreanMojibake(string(utf16.Decode(u16le(raw)))), nil
 	case TypeScript:
-		return a.decodeScript(raw), nil
+		return a.decodeScriptForPath(raw, a.Path(i)), nil
 	default:
 		return "", nil
 	}
@@ -150,20 +150,40 @@ func splitDirName(p string) (dir, name string) {
 	return "", p
 }
 
-type scriptSectionFormat struct {
-	// tokensPerLine wraps non-section tokens after this many tokens. Zero means
-	// that the section uses the default line layout.
+type scriptFormatRule struct {
+	// tokensPerLine wraps content tokens after this many tokens. Zero means
+	// that the default line layout is used.
 	tokensPerLine int
 }
 
-var scriptSectionFormats = map[string]scriptSectionFormat{
+var scriptSectionRules = map[string]scriptFormatRule{
 	"skill data up": {tokensPerLine: 7},
+	"skill levelup": {tokensPerLine: 3},
 }
 
 // decodeScript decompiles a TypeScript payload back to readable form.
 func (a *Archive) decodeScript(raw []byte) string {
+	return a.decodeScriptForPath(raw, "")
+}
+
+var scriptFileRules = map[string]scriptFormatRule{
+	".lst": {tokensPerLine: 2},
+}
+
+func scriptFileRule(path string) scriptFormatRule {
+	path = strings.ToLower(path)
+	if dot := strings.LastIndexByte(path, '.'); dot >= 0 {
+		return scriptFileRules[path[dot:]]
+	}
+	return scriptFormatRule{}
+}
+
+// decodeScriptForPath decompiles a TypeScript payload using file-specific
+// formatting rules in addition to the generic section layout.
+func (a *Archive) decodeScriptForPath(raw []byte, path string) string {
 	var sb strings.Builder
 	sectionClosers := map[string]bool{}
+	fileRule := scriptFileRule(path)
 	n := len(raw) / 5
 	for i := 0; i < n; i++ {
 		base := i * 5
@@ -178,12 +198,14 @@ func (a *Archive) decodeScript(raw []byte) string {
 	type sectionFrame struct {
 		name         string
 		firstToken   bool
-		format       scriptSectionFormat
+		format       scriptFormatRule
 		tokensOnLine int
 	}
 	sectionStack := []sectionFrame{}
 	topLevelSectionSeen := false
 	atLineStart := true
+	tokenSeen := false
+	fileTokensOnLine := 0
 	writeIndent := func(depth int) {
 		for i := 0; i < depth; i++ {
 			sb.WriteByte('\t')
@@ -206,12 +228,17 @@ func (a *Archive) decodeScript(raw []byte) string {
 		}
 	}
 	markSectionValue := func() {
+		tokenSeen = true
 		if len(sectionStack) > 0 {
 			frame := &sectionStack[len(sectionStack)-1]
 			frame.firstToken = false
 			if frame.format.tokensPerLine > 0 {
 				frame.tokensOnLine++
+				return
 			}
+		}
+		if fileRule.tokensPerLine > 0 {
+			fileTokensOnLine++
 		}
 	}
 	prepareSectionValue := func(forceNewLine bool) {
@@ -223,26 +250,45 @@ func (a *Archive) decodeScript(raw []byte) string {
 				}
 				atLineStart = true
 				frame.tokensOnLine = 0
+			} else if fileRule.tokensPerLine > 0 && fileTokensOnLine >= fileRule.tokensPerLine {
+				if !atLineStart {
+					sb.WriteByte('\n')
+				}
+				atLineStart = true
+				fileTokensOnLine = 0
 			}
+		} else if fileRule.tokensPerLine > 0 && fileTokensOnLine >= fileRule.tokensPerLine {
+			if !atLineStart {
+				sb.WriteByte('\n')
+			}
+			atLineStart = true
+			fileTokensOnLine = 0
 		}
 		if forceNewLine && !atLineStart {
 			sb.WriteByte('\n')
 			atLineStart = true
 		}
 	}
+	contentIndent := func() int {
+		if !tokenSeen {
+			return 0
+		}
+		if len(sectionStack) == 0 {
+			if fileRule.tokensPerLine > 0 {
+				return 0
+			}
+			return 1
+		}
+		frame := sectionStack[len(sectionStack)-1]
+		if frame.format.tokensPerLine > 0 || frame.firstToken {
+			return len(sectionStack)
+		}
+		return len(sectionStack) + 1
+	}
 	writeValuePrefix := func() {
 		prepareSectionValue(false)
-		depth := len(sectionStack) + 1
-		if len(sectionStack) > 0 {
-			frame := sectionStack[len(sectionStack)-1]
-			if frame.format.tokensPerLine > 0 {
-				depth = len(sectionStack)
-			} else if frame.firstToken {
-				depth--
-			}
-		}
 		if atLineStart {
-			writeIndent(depth)
+			writeIndent(contentIndent())
 		} else {
 			sb.WriteByte('\t')
 		}
@@ -283,6 +329,7 @@ func (a *Archive) decodeScript(raw []byte) string {
 				atLineStart = true
 			}
 			writeLineTag(tag, len(sectionStack))
+			tokenSeen = true
 			if isTag && !closing {
 				markSectionTag()
 			}
@@ -293,22 +340,13 @@ func (a *Archive) decodeScript(raw []byte) string {
 				sectionStack = append(sectionStack, sectionFrame{
 					name:         name,
 					firstToken:   true,
-					format:       scriptSectionFormats[name],
+					format:       scriptSectionRules[name],
 					tokensOnLine: 0,
 				})
 			}
 		case 5:
 			prepareSectionValue(true)
-			indent := len(sectionStack) + 1
-			if len(sectionStack) > 0 {
-				frame := sectionStack[len(sectionStack)-1]
-				if frame.format.tokensPerLine > 0 {
-					indent = len(sectionStack)
-				} else if frame.firstToken {
-					indent--
-				}
-			}
-			writeIndent(indent)
+			writeIndent(contentIndent())
 			sb.WriteString("{5=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
@@ -321,16 +359,7 @@ func (a *Archive) decodeScript(raw []byte) string {
 			sb.WriteString("`")
 		case 7:
 			prepareSectionValue(true)
-			indent := len(sectionStack) + 1
-			if len(sectionStack) > 0 {
-				frame := sectionStack[len(sectionStack)-1]
-				if frame.format.tokensPerLine > 0 {
-					indent = len(sectionStack)
-				} else if frame.firstToken {
-					indent--
-				}
-			}
-			writeIndent(indent)
+			writeIndent(contentIndent())
 			sb.WriteString("{7=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
