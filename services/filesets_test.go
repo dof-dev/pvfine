@@ -67,6 +67,14 @@ func TestFileSetServiceCanPersistEmptyDocument(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file-sets.json")
 	service := newFileSetService(path)
 	if err := service.SaveFileSets(FileSetDocument{
+		Version: fileSetDocumentVersion,
+		FileSets: []StoredFileSet{
+			{ID: "set-1", Name: "待删除"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SaveFileSets(FileSetDocument{
 		Version:  fileSetDocumentVersion,
 		FileSets: []StoredFileSet{},
 	}); err != nil {
@@ -76,7 +84,10 @@ func TestFileSetServiceCanPersistEmptyDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Version != fileSetDocumentVersion || loaded.FileSets == nil || len(loaded.FileSets) != 0 {
+	if loaded.Version != fileSetDocumentVersion || len(loaded.FileSets) != 0 {
 		t.Fatalf("empty document = %#v", loaded)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("empty file set source still exists, err = %v", err)
 	}
 }

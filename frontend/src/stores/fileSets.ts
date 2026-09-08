@@ -252,10 +252,18 @@ export const useFileSetStore = defineStore("fileSets", () => {
   }
 
   function toDocument(): FileSetDocument {
+    const persistedSets = fileSets.value.filter(
+      (fileSet) =>
+        fileSet.id !== "default" ||
+        fileSet.name !== "默认文件集" ||
+        fileSet.entries.length > 0
+    );
     return {
       version: fileSetDocumentVersion,
-      activeSetId: activeSetId.value,
-      fileSets: fileSets.value.map((fileSet) => ({
+      activeSetId: persistedSets.some((fileSet) => fileSet.id === activeSetId.value)
+        ? activeSetId.value
+        : "",
+      fileSets: persistedSets.map((fileSet) => ({
         id: fileSet.id,
         name: fileSet.name,
         entries: fileSet.entries.map((entry) => ({

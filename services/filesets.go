@@ -86,6 +86,12 @@ func (s *FileSetService) SaveFileSets(document FileSetDocument) error {
 	if err := normalizeFileSetDocument(&document); err != nil {
 		return err
 	}
+	if len(document.FileSets) == 0 {
+		if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("删除空文件集文件失败: %w", err)
+		}
+		return nil
+	}
 	data, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return fmt.Errorf("编码文件集失败: %w", err)

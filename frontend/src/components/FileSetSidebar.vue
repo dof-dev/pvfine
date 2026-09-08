@@ -108,7 +108,15 @@ function deleteCurrent(): void {
     content: `确定删除“${active.name}”及其中的 ${active.entries.length} 个文件吗？`,
     positiveText: "删除",
     negativeText: "取消",
-    onPositiveClick: () => fileSets.deleteSet(active.id),
+    onPositiveClick: async () => {
+      if (!fileSets.deleteSet(active.id)) return;
+      try {
+        await fileSets.save();
+        message.success("文件集已删除并保存");
+      } catch (error: any) {
+        message.error(`删除文件集后保存失败: ${error?.message ?? error}`);
+      }
+    },
   });
 }
 
@@ -243,7 +251,7 @@ watch(
               circle
               size="tiny"
               aria-label="重命名文件集"
-              :disabled="!fileSets.activeSet"
+              :disabled="!fileSets.loaded || !fileSets.activeSet"
               @click="openRename"
             >
               <template #icon><NIcon><Edit24Regular /></NIcon></template>
