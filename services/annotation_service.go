@@ -45,10 +45,14 @@ func (s *AnnotationService) ReloadRules() (AnnotationReloadResult, error) {
 	s.c.annotationErr = nil
 	s.c.annotationRelations = make(map[string]map[string]*relationTarget)
 	s.c.editorAnnotation = editorAnnotationCache{}
-	if s.c.archive != nil {
+	archiveOpen := s.c.archive != nil
+	if archiveOpen {
 		s.c.pathAnnotations = buildPathAnnotations(engine, s.c.dirChildren)
 	}
 	s.c.mu.Unlock()
+	if archiveOpen {
+		s.c.startSearchIndex()
+	}
 
 	result := AnnotationReloadResult{
 		RuleCount:     len(document.Rules),

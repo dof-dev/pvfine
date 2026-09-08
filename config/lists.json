@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "description": "pvfine built-in list and relation indexes",
+  "relations": {
+    "装备": {
+      "listPath": "equipment/equipment.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "道具": {
+      "listPath": "stackable/stackable.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "技能": {
+      "kind": "contextual",
+      "contextToken": 0,
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name",
+      "contextPaths": {
+        "[swordman]": "skill/swordmanskill.lst",
+        "[at swordman]": "skill/atswordmanskill.lst",
+        "[fighter]": "skill/fighterskill.lst",
+        "[at fighter]": "skill/atfighterskill.lst",
+        "[gunner]": "skill/gunnerskill.lst",
+        "[at gunner]": "skill/atgunnerskill.lst",
+        "[mage]": "skill/mageskill.lst",
+        "[at mage]": "skill/atmageskill.lst",
+        "[priest]": "skill/priestskill.lst",
+        "[at priest]": "skill/atpriestskill.lst",
+        "[thief]": "skill/thiefskill.lst",
+        "[creator mage]": "skill/creatormageskill.lst",
+        "[knight]": "skill/creatormageskill.lst",
+        "[demonic swordman]": "skill/dsswordmanskill.lst",
+        "[demonic lancer]": "skill/demoniclancerskill.lst"
+      }
+    }
+  }
+}

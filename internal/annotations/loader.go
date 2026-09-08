@@ -2,27 +2,48 @@ package annotations
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"path"
 	"sort"
 	"strings"
+
+	appconfig "pvfine/config"
 )
 
-//go:embed default.json
-var defaultJSON []byte
-
 func LoadDefault() (*Engine, error) {
-	document, err := Parse(defaultJSON)
+	document, err := parseDocument(appconfig.AnnotationsJSON)
 	if err != nil {
+		return nil, err
+	}
+	lists, err := ParseLists(appconfig.ListsJSON)
+	if err != nil {
+		return nil, err
+	}
+	document.Relations = lists.Relations
+	if err := Validate(document); err != nil {
 		return nil, err
 	}
 	return Compile(document)
 }
 
 func Parse(data []byte) (Document, error) {
+	document, err := parseDocument(data)
+	if err != nil {
+		return Document{}, err
+	}
+	if err := Validate(document); err != nil {
+		return Document{}, err
+	}
+	return document, nil
+}
+
+func ParseRules(data []byte) (Document, error) {
+	return parseDocument(data)
+}
+
+func parseDocument(data []byte) (Document, error) {
 	var document Document
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -35,10 +56,27 @@ func Parse(data []byte) (Document, error) {
 		}
 		return Document{}, fmt.Errorf("解析标注规则失败: %w", err)
 	}
-	if err := Validate(document); err != nil {
-		return Document{}, err
-	}
 	return document, nil
+}
+
+func ParseLists(data []byte) (ListDocument, error) {
+	var lists ListDocument
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&lists); err != nil {
+		return ListDocument{}, fmt.Errorf("解析列表配置失败: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return ListDocument{}, fmt.Errorf("列表配置只能包含一个 JSON 文档")
+		}
+		return ListDocument{}, fmt.Errorf("解析列表配置失败: %w", err)
+	}
+	document := Document{Version: lists.Version, Relations: lists.Relations}
+	if err := Validate(document); err != nil {
+		return ListDocument{}, err
+	}
+	return lists, nil
 }
 
 func Marshal(document Document) ([]byte, error) {
@@ -46,6 +84,30 @@ func Marshal(document Document) ([]byte, error) {
 		return nil, err
 	}
 	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func MarshalRules(document Document) ([]byte, error) {
+	if err := Validate(document); err != nil {
+		return nil, err
+	}
+	document.Relations = nil
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+func MarshalLists(lists ListDocument) ([]byte, error) {
+	document := Document{Version: lists.Version, Relations: lists.Relations}
+	if err := Validate(document); err != nil {
+		return nil, err
+	}
+	data, err := json.MarshalIndent(lists, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +131,32 @@ func Validate(document Document) error {
 		if strings.TrimSpace(name) == "" {
 			problems = append(problems, "relation 名称不能为空")
 		}
-		if strings.TrimSpace(relation.ListPath) == "" {
+		kind := relation.Kind
+		if kind == "" {
+			kind = "list"
+		}
+		if kind != "list" && kind != "contextual" {
+			problems = append(problems, prefix+".kind 必须是 list 或 contextual")
+		}
+		if kind == "list" && strings.TrimSpace(relation.ListPath) == "" {
 			problems = append(problems, prefix+".listPath 不能为空")
 		}
-		if relation.IDToken < 0 || relation.PathToken < 0 {
+		if relation.IDToken < 0 || relation.PathToken < 0 || relation.ContextToken < 0 {
 			problems = append(problems, prefix+" 的 token 下标不能为负数")
+		}
+		if kind == "contextual" {
+			if len(relation.ContextPaths) == 0 {
+				problems = append(problems, prefix+".contextPaths 不能为空")
+			}
+			for context, listPath := range relation.ContextPaths {
+				if strings.TrimSpace(context) == "" || strings.TrimSpace(listPath) == "" {
+					problems = append(problems, prefix+".contextPaths 的键和值不能为空")
+					break
+				}
+			}
+			if relation.RecordTokens <= relation.IDToken || relation.RecordTokens <= relation.PathToken {
+				problems = append(problems, prefix+".recordTokens 必须覆盖 idToken 和 pathToken")
+			}
 		}
 		recordTokens := relation.RecordTokens
 		if recordTokens == 0 {
@@ -131,6 +214,22 @@ func Validate(document Document) error {
 			if rule.Target.Index != nil && *rule.Target.Index < 0 {
 				problems = append(problems, prefix+".target.index 不能为负数")
 			}
+			if rule.Target.RecordTokens < 0 {
+				problems = append(problems, prefix+".target.recordTokens 不能为负数")
+			}
+			if rule.Target.RecordTokens == 0 && rule.Target.ContextIndex != nil {
+				problems = append(problems, prefix+".target.contextIndex 需要同时配置 recordTokens")
+			}
+			if rule.Target.RecordTokens > 0 {
+				if rule.Target.Index == nil {
+					problems = append(problems, prefix+".target.recordTokens 需要配合单个 index 使用")
+				} else if *rule.Target.Index >= rule.Target.RecordTokens {
+					problems = append(problems, prefix+".target.index 必须小于 recordTokens")
+				}
+				if rule.Target.ContextIndex != nil && (*rule.Target.ContextIndex < 0 || *rule.Target.ContextIndex >= rule.Target.RecordTokens) {
+					problems = append(problems, prefix+".target.contextIndex 必须位于 recordTokens 范围内")
+				}
+			}
 			if rule.Target.Range != nil {
 				if rule.Target.Range.Start < 0 || rule.Target.Range.EndExclusive <= rule.Target.Range.Start {
 					problems = append(problems, prefix+".target.range 必须满足 0 <= start < endExclusive")
@@ -153,8 +252,20 @@ func Validate(document Document) error {
 				problems = append(problems, prefix+".annotation.values 不能为空")
 			}
 		case "reference":
-			if _, ok := document.Relations[rule.Annotation.Relation]; !ok {
+			relation, ok := document.Relations[rule.Annotation.Relation]
+			if !ok {
 				problems = append(problems, prefix+" 引用了不存在的 relation: "+rule.Annotation.Relation)
+			} else if relation.Kind == "contextual" {
+				if rule.Target.RecordTokens == 0 {
+					problems = append(problems, prefix+" 的 contextual relation 需要配置 target.recordTokens")
+				}
+				contextIndex := relation.ContextToken
+				if rule.Target.ContextIndex != nil {
+					contextIndex = *rule.Target.ContextIndex
+				}
+				if rule.Target.RecordTokens > 0 && (contextIndex < 0 || contextIndex >= rule.Target.RecordTokens) {
+					problems = append(problems, prefix+" 的 contextual relation 上下文 token 下标必须位于 target.recordTokens 范围内")
+				}
 			}
 		default:
 			problems = append(problems, prefix+".annotation.type 必须是 text、enum 或 reference")

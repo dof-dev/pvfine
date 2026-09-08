@@ -28,11 +28,13 @@ import (
 const maxRequestBytes = 4 << 20
 
 type editorServer struct {
-	mu          sync.Mutex
-	rulesPath   string
-	runtimePath string
-	htmlPath    string
-	token       string
+	mu               sync.Mutex
+	rulesPath        string
+	runtimePath      string
+	listsPath        string
+	runtimeListsPath string
+	htmlPath         string
+	token            string
 }
 
 type previewRequest struct {
@@ -87,11 +89,17 @@ func newEditorServer(root string) (*editorServer, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtimeListsPath, err := annotationrules.RuntimeListsPath()
+	if err != nil {
+		return nil, err
+	}
 	return &editorServer{
-		rulesPath:   filepath.Join(root, "internal", "annotations", "default.json"),
-		runtimePath: runtimePath,
-		htmlPath:    filepath.Join(root, "tools", "annotation-editor.html"),
-		token:       hex.EncodeToString(tokenBytes),
+		rulesPath:        filepath.Join(root, "config", "annotations.json"),
+		runtimePath:      runtimePath,
+		listsPath:        filepath.Join(root, "config", "lists.json"),
+		runtimeListsPath: runtimeListsPath,
+		htmlPath:         filepath.Join(root, "tools", "annotation-editor.html"),
+		token:            hex.EncodeToString(tokenBytes),
 	}, nil
 }
 
@@ -134,12 +142,13 @@ func (s *editorServer) handleRules(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	switch r.Method {
 	case http.MethodGet:
-		data, err := os.ReadFile(s.rulesPath)
+		document, err := annotationrules.LoadFile(s.rulesPath)
 		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if _, err := annotationrules.Parse(data); err != nil {
+		data, err := annotationrules.Marshal(document.Document())
+		if err != nil {
 			writeAPIError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -156,12 +165,25 @@ func (s *editorServer) handleRules(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusRequestEntityTooLarge, "规则文件超过 4MB")
 			return
 		}
-		document, err := annotationrules.Parse(data)
+		document, err := annotationrules.ParseRules(data)
 		if err != nil {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		formatted, err := annotationrules.Marshal(document)
+		current, err := annotationrules.LoadFile(s.rulesPath)
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		document.Relations = current.Document().Relations
+		if err := annotationrules.Validate(document); err != nil {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		formatted, err := annotationrules.MarshalRules(document)
+		if s.listsPath == "" {
+			formatted, err = annotationrules.Marshal(document)
+		}
 		if err != nil {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
@@ -173,6 +195,17 @@ func (s *editorServer) handleRules(w http.ResponseWriter, r *http.Request) {
 		if s.runtimePath != "" {
 			if err := atomicWrite(s.runtimePath, formatted, 0o600); err != nil {
 				writeAPIError(w, http.StatusInternalServerError, "同步运行时规则失败: "+err.Error())
+				return
+			}
+		}
+		if s.runtimeListsPath != "" && s.listsPath != "" {
+			listsData, listsErr := os.ReadFile(s.listsPath)
+			if listsErr != nil {
+				writeAPIError(w, http.StatusInternalServerError, "读取列表配置失败: "+listsErr.Error())
+				return
+			}
+			if err := atomicWrite(s.runtimeListsPath, listsData, 0o600); err != nil {
+				writeAPIError(w, http.StatusInternalServerError, "同步运行时列表配置失败: "+err.Error())
 				return
 			}
 		}
@@ -200,23 +233,26 @@ func (s *editorServer) handlePreview(w http.ResponseWriter, r *http.Request) {
 	var document annotationrules.Document
 	if request.Document != nil {
 		document = *request.Document
+		if len(document.Relations) == 0 {
+			current, err := annotationrules.LoadFile(s.rulesPath)
+			if err != nil {
+				writeAPIError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			document.Relations = current.Document().Relations
+		}
 		if err := annotationrules.Validate(document); err != nil {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	} else {
-		s.mu.Lock()
-		data, err := os.ReadFile(s.rulesPath)
-		s.mu.Unlock()
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, err.Error())
+		var loadErr error
+		documentEngine, loadErr := annotationrules.LoadFile(s.rulesPath)
+		if loadErr != nil {
+			writeAPIError(w, http.StatusInternalServerError, loadErr.Error())
 			return
 		}
-		document, err = annotationrules.Parse(data)
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
+		document = documentEngine.Document()
 	}
 	engine, err := annotationrules.Compile(document)
 	if err != nil {

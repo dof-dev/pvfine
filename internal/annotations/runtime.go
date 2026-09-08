@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	appconfig "pvfine/config"
 )
 
-const sourceRelativePath = "internal/annotations/default.json"
+const sourceRelativePath = "config/annotations.json"
 
 // LoadFile validates and compiles a rule document from disk.
 func LoadFile(path string) (*Engine, error) {
@@ -14,8 +16,27 @@ func LoadFile(path string) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取标注规则失败: %w", err)
 	}
-	document, err := Parse(data)
+	document, err := parseDocument(data)
 	if err != nil {
+		return nil, err
+	}
+	listsPath := filepath.Join(filepath.Dir(path), "lists.json")
+	if listsData, listsErr := os.ReadFile(listsPath); listsErr == nil {
+		lists, err := ParseLists(listsData)
+		if err != nil {
+			return nil, err
+		}
+		document.Relations = lists.Relations
+	} else if !os.IsNotExist(listsErr) {
+		return nil, fmt.Errorf("读取列表配置失败: %w", listsErr)
+	} else if document.Relations == nil {
+		lists, err := ParseLists(appconfig.ListsJSON)
+		if err != nil {
+			return nil, err
+		}
+		document.Relations = lists.Relations
+	}
+	if err := Validate(document); err != nil {
 		return nil, err
 	}
 	return Compile(document)
@@ -28,6 +49,14 @@ func RuntimePath() (string, error) {
 		return "", fmt.Errorf("获取用户配置目录失败: %w", err)
 	}
 	return filepath.Join(configDir, "pvfine", "annotations.json"), nil
+}
+
+func RuntimeListsPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("获取用户配置目录失败: %w", err)
+	}
+	return filepath.Join(configDir, "pvfine", "lists.json"), nil
 }
 
 // FindSourcePath locates the repository rule file for local development.

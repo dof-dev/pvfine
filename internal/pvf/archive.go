@@ -295,7 +295,7 @@ func normalizePath(p string) string {
 			p = p[1:]
 		}
 	}
-	return strings.TrimRight(p, "/")
+	return strings.ToLower(strings.TrimRight(p, "/"))
 }
 
 // joinPath joins raw pool strings for display. No normalization: entries

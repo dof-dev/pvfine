@@ -20,6 +20,7 @@ const (
 	SearchCategoryFile      = "file"
 	SearchCategoryEquipment = "equipment"
 	SearchCategoryStackable = "stackable"
+	SearchCategorySkill     = "skill"
 )
 
 // IndexStatus is the current state of the semantic search index.
@@ -74,9 +75,63 @@ type searchableListSpec struct {
 	category string
 }
 
-var searchableListSpecs = [...]searchableListSpec{
-	{listPath: "equipment/equipment.lst", category: SearchCategoryEquipment},
-	{listPath: "stackable/stackable.lst", category: SearchCategoryStackable},
+func (c *core) searchableListSpecs() []searchableListSpec {
+	specs := make([]searchableListSpec, 0, 16)
+	seen := make(map[string]struct{})
+	appendSpec := func(spec searchableListSpec) {
+		key := strings.ToLower(spec.category + "\x00" + spec.listPath)
+		if spec.listPath == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		specs = append(specs, spec)
+	}
+	c.mu.RLock()
+	engine := c.annotationEngine
+	if engine != nil {
+		for name, relation := range engine.Document().Relations {
+			category := relationSearchCategory(name)
+			kind := relation.Kind
+			if kind == "" {
+				kind = "list"
+			}
+			if kind == "list" {
+				appendSpec(searchableListSpec{listPath: relation.ListPath, category: category})
+				continue
+			}
+			if kind != "contextual" {
+				continue
+			}
+			for _, listPath := range relation.ContextPaths {
+				appendSpec(searchableListSpec{listPath: listPath, category: category})
+			}
+		}
+	}
+	c.mu.RUnlock()
+
+	sort.SliceStable(specs, func(i, j int) bool {
+		if specs[i].category != specs[j].category {
+			return specs[i].category < specs[j].category
+		}
+		return specs[i].listPath < specs[j].listPath
+	})
+	return specs
+}
+
+func relationSearchCategory(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "装备", "equipment":
+		return SearchCategoryEquipment
+	case "道具", "stackable":
+		return SearchCategoryStackable
+	case "技能", "skill":
+		return SearchCategorySkill
+	default:
+		return "relation:" + strings.TrimSpace(name)
+	}
 }
 
 // startSearchIndex starts a new metadata indexing generation for the current
@@ -121,7 +176,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 		return
 	}
 
-	for _, spec := range searchableListSpecs {
+	for _, spec := range c.searchableListSpecs() {
 		if !c.indexCurrent(a, gen, ctx) {
 			return
 		}

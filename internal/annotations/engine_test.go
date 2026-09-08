@@ -104,6 +104,44 @@ func TestAnnotateMissingReferenceDegradesGracefully(t *testing.T) {
 	}
 }
 
+func TestAnnotateContextualReferenceByRepeatedRecord(t *testing.T) {
+	engine, err := Compile(Document{
+		Version: 1,
+		Relations: map[string]RelationSpec{
+			"skill": {
+				Kind: "contextual", ContextToken: 0, IDToken: 0, PathToken: 1,
+				RecordTokens: 2, NameSection: "name",
+				ContextPaths: map[string]string{"[fighter]": "skill/fighterskill.lst", "[at fighter]": "skill/atfighterskill.lst"},
+			},
+		},
+		Rules: []Rule{{
+			ID: "skill.levelup", Target: TargetSpec{
+				Kind: "token", Section: "skill levelup", Index: intPtr(1), RecordTokens: 3,
+			},
+			Annotation: AnnotationSpec{Title: "技能", Type: "reference", Relation: "skill"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := pvf.ParseScriptView("[skill levelup]\n`[fighter]` 20 1\n`[fighter]` 19 1\n`[at fighter]` 20 1\n[/skill levelup]")
+	results := engine.AnnotateWithContextResolver("skills/test.skl", view, func(relation, id, context string) (Reference, bool) {
+		if relation != "skill" {
+			t.Fatalf("relation = %q", relation)
+		}
+		return Reference{ID: context + ":" + id, Name: context + " skill " + id, FileIndex: 7}, true
+	})
+	if len(results) != 3 {
+		t.Fatalf("results = %#v", results)
+	}
+	if results[0].Title != "[fighter] skill 20" || results[1].Title != "[fighter] skill 19" || results[2].Title != "[at fighter] skill 20" {
+		t.Fatalf("titles = %#v", results)
+	}
+	if results[0].Start >= results[1].Start || results[1].Start >= results[2].Start {
+		t.Fatalf("anchors are not ordered: %#v", results)
+	}
+}
+
 func TestAnnotatePathSupportsRecursiveGlobAndDirectories(t *testing.T) {
 	engine := testEngine(t, Rule{
 		ID: "path", Match: MatchSpec{Glob: "equipment/**"}, Target: TargetSpec{Kind: "path"},

@@ -3,16 +3,25 @@ package annotations
 type Document struct {
 	Version     int                     `json:"version"`
 	Description string                  `json:"description,omitempty"`
-	Relations   map[string]RelationSpec `json:"relations"`
+	Relations   map[string]RelationSpec `json:"relations,omitempty"`
 	Rules       []Rule                  `json:"rules"`
 }
 
+type ListDocument struct {
+	Version     int                     `json:"version"`
+	Description string                  `json:"description,omitempty"`
+	Relations   map[string]RelationSpec `json:"relations"`
+}
+
 type RelationSpec struct {
-	ListPath     string `json:"listPath"`
-	IDToken      int    `json:"idToken"`
-	PathToken    int    `json:"pathToken"`
-	RecordTokens int    `json:"recordTokens,omitempty"`
-	NameSection  string `json:"nameSection"`
+	Kind         string            `json:"kind,omitempty"`
+	ListPath     string            `json:"listPath"`
+	IDToken      int               `json:"idToken"`
+	PathToken    int               `json:"pathToken"`
+	RecordTokens int               `json:"recordTokens,omitempty"`
+	NameSection  string            `json:"nameSection"`
+	ContextToken int               `json:"contextToken,omitempty"`
+	ContextPaths map[string]string `json:"contextPaths,omitempty"`
 }
 
 type Rule struct {
@@ -30,10 +39,12 @@ type MatchSpec struct {
 }
 
 type TargetSpec struct {
-	Kind    string      `json:"kind"`
-	Section string      `json:"section,omitempty"`
-	Index   *int        `json:"index,omitempty"`
-	Range   *TokenRange `json:"range,omitempty"`
+	Kind         string      `json:"kind"`
+	Section      string      `json:"section,omitempty"`
+	Index        *int        `json:"index,omitempty"`
+	Range        *TokenRange `json:"range,omitempty"`
+	RecordTokens int         `json:"recordTokens,omitempty"`
+	ContextIndex *int        `json:"contextIndex,omitempty"`
 }
 
 type TokenRange struct {

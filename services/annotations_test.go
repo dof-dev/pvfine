@@ -234,6 +234,65 @@ func TestSearchIncludesAncestorPathAnnotations(t *testing.T) {
 	}
 }
 
+func TestContextualSkillReferenceAnnotations(t *testing.T) {
+	targetTokenIndex := 1
+	contextTokenIndex := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"skill": {
+				Kind: "contextual", ContextToken: 0, IDToken: 0, PathToken: 1,
+				RecordTokens: 2, NameSection: "name",
+				ContextPaths: map[string]string{
+					"[fighter]":    "skill/fighterskill.lst",
+					"[at fighter]": "skill/atfighterskill.lst",
+				},
+			},
+		},
+		Rules: []annotationrules.Rule{{
+			ID: "skill.levelup", Target: annotationrules.TargetSpec{
+				Kind: "token", Section: "skill levelup", Index: &targetTokenIndex, RecordTokens: 3, ContextIndex: &contextTokenIndex,
+			},
+			Annotation: annotationrules.AnnotationSpec{Title: "技能", Type: "reference", Relation: "skill"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	mustAddText(t, a, "skill/fighterskill.lst", "20 `Fighter/Skill20.skl` 19 `Fighter/Skill19.skl`", pvf.TypeScript)
+	mustAddText(t, a, "skill/atfighterskill.lst", "20 `ATFighter/At20.skl`", pvf.TypeScript)
+	fighter20 := mustAddText(t, a, "skill/fighter/skill20.skl", "[name]\n`男格斗技能 20`", pvf.TypeScript)
+	fighter19 := mustAddText(t, a, "skill/fighter/skill19.skl", "[name]\n`男格斗技能 19`", pvf.TypeScript)
+	at20 := mustAddText(t, a, "skill/atfighter/at20.skl", "[name]\n`女格斗技能 20`", pvf.TypeScript)
+	source := mustAddText(t, a, "skill/test.skl", "[skill levelup]\n`[fighter]` 20 1\n`[fighter]` 19 1\n`[at fighter]` 20 1\n[/skill levelup]", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	annotations, err := NewEditorService(c).GetAnnotations(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 3 {
+		t.Fatalf("annotations = %#v", annotations)
+	}
+	want := []struct {
+		title string
+		index int32
+	}{
+		{"男格斗技能 20", fighter20},
+		{"男格斗技能 19", fighter19},
+		{"女格斗技能 20", at20},
+	}
+	for i, item := range want {
+		if annotations[i].Title != item.title || annotations[i].TargetFileIndex != item.index {
+			t.Fatalf("annotation[%d] = %#v, want title=%q index=%d", i, annotations[i], item.title, item.index)
+		}
+	}
+}
+
 func mustAddText(t *testing.T, archive *pvf.Archive, path, text string, dataType int32) int32 {
 	t.Helper()
 	index, err := archive.AddFileText(path, text, dataType)

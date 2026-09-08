@@ -14,6 +14,11 @@ type Engine struct {
 	rules    []compiledRule
 }
 
+// ContextResolver resolves an ID using an optional value from the same
+// repeated record. It extends Resolver for relations whose list path depends
+// on another token, such as skill IDs grouped by profession.
+type ContextResolver func(relation, id, context string) (Reference, bool)
+
 type compiledRule struct {
 	rule       Rule
 	extensions map[string]struct{}
@@ -51,6 +56,19 @@ func Compile(document Document) (*Engine, error) {
 func (e *Engine) Document() Document { return e.document }
 
 func (e *Engine) Annotate(filePath string, view pvf.ScriptView, resolver Resolver) []Result {
+	return e.annotate(filePath, view, func(relation, id, _ string) (Reference, bool) {
+		if resolver == nil {
+			return Reference{}, false
+		}
+		return resolver(relation, id)
+	})
+}
+
+func (e *Engine) AnnotateWithContextResolver(filePath string, view pvf.ScriptView, resolver ContextResolver) []Result {
+	return e.annotate(filePath, view, resolver)
+}
+
+func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver ContextResolver) []Result {
 	results := make([]Result, 0)
 	resultByAnchor := make(map[string]int)
 	for _, compiled := range e.rules {
@@ -58,9 +76,9 @@ func (e *Engine) Annotate(filePath string, view pvf.ScriptView, resolver Resolve
 		if rule.Target.Kind == "path" || !compiled.matches(filePath, false) {
 			continue
 		}
-		anchors := editorAnchors(rule, view)
+		anchors := e.editorAnchors(rule, view)
 		for _, anchor := range anchors {
-			item := annotationItem(rule, anchor.value, resolver)
+			item := annotationItem(rule, anchor.value, anchor.context, resolver)
 			key := fmt.Sprintf("%d:%d", anchor.start, anchor.end)
 			if index, ok := resultByAnchor[key]; ok {
 				result := &results[index]
@@ -95,7 +113,7 @@ func (e *Engine) AnnotatePath(filePath string, isDir bool) []Result {
 		if compiled.rule.Target.Kind != "path" || !compiled.matches(filePath, isDir) {
 			continue
 		}
-		items = append(items, annotationItem(compiled.rule, "", nil))
+		items = append(items, annotationItem(compiled.rule, "", "", nil))
 	}
 	if len(items) == 0 {
 		return nil
@@ -119,6 +137,9 @@ func (e *Engine) Relation(name string) (RelationSpec, bool) {
 	if ok && relation.RecordTokens == 0 {
 		relation.RecordTokens = max(relation.IDToken, relation.PathToken) + 1
 	}
+	if ok && relation.Kind == "" {
+		relation.Kind = "list"
+	}
 	return relation, ok
 }
 
@@ -132,12 +153,13 @@ func (e *Engine) RelationNames() []string {
 }
 
 type editorAnchor struct {
-	start int
-	end   int
-	value string
+	start   int
+	end     int
+	value   string
+	context string
 }
 
-func editorAnchors(rule Rule, view pvf.ScriptView) []editorAnchor {
+func (e *Engine) editorAnchors(rule Rule, view pvf.ScriptView) []editorAnchor {
 	if rule.Target.Kind == "section" {
 		anchors := make([]editorAnchor, 0)
 		for _, element := range view.Elements {
@@ -149,6 +171,16 @@ func editorAnchors(rule Rule, view pvf.ScriptView) []editorAnchor {
 	}
 	if rule.Target.Kind != "token" {
 		return nil
+	}
+	if rule.Target.Index != nil && rule.Target.RecordTokens > 0 {
+		contextIndex := rule.Target.ContextIndex
+		if contextIndex == nil && rule.Annotation.Type == "reference" {
+			if relation, ok := e.Relation(rule.Annotation.Relation); ok && relation.Kind == "contextual" {
+				value := relation.ContextToken
+				contextIndex = &value
+			}
+		}
+		return repeatedTokenAnchors(rule, view, contextIndex)
 	}
 	if rule.Target.Index != nil {
 		anchors := make([]editorAnchor, 0)
@@ -191,7 +223,34 @@ func editorAnchors(rule Rule, view pvf.ScriptView) []editorAnchor {
 	return anchors
 }
 
-func annotationItem(rule Rule, value string, resolver Resolver) matchedItem {
+func repeatedTokenAnchors(rule Rule, view pvf.ScriptView, contextIndex *int) []editorAnchor {
+	ranges := make(map[int][]pvf.ScriptElement)
+	sectionOrder := make([]int, 0)
+	for _, element := range view.Elements {
+		if element.Kind != pvf.ScriptElementToken || !strings.EqualFold(element.Section, rule.Target.Section) {
+			continue
+		}
+		if _, ok := ranges[element.SectionID]; !ok {
+			sectionOrder = append(sectionOrder, element.SectionID)
+		}
+		ranges[element.SectionID] = append(ranges[element.SectionID], element)
+	}
+	anchors := make([]editorAnchor, 0)
+	for _, sectionID := range sectionOrder {
+		tokens := ranges[sectionID]
+		for start := 0; start+rule.Target.RecordTokens <= len(tokens); start += rule.Target.RecordTokens {
+			target := tokens[start+*rule.Target.Index]
+			anchor := editorAnchor{start: target.Start, end: target.End, value: target.Value}
+			if contextIndex != nil {
+				anchor.context = tokens[start+*contextIndex].Value
+			}
+			anchors = append(anchors, anchor)
+		}
+	}
+	return anchors
+}
+
+func annotationItem(rule Rule, value, context string, resolver ContextResolver) matchedItem {
 	item := matchedItem{
 		ruleID:          rule.ID,
 		title:           rule.Annotation.Title,
@@ -221,7 +280,7 @@ func annotationItem(rule Rule, value string, resolver Resolver) matchedItem {
 	case "reference":
 		detail := "ID: " + value + "（未找到关联文件）"
 		if resolver != nil {
-			if reference, ok := resolver(rule.Annotation.Relation, value); ok {
+			if reference, ok := resolver(rule.Annotation.Relation, value, context); ok {
 				if reference.Name != "" {
 					item.title = reference.Name
 				}

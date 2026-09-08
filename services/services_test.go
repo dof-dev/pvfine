@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	annotationrules "pvfine/internal/annotations"
 	"pvfine/internal/pvf"
 )
 
@@ -268,6 +269,74 @@ func TestResolveFiles(t *testing.T) {
 	if resolved[1].Path != "equipment/character/common/amulet/1008.equ" ||
 		len(resolved[1].Tags) != 2 {
 		t.Fatalf("second resolved file = %#v", resolved[1])
+	}
+}
+
+func TestSyntheticSkillSearchIndex(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	mustAddText(t, a, "skill/fighterskill.lst", "20 `Fighter/Skill20.skl`", pvf.TypeScript)
+	skillIndex := mustAddText(t, a, "skill/fighter/skill20.skl", "[name]\n`旋风腿`", pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+
+	result, err := NewArchiveService(c).Search("旋风腿", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Hits) != 1 || result.Hits[0].Category != SearchCategorySkill ||
+		result.Hits[0].ID != "20" || result.Hits[0].FileIndex != skillIndex {
+		t.Fatalf("skill search result = %#v", result.Hits)
+	}
+	children, err := NewArchiveService(c).ListChildren("skill/fighter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill := findTreeNode(children, "skill20.skl")
+	if skill == nil || len(skill.Tags) != 1 || skill.Tags[0].ID != "20" || skill.Tags[0].Name != "旋风腿" {
+		t.Fatalf("skill tree tags = %#v", skill)
+	}
+}
+
+func TestSearchIndexUsesConfiguredRelationListPaths(t *testing.T) {
+	indexToken := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"装备": {
+				ListPath: "custom/equipment.lst", IDToken: 0, PathToken: 1,
+				RecordTokens: 2, NameSection: "name",
+			},
+		},
+		Rules: []annotationrules.Rule{{
+			ID: "name", Target: annotationrules.TargetSpec{Kind: "token", Section: "name", Index: &indexToken},
+			Annotation: annotationrules.AnnotationSpec{Title: "名称", Type: "text"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &core{annotationEngine: engine}
+	a := pvf.New()
+	mustAddText(t, a, "custom/equipment.lst", "1008 `item.equ`", pvf.TypeScript)
+	itemIndex := mustAddText(t, a, "custom/item.equ", "[name]\n`自定义装备`", pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+
+	result, err := NewArchiveService(c).Search("自定义装备", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Hits) != 1 || result.Hits[0].Category != SearchCategoryEquipment || result.Hits[0].FileIndex != itemIndex {
+		t.Fatalf("configured relation search result = %#v", result.Hits)
 	}
 }
 

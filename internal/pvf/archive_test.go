@@ -116,6 +116,14 @@ func TestSyntheticEditAndRebuild(t *testing.T) {
 	}
 }
 
+func TestFindIsCaseInsensitive(t *testing.T) {
+	a := New()
+	index := a.AddFile("skill/fighter/shouldercharge.skl", []byte("skill"), TypeScript)
+	if got, ok := a.Find("skill/Fighter/ShoulderCharge.skl"); !ok || got != index {
+		t.Fatalf("case-insensitive find = (%d, %v), want (%d, true)", got, ok, index)
+	}
+}
+
 func TestKoreanMojibake(t *testing.T) {
 	original := "한국스크립트용 문자열 데이터 파일"
 	painted, err := EncodeKoreanMojibake(original)

@@ -67,7 +67,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	filePath := c.archive.Path(index)
 	view := pvf.ParseScriptView(text)
-	results := c.annotationEngine.Annotate(filePath, view, c.resolveAnnotationReferenceLocked)
+	results := c.annotationEngine.AnnotateWithContextResolver(filePath, view, c.resolveAnnotationReferenceContextLocked)
 	annotations := make([]EditorAnnotation, 0, len(results))
 	for _, result := range results {
 		annotations = append(annotations, EditorAnnotation{
@@ -87,13 +87,26 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 }
 
 func (c *core) resolveAnnotationReferenceLocked(relationName, id string) (annotationrules.Reference, bool) {
+	return c.resolveAnnotationReferenceContextLocked(relationName, id, "")
+}
+
+func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context string) (annotationrules.Reference, bool) {
 	if c.annotationRelations == nil {
 		c.annotationRelations = make(map[string]map[string]*relationTarget)
 	}
-	targets, ok := c.annotationRelations[relationName]
+	relation, relationOK := c.annotationEngine.Relation(relationName)
+	cacheKey := relationName
+	if relationOK && relation.Kind == "contextual" {
+		cacheKey += "\x00" + normalizeAnnotationContext(context)
+	}
+	targets, ok := c.annotationRelations[cacheKey]
 	if !ok {
-		targets = c.buildAnnotationRelationLocked(relationName)
-		c.annotationRelations[relationName] = targets
+		if relationOK && relation.Kind == "contextual" {
+			targets = c.buildContextualAnnotationRelationLocked(relation, context)
+		} else {
+			targets = c.buildAnnotationRelationLocked(relationName)
+		}
+		c.annotationRelations[cacheKey] = targets
 	}
 	target, ok := targets[id]
 	if !ok {
@@ -118,7 +131,23 @@ func (c *core) buildAnnotationRelationLocked(name string) map[string]*relationTa
 	if !ok {
 		return result
 	}
-	listIndex, ok := c.archive.Find(relation.ListPath)
+	return c.buildAnnotationRelationFromListLocked(relation, relation.ListPath)
+}
+
+func (c *core) buildContextualAnnotationRelationLocked(relation annotationrules.RelationSpec, context string) map[string]*relationTarget {
+	listPath, ok := annotationContextPath(relation.ContextPaths, context)
+	if !ok {
+		return map[string]*relationTarget{}
+	}
+	return c.buildAnnotationRelationFromListLocked(relation, listPath)
+}
+
+func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.RelationSpec, listPath string) map[string]*relationTarget {
+	result := make(map[string]*relationTarget)
+	if c.archive == nil {
+		return result
+	}
+	listIndex, ok := c.archive.Find(listPath)
 	if !ok {
 		return result
 	}
@@ -138,7 +167,7 @@ func (c *core) buildAnnotationRelationLocked(name string) map[string]*relationTa
 		if id == "" {
 			continue
 		}
-		targetPath, ok := resolveListPath(relation.ListPath, tokens[offset+relation.PathToken].Value)
+		targetPath, ok := resolveListPath(listPath, tokens[offset+relation.PathToken].Value)
 		if !ok {
 			continue
 		}
@@ -157,6 +186,20 @@ func (c *core) buildAnnotationRelationLocked(name string) map[string]*relationTa
 		}
 	}
 	return result
+}
+
+func annotationContextPath(paths map[string]string, context string) (string, bool) {
+	context = normalizeAnnotationContext(context)
+	for key, value := range paths {
+		if normalizeAnnotationContext(key) == context {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func normalizeAnnotationContext(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func firstSectionValue(text, section string) string {

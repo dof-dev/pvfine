@@ -1,22 +1,6 @@
 {
   "version": 1,
   "description": "pvfine built-in annotation rules",
-  "relations": {
-    "装备": {
-      "listPath": "equipment/equipment.lst",
-      "idToken": 0,
-      "pathToken": 1,
-      "recordTokens": 2,
-      "nameSection": "name"
-    },
-    "道具": {
-      "listPath": "stackable/stackable.lst",
-      "idToken": 0,
-      "pathToken": 1,
-      "recordTokens": 2,
-      "nameSection": "name"
-    }
-  },
   "rules": [
     {
       "id": "global.rarity.1",
@@ -176,6 +160,38 @@
         "type": "text"
       },
       "group": "global"
+    },
+    {
+      "id": "skill.levelup",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "skill levelup",
+        "index": 1,
+        "recordTokens": 3
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skill"
+    },
+    {
+      "id": "skill.dataup",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "skill data up",
+        "index": 1,
+        "recordTokens": 7
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skill"
     }
   ]
 }

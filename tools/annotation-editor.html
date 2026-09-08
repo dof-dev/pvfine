@@ -111,7 +111,6 @@
         <div class="pane-head">
           <div class="tabs">
             <button class="tab active" data-tab="rules">规则</button>
-            <button class="tab" data-tab="relations">关联类型</button>
           </div>
           <button class="btn primary" id="addButton">新增</button>
         </div>
@@ -291,6 +290,10 @@
               ${field("起始下标", numberInput("range-start", target.range?.start ?? 0))}
               ${field("结束下标（不含）", numberInput("range-end", target.range?.endExclusive ?? 1))}
             </div>
+            <div id="tokenRecordFields" class="${target.range ? "hidden" : ""}">
+              ${field("每条记录 Token 数", numberInput("target-record-tokens", target.recordTokens || 0), "配置后会按固定记录重复匹配，例如 skill levelup 为 3")}
+              ${field("上下文 Token 下标", numberInput("target-context-index", target.contextIndex ?? 0), "可选；留空时使用关联类型中的设置")}
+            </div>
           </div>
         </div>
         <div class="section"><div class="section-title">标注内容</div>
@@ -318,6 +321,8 @@
       bind("match-glob", "input", (value) => rule.match.glob = value);
       bind("target-section", "input", (value) => rule.target.section = value);
       bind("target-index", "input", (value) => rule.target.index = number(value));
+      bind("target-record-tokens", "input", (value) => rule.target.recordTokens = number(value));
+      bind("target-context-index", "input", (value) => rule.target.contextIndex = number(value));
       bind("range-start", "input", (value) => rule.target.range.start = number(value));
       bind("range-end", "input", (value) => rule.target.range.endExclusive = number(value));
       bind("annotation-title", "input", (value) => rule.annotation.title = value);
@@ -326,13 +331,13 @@
       bind("annotation-relation", "change", (value) => rule.annotation.relation = value);
       bind("target-kind", "change", (value) => {
         rule.target.kind = value;
-        if (value === "path") { delete rule.target.index; delete rule.target.range; rule.annotation.type = "text"; }
-        if (value === "section") { delete rule.target.index; delete rule.target.range; rule.annotation.type = "text"; }
+        if (value === "path") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; rule.annotation.type = "text"; }
+        if (value === "section") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; rule.annotation.type = "text"; }
         if (value === "token" && rule.target.index == null && !rule.target.range) rule.target.index = 0;
         renderAll(); scheduleSave();
       });
       bind("token-mode", "change", (value) => {
-        if (value === "range") { delete rule.target.index; rule.target.range = { start: 0, endExclusive: 1 }; rule.annotation.type = "text"; }
+        if (value === "range") { delete rule.target.index; delete rule.target.recordTokens; delete rule.target.contextIndex; rule.target.range = { start: 0, endExclusive: 1 }; rule.annotation.type = "text"; }
         else { rule.target.index = 0; delete rule.target.range; }
         renderAll(); scheduleSave();
       });
@@ -350,10 +355,18 @@
       const form = $("editorForm");
       if (!entry) { form.innerHTML = '<div class="preview-empty">点击“新增”创建关联类型</div>'; return; }
       const [name, relation] = entry;
+      const relationKind = relation.kind || "list";
       form.innerHTML = `
         <div class="section"><div class="section-title">关联索引</div>
           ${field("类型名称", input("relation-name", name))}
-          ${field("列表文件", input("relation-list", relation.listPath || ""))}
+          ${field("关联模式", select("relation-kind", relationKind, [["list","固定列表"],["contextual","上下文列表"]]))}
+          <div id="relationListField" class="${relationKind === "contextual" ? "hidden" : ""}">
+            ${field("列表文件", input("relation-list", relation.listPath || ""))}
+          </div>
+          <div id="relationContextFields" class="${relationKind === "contextual" ? "" : "hidden"}">
+            ${field("上下文 Token 下标", numberInput("relation-context-token", relation.contextToken ?? 0), "例如 skill levelup 的第一个字符串")}
+            ${field("上下文到列表映射", textarea("relation-context-paths", contextPathsToText(relation.contextPaths)), "每行一个 上下文=列表路径，例如 [fighter]=skill/fighterskill.lst")}
+          </div>
           <div class="field-row">
             ${field("ID Token", numberInput("relation-id-token", relation.idToken ?? 0))}
             ${field("路径 Token", numberInput("relation-path-token", relation.pathToken ?? 1))}
@@ -362,11 +375,17 @@
           ${field("名称 Section", input("relation-name-section", relation.nameSection || "name"))}
         </div>`;
       bind("relation-name", "change", (value) => renameRelation(name, value));
+      bind("relation-kind", "change", (value) => {
+        relation.kind = value;
+        renderAll();
+      });
       bind("relation-list", "input", (value) => relation.listPath = value);
       bind("relation-id-token", "input", (value) => relation.idToken = number(value));
       bind("relation-path-token", "input", (value) => relation.pathToken = number(value));
       bind("relation-record-tokens", "input", (value) => relation.recordTokens = number(value));
       bind("relation-name-section", "input", (value) => relation.nameSection = value);
+      bind("relation-context-token", "input", (value) => relation.contextToken = number(value));
+      bind("relation-context-paths", "input", (value) => relation.contextPaths = textToContextPaths(value));
     }
 
     function bind(id, eventName, setter) {
@@ -456,7 +475,7 @@
       try {
         setStatus("正在校验并写入...");
         await api("/api/rules", { method: "PUT", body: JSON.stringify(state.document) });
-        showError(); setStatus("已写入 default.json，并更新备份", "ok");
+        showError(); setStatus("已写入 config/annotations.json，并更新备份", "ok");
         await refreshPreview();
       } catch (error) {
         showError(error.message); setStatus("规则未写入", "error");
@@ -528,13 +547,26 @@
       });
       return values;
     }
+    function contextPathsToText(paths) {
+      return Object.entries(paths || {}).map(([key, value]) => `${key}=${value}`).join("\n");
+    }
+    function textToContextPaths(text) {
+      const paths = {};
+      text.split(/\r?\n/).forEach((line) => {
+        const index = line.indexOf("=");
+        if (index > 0) paths[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+      });
+      return paths;
+    }
     function number(value) { return Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0; }
     function escapeHTML(value) { return String(value).replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char])); }
     function escapeAttr(value) { return escapeHTML(value).replace(/"/g, "&quot;"); }
 
     async function importRules(file) {
       try {
-        state.document = JSON.parse(await file.text());
+        const imported = JSON.parse(await file.text());
+        imported.relations = state.document?.relations || {};
+        state.document = imported;
         state.tab = "rules"; state.selected = 0;
         renderAll(); await saveRules();
       } catch (error) {
@@ -543,10 +575,12 @@
     }
 
     function exportRules() {
-      const blob = new Blob([JSON.stringify(state.document, null, 2) + "\n"], { type: "application/json" });
+      const exported = structuredClone(state.document);
+      delete exported.relations;
+      const blob = new Blob([JSON.stringify(exported, null, 2) + "\n"], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url; link.download = "default.json"; link.click();
+      link.href = url; link.download = "annotations.json"; link.click();
       URL.revokeObjectURL(url);
     }
 
