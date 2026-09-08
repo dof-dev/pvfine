@@ -13,8 +13,17 @@ import {
   ArrowSync24Regular,
   DocumentSync24Regular,
   Settings24Regular,
+  SplitHorizontal24Regular,
 } from "@vicons/fluent";
-import { NButton, NIcon, NTooltip, NProgress, NText, useDialog } from "naive-ui";
+import {
+  NButton,
+  NDropdown,
+  NIcon,
+  NTooltip,
+  NProgress,
+  NText,
+  useDialog,
+} from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
@@ -36,6 +45,29 @@ const reloadingAnnotations = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
+const canOpenSplitMenu = computed(() => editor.activeTab !== null || editor.isSplit);
+const canCreateSplit = computed(() => editor.activeTab !== null);
+const splitMenuOptions = computed(() => [
+  {
+    label: "左右分屏",
+    key: "columns",
+    disabled: !canCreateSplit.value,
+  },
+  {
+    label: "上下分屏",
+    key: "rows",
+    disabled: !canCreateSplit.value,
+  },
+  {
+    type: "divider" as const,
+    key: "split-divider",
+  },
+  {
+    label: "关闭当前分屏",
+    key: "close",
+    disabled: !editor.isSplit,
+  },
+]);
 
 watch(
   () => archive.unpackMessage,
@@ -99,6 +131,14 @@ function onCancelUnpack() {
 
 function toggleFileSetSidebar() {
   fileSets.visible = !fileSets.visible;
+}
+
+function onSplitMenuSelect(key: string | number): void {
+  if (key === "columns" || key === "rows") {
+    editor.split(key);
+  } else if (key === "close") {
+    editor.closeSplit();
+  }
 }
 
 async function onCheckUpdates() {
@@ -177,6 +217,25 @@ function isCancel(e: any): boolean {
         </template>
         在当前归档中搜索二进制或字符串池
       </NTooltip>
+
+      <NDropdown
+        :options="splitMenuOptions"
+        placement="bottom-start"
+        @select="onSplitMenuSelect"
+      >
+        <NTooltip trigger="hover">
+          <template #trigger>
+            <NButton
+              quaternary
+              :disabled="!canOpenSplitMenu"
+              aria-label="编辑器分屏"
+            >
+              <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
+            </NButton>
+          </template>
+          编辑器分屏 (Cmd/Ctrl+\\，上下分屏 Cmd/Ctrl+Shift+\\)
+        </NTooltip>
+      </NDropdown>
     </div>
 
     <div class="tb-sep" />

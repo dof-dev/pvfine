@@ -1,8 +1,11 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { computed, reactive, ref } from "vue";
 import { EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
+
+export type EditorPaneId = string;
+export type SplitOrientation = "columns" | "rows";
 
 export interface EditorTab {
   index: number;
@@ -17,31 +20,134 @@ export interface EditorTab {
   annotations: EditorAnnotation[];
 }
 
-/** 编辑器状态:多标签 + 防抖内存同步 */
-export const useEditorStore = defineStore("editor", () => {
-  const tabs = ref<EditorTab[]>([]);
-  const activeKey = ref<number | null>(null);
-  const opening = ref(false);
-  const saving = ref(false);
+export interface EditorPaneState {
+  id: EditorPaneId;
+  tabIndexes: number[];
+  activeKey: number | null;
+}
 
-  const activeTab = computed(() => tabs.value.find((t) => t.index === activeKey.value) ?? null);
-  const dirtyCount = computed(() => tabs.value.filter((t) => t.text !== t.original).length);
+export interface EditorLayoutPane {
+  kind: "pane";
+  paneId: EditorPaneId;
+}
+
+export interface EditorLayoutSplit {
+  kind: "split";
+  id: string;
+  orientation: SplitOrientation;
+  ratio: number;
+  first: EditorLayoutNode;
+  second: EditorLayoutNode;
+}
+
+export type EditorLayoutNode = EditorLayoutPane | EditorLayoutSplit;
+
+interface LayoutReplacement {
+  node: EditorLayoutNode;
+  found: boolean;
+  destinationPaneId?: EditorPaneId;
+}
+
+/** 编辑器状态:全局文件内容 + 可递归分屏的多标签窗格 */
+export const useEditorStore = defineStore("editor", () => {
+  const initialPaneId = "pane-1";
+  const tabs = ref<EditorTab[]>([]);
+  const paneStates = reactive<Record<EditorPaneId, EditorPaneState>>({
+    [initialPaneId]: {
+      id: initialPaneId,
+      tabIndexes: [],
+      activeKey: null,
+    },
+  });
+  const layout = ref<EditorLayoutNode>({ kind: "pane", paneId: initialPaneId });
+  const activePaneId = ref<EditorPaneId>(initialPaneId);
+  const openingPaneId = ref<EditorPaneId | null>(null);
+  const saving = ref(false);
+  let paneSequence = 1;
+  let splitSequence = 0;
+
+  const panes = computed(() => {
+    const ids: EditorPaneId[] = [];
+    collectPaneIds(layout.value, ids);
+    return ids.map((id) => paneStates[id]).filter((pane): pane is EditorPaneState => !!pane);
+  });
+  const isSplit = computed(() => panes.value.length > 1);
+  const activePane = computed<EditorPaneState>(
+    () => paneStates[activePaneId.value] ?? panes.value[0] ?? paneStates[initialPaneId]
+  );
+  const activeKey = computed<number | null>({
+    get: () => activePane.value.activeKey,
+    set: (value) => {
+      activePane.value.activeKey = value;
+    },
+  });
+  const activeTab = computed(
+    () => tabs.value.find((tab) => tab.index === activePane.value.activeKey) ?? null
+  );
+  const dirtyCount = computed(() => tabs.value.filter((tab) => tab.text !== tab.original).length);
 
   let syncTimer: number | undefined;
   const pendingSync = new Set<number>();
 
-  /** 打开文件(已打开则激活) */
-  async function openFile(index: number) {
-    const existing = tabs.value.find((t) => t.index === index);
-    if (existing) {
-      activeKey.value = index;
+  function collectPaneIds(node: EditorLayoutNode, result: EditorPaneId[]): void {
+    if (node.kind === "pane") {
+      result.push(node.paneId);
       return;
     }
-    opening.value = true;
+    collectPaneIds(node.first, result);
+    collectPaneIds(node.second, result);
+  }
+
+  function resolvePaneId(requested?: EditorPaneId): EditorPaneId {
+    if (requested && paneStates[requested] && panes.value.some((pane) => pane.id === requested)) {
+      return requested;
+    }
+    if (paneStates[activePaneId.value] && panes.value.some((pane) => pane.id === activePaneId.value)) {
+      return activePaneId.value;
+    }
+    return initialPaneId;
+  }
+
+  function activatePane(paneId: EditorPaneId): void {
+    if (!paneStates[paneId] || !panes.value.some((pane) => pane.id === paneId)) return;
+    activePaneId.value = paneId;
+  }
+
+  function activateTab(paneId: EditorPaneId, index: number): void {
+    const pane = paneStates[paneId];
+    if (!pane || !pane.tabIndexes.includes(index)) return;
+    pane.activeKey = index;
+    activatePane(paneId);
+  }
+
+  function addTabToPane(paneId: EditorPaneId, index: number): void {
+    const pane = paneStates[paneId];
+    if (!pane) return;
+    if (!pane.tabIndexes.includes(index)) pane.tabIndexes.push(index);
+    pane.activeKey = index;
+    activatePane(paneId);
+  }
+
+  /** 打开文件(已在当前窗格则激活,已在其他窗格则复用内容并建立视图引用) */
+  async function openFile(index: number, requestedPaneId: EditorPaneId = activePaneId.value) {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const targetPane = paneStates[targetPaneId];
+    if (targetPane.tabIndexes.includes(index)) {
+      activateTab(targetPaneId, index);
+      return;
+    }
+
+    const existing = tabs.value.find((tab) => tab.index === index);
+    if (existing) {
+      addTabToPane(targetPaneId, index);
+      return;
+    }
+
+    openingPaneId.value = targetPaneId;
     try {
       const meta: FileMeta | null = await EditorService.GetFile(index);
       if (!meta) return;
-      // 标签上限,防误开大量文件
+      // 标签上限,防误开大量文件；同一文件在多个窗格中的引用不重复计数。
       if (tabs.value.length >= 20) {
         throw new Error("打开的标签过多,请先关闭一些(上限 20)");
       }
@@ -59,26 +165,171 @@ export const useEditorStore = defineStore("editor", () => {
           (annotation): annotation is EditorAnnotation => !!annotation
         ),
       });
-      activeKey.value = index;
+      addTabToPane(targetPaneId, index);
     } finally {
-      opening.value = false;
+      if (openingPaneId.value === targetPaneId) openingPaneId.value = null;
     }
   }
 
-  function closeTab(index: number) {
-    const idx = tabs.value.findIndex((t) => t.index === index);
-    if (idx < 0) return;
-    tabs.value.splice(idx, 1);
-    pendingSync.delete(index);
-    if (activeKey.value === index) {
-      const next = tabs.value[Math.min(idx, tabs.value.length - 1)];
-      activeKey.value = next ? next.index : null;
+  function closeTab(index: number, requestedPaneId: EditorPaneId = activePaneId.value): void {
+    const paneId = resolvePaneId(requestedPaneId);
+    const pane = paneStates[paneId];
+    if (!pane) return;
+    const tabIndex = pane.tabIndexes.indexOf(index);
+    if (tabIndex < 0) return;
+
+    pane.tabIndexes.splice(tabIndex, 1);
+    if (pane.activeKey === index) {
+      pane.activeKey = pane.tabIndexes[Math.min(tabIndex, pane.tabIndexes.length - 1)] ?? null;
     }
+
+    const stillUsed = Object.values(paneStates).some((item) => item.tabIndexes.includes(index));
+    if (!stillUsed) {
+      const globalTabIndex = tabs.value.findIndex((tab) => tab.index === index);
+      if (globalTabIndex >= 0) tabs.value.splice(globalTabIndex, 1);
+      pendingSync.delete(index);
+    }
+
+    if (pane.tabIndexes.length === 0 && isSplit.value) {
+      closeSplit(paneId);
+    }
+  }
+
+  function nextPaneId(): EditorPaneId {
+    paneSequence += 1;
+    return `pane-${paneSequence}`;
+  }
+
+  function nextSplitId(): string {
+    splitSequence += 1;
+    return `split-${splitSequence}`;
+  }
+
+  function replacePane(
+    node: EditorLayoutNode,
+    targetPaneId: EditorPaneId,
+    replacement: EditorLayoutNode
+  ): LayoutReplacement {
+    if (node.kind === "pane") {
+      return node.paneId === targetPaneId
+        ? { node: replacement, found: true }
+        : { node, found: false };
+    }
+
+    const first = replacePane(node.first, targetPaneId, replacement);
+    if (first.found) return { node: { ...node, first: first.node }, found: true };
+    const second = replacePane(node.second, targetPaneId, replacement);
+    if (second.found) return { node: { ...node, second: second.node }, found: true };
+    return { node, found: false };
+  }
+
+  function split(orientation: SplitOrientation, requestedPaneId: EditorPaneId = activePaneId.value): void {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const targetPane = paneStates[targetPaneId];
+    if (!targetPane) return;
+
+    const newPaneId = nextPaneId();
+    const replacement: EditorLayoutSplit = {
+      kind: "split",
+      id: nextSplitId(),
+      orientation,
+      ratio: 0.5,
+      first: { kind: "pane", paneId: targetPaneId },
+      second: { kind: "pane", paneId: newPaneId },
+    };
+    const result = replacePane(layout.value, targetPaneId, replacement);
+    if (!result.found) return;
+
+    paneStates[newPaneId] = {
+      id: newPaneId,
+      tabIndexes: targetPane.activeKey === null ? [] : [targetPane.activeKey],
+      activeKey: targetPane.activeKey,
+    };
+    layout.value = result.node;
+    activePaneId.value = newPaneId;
+  }
+
+  function removePane(node: EditorLayoutNode, targetPaneId: EditorPaneId): LayoutReplacement {
+    if (node.kind === "pane") return { node, found: false };
+    if (node.first.kind === "pane" && node.first.paneId === targetPaneId) {
+      return {
+        node: node.second,
+        found: true,
+        destinationPaneId: firstPaneId(node.second),
+      };
+    }
+    if (node.second.kind === "pane" && node.second.paneId === targetPaneId) {
+      return {
+        node: node.first,
+        found: true,
+        destinationPaneId: firstPaneId(node.first),
+      };
+    }
+
+    const first = removePane(node.first, targetPaneId);
+    if (first.found) {
+      return {
+        node: { ...node, first: first.node },
+        found: true,
+        destinationPaneId: first.destinationPaneId,
+      };
+    }
+    const second = removePane(node.second, targetPaneId);
+    if (second.found) {
+      return {
+        node: { ...node, second: second.node },
+        found: true,
+        destinationPaneId: second.destinationPaneId,
+      };
+    }
+    return { node, found: false };
+  }
+
+  function firstPaneId(node: EditorLayoutNode): EditorPaneId {
+    return node.kind === "pane" ? node.paneId : firstPaneId(node.first);
+  }
+
+  function mergePaneTabs(fromPaneId: EditorPaneId, toPaneId: EditorPaneId): void {
+    const from = paneStates[fromPaneId];
+    const to = paneStates[toPaneId];
+    if (!from || !to) return;
+    const fromActive = from.activeKey;
+    for (const index of from.tabIndexes) {
+      if (!to.tabIndexes.includes(index)) to.tabIndexes.push(index);
+    }
+    if (fromActive !== null && to.tabIndexes.includes(fromActive)) to.activeKey = fromActive;
+  }
+
+  /** 关闭指定窗格,将其标签并入剩余兄弟树的最近兄弟窗格。 */
+  function closeSplit(requestedPaneId: EditorPaneId = activePaneId.value): void {
+    const currentPaneId = resolvePaneId(requestedPaneId);
+    const currentPane = paneStates[currentPaneId];
+    const result = removePane(layout.value, currentPaneId);
+    if (!currentPane || !result.found) return;
+
+    const destinationPaneId = result.destinationPaneId ?? firstPaneId(result.node);
+    mergePaneTabs(currentPaneId, destinationPaneId);
+    layout.value = result.node;
+    delete paneStates[currentPaneId];
+    if (openingPaneId.value === currentPaneId) openingPaneId.value = null;
+    activePaneId.value = destinationPaneId;
+  }
+
+  function findSplit(node: EditorLayoutNode, splitId: string): EditorLayoutSplit | null {
+    if (node.kind === "pane") return null;
+    if (node.id === splitId) return node;
+    return findSplit(node.first, splitId) ?? findSplit(node.second, splitId);
+  }
+
+  function setSplitRatio(splitId: string, value: number): void {
+    const splitNode = findSplit(layout.value, splitId);
+    if (!splitNode || !Number.isFinite(value)) return;
+    splitNode.ratio = Math.min(0.8, Math.max(0.2, value));
   }
 
   /** 编辑器内容变化:立即更新本地脏状态,防抖同步到后端 overlay */
   function updateContent(index: number, text: string) {
-    const tab = tabs.value.find((t) => t.index === index);
+    const tab = tabs.value.find((item) => item.index === index);
     if (!tab || !tab.editable) return;
     tab.text = text;
     pendingSync.add(index);
@@ -86,11 +337,11 @@ export const useEditorStore = defineStore("editor", () => {
     syncTimer = window.setTimeout(async () => {
       const batch = [...pendingSync];
       pendingSync.clear();
-      for (const i of batch) {
-        const t = tabs.value.find((x) => x.index === i);
-        if (!t) continue;
+      for (const itemIndex of batch) {
+        const currentTab = tabs.value.find((item) => item.index === itemIndex);
+        if (!currentTab) continue;
         try {
-          await syncTab(t);
+          await syncTab(currentTab);
         } catch (e) {
           console.error("sync failed", e);
         }
@@ -108,9 +359,9 @@ export const useEditorStore = defineStore("editor", () => {
       const info = await EditorService.Save();
       archive.info = info;
       // 保存成功后,文本与基准重置(overlay 已清空)
-      for (const t of tabs.value) {
-        t.original = t.text;
-        t.modified = false;
+      for (const tab of tabs.value) {
+        tab.original = tab.text;
+        tab.modified = false;
       }
       return info;
     } finally {
@@ -126,9 +377,9 @@ export const useEditorStore = defineStore("editor", () => {
       await flushPending();
       const path = await EditorService.SaveAsDialog();
       if (path) {
-        for (const t of tabs.value) {
-          t.original = t.text;
-          t.modified = false;
+        for (const tab of tabs.value) {
+          tab.original = tab.text;
+          tab.modified = false;
         }
         await archive.refreshInfo();
       }
@@ -142,9 +393,9 @@ export const useEditorStore = defineStore("editor", () => {
     window.clearTimeout(syncTimer);
     const batch = [...pendingSync];
     pendingSync.clear();
-    for (const i of batch) {
-      const t = tabs.value.find((x) => x.index === i);
-      if (t) await syncTab(t);
+    for (const index of batch) {
+      const tab = tabs.value.find((item) => item.index === index);
+      if (tab) await syncTab(tab);
     }
   }
 
@@ -176,13 +427,23 @@ export const useEditorStore = defineStore("editor", () => {
 
   return {
     tabs,
+    panes,
+    layout,
     activeKey,
     activeTab,
     dirtyCount,
-    opening,
+    activePaneId,
+    isSplit,
+    opening: computed(() => openingPaneId.value !== null),
+    openingPaneId,
     saving,
     openFile,
+    activatePane,
+    activateTab,
     closeTab,
+    split,
+    closeSplit,
+    setSplitRatio,
     updateContent,
     save,
     saveAs,

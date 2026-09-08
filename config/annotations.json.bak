@@ -219,7 +219,7 @@
       "annotation": {
         "title": "未知ID",
         "type": "reference",
-        "relation": "物品"
+        "relation": "装备"
       },
       "group": "global"
     }
