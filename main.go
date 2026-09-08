@@ -5,9 +5,11 @@ import (
 	"embed"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	githubupdater "github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 
@@ -20,6 +22,44 @@ var (
 	appVersion       = "0.0.0"
 	githubRepository = "dof-dev/pvfine"
 )
+
+const (
+	quitRequestedEvent  = "app:quit-requested"
+	closeRequestedEvent = "app:close-requested"
+	quitConfirmedEvent  = "app:quit-confirmed"
+	closeConfirmedEvent = "app:close-confirmed"
+)
+
+type closeCoordinator struct {
+	app                *application.App
+	allowWindowClosing atomic.Bool
+}
+
+func newCloseCoordinator(app *application.App) *closeCoordinator {
+	coordinator := &closeCoordinator{app: app}
+	app.Event.On(closeConfirmedEvent, func(*application.CustomEvent) {
+		coordinator.allowWindowClosing.Store(true)
+		if window := app.Window.Current(); window != nil {
+			window.Close()
+		}
+	})
+	app.Event.On(quitConfirmedEvent, func(*application.CustomEvent) {
+		app.Quit()
+	})
+	return coordinator
+}
+
+func (c *closeCoordinator) requestQuit() {
+	_ = c.app.Event.Emit(quitRequestedEvent)
+}
+
+func (c *closeCoordinator) handleWindowClosing(event *application.WindowEvent) {
+	if c.allowWindowClosing.CompareAndSwap(true, false) {
+		return
+	}
+	event.Cancel()
+	_ = c.app.Event.Emit(closeRequestedEvent)
+}
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
 // Any files in the frontend/dist folder will be embedded into the binary and
@@ -51,6 +91,7 @@ func main() {
 		},
 	})
 	app.RegisterService(application.NewService(services.NewUpdateService(app)))
+	closeCoordinator := newCloseCoordinator(app)
 
 	updaterEnabled := configureUpdater(app)
 
@@ -67,12 +108,12 @@ func main() {
 		})
 	}
 	appMenu.AddSeparator()
-	appMenu.Add("退出").OnClick(func(*application.Context) {
-		app.Quit()
+	appMenu.Add("退出").SetAccelerator("CmdOrCtrl+q").OnClick(func(*application.Context) {
+		closeCoordinator.requestQuit()
 	})
 	menu.AddRole(application.EditMenu)
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "pvfine — PVF 归档编辑器",
 		Width:  1440,
 		Height: 900,
@@ -84,6 +125,7 @@ func main() {
 		BackgroundColour: application.NewRGB(24, 26, 32),
 		URL:              "/",
 	})
+	window.RegisterHook(events.Common.WindowClosing, closeCoordinator.handleWindowClosing)
 
 	if updaterEnabled {
 		startBackgroundUpdateCheck(app)

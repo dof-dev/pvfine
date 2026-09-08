@@ -16,6 +16,7 @@ import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import SettingsModal from "./components/SettingsModal.vue";
+import CloseGuard from "./components/CloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
@@ -102,6 +103,7 @@ async function onKeydown(e: KeyboardEvent) {
   <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <NMessageProvider placement="bottom-right">
       <NDialogProvider>
+        <CloseGuard />
         <div class="app-root" :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />
