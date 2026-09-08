@@ -135,8 +135,20 @@ func Validate(document Document) error {
 		if kind == "" {
 			kind = "list"
 		}
-		if kind != "list" && kind != "contextual" {
-			problems = append(problems, prefix+".kind 必须是 list 或 contextual")
+		if kind != "list" && kind != "contextual" && kind != "union" {
+			problems = append(problems, prefix+".kind 必须是 list、contextual 或 union")
+		}
+		if kind == "union" {
+			if len(relation.Relations) == 0 {
+				problems = append(problems, prefix+".relations 不能为空")
+			}
+			for _, member := range relation.Relations {
+				if strings.TrimSpace(member) == "" || member == name {
+					problems = append(problems, prefix+".relations 包含无效关联类型")
+					break
+				}
+			}
+			continue
 		}
 		if kind == "list" && strings.TrimSpace(relation.ListPath) == "" {
 			problems = append(problems, prefix+".listPath 不能为空")
@@ -168,6 +180,34 @@ func Validate(document Document) error {
 		if strings.TrimSpace(relation.NameSection) == "" {
 			problems = append(problems, prefix+".nameSection 不能为空")
 		}
+	}
+	unionState := make(map[string]uint8)
+	var visitUnion func(string)
+	visitUnion = func(name string) {
+		if unionState[name] == 2 {
+			return
+		}
+		if unionState[name] == 1 {
+			problems = append(problems, "relations."+name+" 存在循环引用")
+			return
+		}
+		relation, ok := document.Relations[name]
+		if !ok || relation.Kind != "union" {
+			unionState[name] = 2
+			return
+		}
+		unionState[name] = 1
+		for _, member := range relation.Relations {
+			if _, ok := document.Relations[member]; !ok {
+				problems = append(problems, fmt.Sprintf("relations.%s 引用了不存在的 relation: %s", name, member))
+				continue
+			}
+			visitUnion(member)
+		}
+		unionState[name] = 2
+	}
+	for _, name := range relationNames {
+		visitUnion(name)
 	}
 
 	seenIDs := make(map[string]bool)

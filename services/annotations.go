@@ -95,6 +95,14 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 		c.annotationRelations = make(map[string]map[string]*relationTarget)
 	}
 	relation, relationOK := c.annotationEngine.Relation(relationName)
+	if relationOK && relation.Kind == "union" {
+		for _, member := range relation.Relations {
+			if reference, ok := c.resolveAnnotationReferenceContextLocked(member, id, context); ok {
+				return reference, true
+			}
+		}
+		return annotationrules.Reference{}, false
+	}
 	cacheKey := relationName
 	if relationOK && relation.Kind == "contextual" {
 		cacheKey += "\x00" + normalizeAnnotationContext(context)

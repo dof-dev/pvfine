@@ -22,6 +22,7 @@ type RelationSpec struct {
 	NameSection  string            `json:"nameSection"`
 	ContextToken int               `json:"contextToken,omitempty"`
 	ContextPaths map[string]string `json:"contextPaths,omitempty"`
+	Relations    []string          `json:"relations,omitempty"`
 }
 
 type Rule struct {

@@ -359,13 +359,16 @@
       form.innerHTML = `
         <div class="section"><div class="section-title">关联索引</div>
           ${field("类型名称", input("relation-name", name))}
-          ${field("关联模式", select("relation-kind", relationKind, [["list","固定列表"],["contextual","上下文列表"]]))}
-          <div id="relationListField" class="${relationKind === "contextual" ? "hidden" : ""}">
+          ${field("关联模式", select("relation-kind", relationKind, [["list","固定列表"],["contextual","上下文列表"],["union","联合关联"]]))}
+          <div id="relationListField" class="${relationKind !== "list" ? "hidden" : ""}">
             ${field("列表文件", input("relation-list", relation.listPath || ""))}
           </div>
           <div id="relationContextFields" class="${relationKind === "contextual" ? "" : "hidden"}">
             ${field("上下文 Token 下标", numberInput("relation-context-token", relation.contextToken ?? 0), "例如 skill levelup 的第一个字符串")}
             ${field("上下文到列表映射", textarea("relation-context-paths", contextPathsToText(relation.contextPaths)), "每行一个 上下文=列表路径，例如 [fighter]=skill/fighterskill.lst")}
+          </div>
+          <div id="relationUnionFields" class="${relationKind === "union" ? "" : "hidden"}">
+            ${field("包含关联类型", input("relation-members", (relation.relations || []).join(", ")), "逗号分隔，例如 装备, 道具")}
           </div>
           <div class="field-row">
             ${field("ID Token", numberInput("relation-id-token", relation.idToken ?? 0))}
@@ -386,6 +389,7 @@
       bind("relation-name-section", "input", (value) => relation.nameSection = value);
       bind("relation-context-token", "input", (value) => relation.contextToken = number(value));
       bind("relation-context-paths", "input", (value) => relation.contextPaths = textToContextPaths(value));
+      bind("relation-members", "input", (value) => relation.relations = value.split(",").map((item) => item.trim()).filter(Boolean));
     }
 
     function bind(id, eventName, setter) {

@@ -91,6 +91,10 @@ func TestLoadDefaultIncludesContextualSkillRelation(t *testing.T) {
 	if !ok || relation.Kind != "contextual" || relation.ContextPaths["[fighter]"] == "" {
 		t.Fatalf("skill relation = %#v, found=%v", relation, ok)
 	}
+	union, ok := engine.Relation("物品")
+	if !ok || union.Kind != "union" || len(union.Relations) != 2 {
+		t.Fatalf("item union relation = %#v, found=%v", union, ok)
+	}
 }
 
 func TestMarshalRulesSeparatesRelations(t *testing.T) {
@@ -118,8 +122,8 @@ func TestMarshalRulesSeparatesRelations(t *testing.T) {
 }
 
 func TestParseLists(t *testing.T) {
-	lists, err := ParseLists([]byte(`{"version":1,"relations":{"equipment":{"listPath":"equipment/equipment.lst","idToken":0,"pathToken":1,"recordTokens":2,"nameSection":"name"}}}`))
-	if err != nil || lists.Relations["equipment"].ListPath != "equipment/equipment.lst" {
+	lists, err := ParseLists([]byte(`{"version":1,"relations":{"equipment":{"listPath":"equipment/equipment.lst","idToken":0,"pathToken":1,"recordTokens":2,"nameSection":"name"},"物品":{"kind":"union","relations":["装备","道具"]},"装备":{"listPath":"equipment/equipment.lst","idToken":0,"pathToken":1,"recordTokens":2,"nameSection":"name"},"道具":{"listPath":"stackable/stackable.lst","idToken":0,"pathToken":1,"recordTokens":2,"nameSection":"name"}}}`))
+	if err != nil || lists.Relations["equipment"].ListPath != "equipment/equipment.lst" || lists.Relations["物品"].Kind != "union" {
 		t.Fatalf("lists = %#v, err = %v", lists, err)
 	}
 }

@@ -293,6 +293,43 @@ func TestContextualSkillReferenceAnnotations(t *testing.T) {
 	}
 }
 
+func TestUnionReferenceResolvesEquipmentAndItemIDs(t *testing.T) {
+	index := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"装备": {ListPath: "equipment/equipment.lst", IDToken: 0, PathToken: 1, RecordTokens: 2, NameSection: "name"},
+			"道具": {ListPath: "stackable/stackable.lst", IDToken: 0, PathToken: 1, RecordTokens: 2, NameSection: "name"},
+			"物品": {Kind: "union", Relations: []string{"装备", "道具"}},
+		},
+		Rules: []annotationrules.Rule{{
+			ID: "related-item", Target: annotationrules.TargetSpec{Kind: "token", Section: "related", Index: &index},
+			Annotation: annotationrules.AnnotationSpec{Title: "关联物品", Type: "reference", Relation: "物品"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	mustAddText(t, a, "equipment/equipment.lst", "1008 `character/equipment.equ`", pvf.TypeScript)
+	mustAddText(t, a, "stackable/stackable.lst", "2008 `consumable/item.stk`", pvf.TypeScript)
+	mustAddText(t, a, "equipment/character/equipment.equ", "[name]\n`测试装备`", pvf.TypeScript)
+	itemIndex := mustAddText(t, a, "stackable/consumable/item.stk", "[name]\n`测试道具`", pvf.TypeScript)
+	source := mustAddText(t, a, "misc/source.equ", "[related]\n2008", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	annotations, err := NewEditorService(c).GetAnnotations(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 1 || annotations[0].Title != "测试道具" || annotations[0].TargetFileIndex != itemIndex {
+		t.Fatalf("union annotations = %#v", annotations)
+	}
+}
+
 func mustAddText(t *testing.T, archive *pvf.Archive, path, text string, dataType int32) int32 {
 	t.Helper()
 	index, err := archive.AddFileText(path, text, dataType)

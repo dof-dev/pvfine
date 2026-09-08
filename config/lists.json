@@ -16,6 +16,10 @@
       "recordTokens": 2,
       "nameSection": "name"
     },
+    "物品": {
+      "kind": "union",
+      "relations": ["装备", "道具"]
+    },
     "技能": {
       "kind": "contextual",
       "contextToken": 0,
