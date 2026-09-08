@@ -18,6 +18,7 @@ import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
+import { useBatchStore } from "../stores/batch";
 import { useSettingsStore } from "../stores/settings";
 import FileTree from "./FileTree.vue";
 
@@ -25,6 +26,7 @@ const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const batch = useBatchStore();
 const settings = useSettingsStore();
 const message = useMessage();
 
@@ -32,6 +34,7 @@ const searchInput = ref("");
 const adding = ref(false);
 const exporting = ref(false);
 const copying = ref(false);
+const batching = ref(false);
 const contextMenu = ref({
   show: false,
   x: 0,
@@ -51,6 +54,7 @@ const contextMenuOptions = computed(() => [
       adding.value ||
       exporting.value ||
       copying.value ||
+      batching.value ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -61,6 +65,7 @@ const contextMenuOptions = computed(() => [
       adding.value ||
       exporting.value ||
       copying.value ||
+      batching.value ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -71,6 +76,18 @@ const contextMenuOptions = computed(() => [
       adding.value ||
       exporting.value ||
       copying.value ||
+      batching.value ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
+  },
+  {
+    label: "批量处理…",
+    key: "batch",
+    disabled:
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      batching.value ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -265,6 +282,10 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
     await onCopyPaths(contextMenu.value.items);
     return;
   }
+  if (key === "batch") {
+    await onBatchSelected(contextMenu.value.items);
+    return;
+  }
   if (key !== "add" || adding.value) return;
   const selectedItems = contextMenu.value.items;
   const archivePath = archive.info?.path ?? "";
@@ -287,6 +308,31 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
     }
   } finally {
     adding.value = false;
+  }
+}
+
+async function onBatchSelected(items: TreeItem[]): Promise<void> {
+  if (batching.value) return;
+  const selectedItems = [...items];
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  hideContextMenu();
+  batching.value = true;
+  try {
+    await editor.flushPending();
+    const paths = await collectFilePaths(selectedItems);
+    if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
+    if (paths.length === 0) {
+      message.info("选中的目录中没有文件");
+      return;
+    }
+    batch.open(paths, `资源管理器选择（${paths.length} 个文件）`);
+  } catch (error: any) {
+    if (session === fileSets.sessionId && archive.info?.path === archivePath) {
+      message.error(`打开批处理失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    batching.value = false;
   }
 }
 
@@ -443,7 +489,7 @@ function sortTree(items: TreeItem[]): void {
 
     <NSpin
       class="exp-spin"
-      :show="archive.loading || explorer.searching || adding || exporting || copying"
+      :show="archive.loading || explorer.searching || adding || exporting || copying || batching"
     >
       <div class="exp-body">
         <!-- 空态 -->

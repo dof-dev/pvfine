@@ -3,6 +3,7 @@
 
 import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
+import * as BatchService from "./batchservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -10,6 +11,7 @@ import * as UpdateService from "./updateservice.js";
 export {
     AnnotationService,
     ArchiveService,
+    BatchService,
     EditorService,
     FileSetService,
     SettingsService,
@@ -24,6 +26,11 @@ export type {
     AnnotationReloadResult,
     AppSettings,
     ArchiveInfo,
+    BatchApplyResult,
+    BatchDiffLine,
+    BatchFilePreview,
+    BatchPreviewPage,
+    BatchRequest,
     EditorAnnotation,
     FileMeta,
     FileSetDocument,
@@ -32,6 +39,8 @@ export type {
     SearchResult,
     StoredFileSet,
     StoredFileSetEntry,
+    StructuredOperation,
+    TextReplaceSpec,
     TreeAnnotation,
     TreeNode,
     TreeTag

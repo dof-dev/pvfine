@@ -71,6 +71,48 @@ export interface AppSettings {
  */
 export type ArchiveInfo = pvf$0.ArchiveInfoView;
 
+export interface BatchApplyResult {
+    "appliedFiles": number;
+    "fileIndexes": number[] | null;
+    "modifiedCount": number;
+    "revision": number;
+}
+
+export interface BatchDiffLine {
+    "kind": string;
+    "text": string;
+    "oldLine": number;
+    "newLine": number;
+}
+
+export interface BatchFilePreview {
+    "fileIndex": number;
+    "path": string;
+    "status": string;
+    "matchCount": number;
+    "reason"?: string;
+    "warnings"?: string[] | null;
+    "diff"?: (BatchDiffLine | null)[] | null;
+    "diffTruncated"?: boolean;
+}
+
+export interface BatchPreviewPage {
+    "planId": string;
+    "nextCursor": number;
+    "requestedFiles": number;
+    "matchedFiles": number;
+    "matchedOccurrences": number;
+    "changedFiles": number;
+    "rows": (BatchFilePreview | null)[] | null;
+}
+
+export interface BatchRequest {
+    "mode": string;
+    "paths": string[] | null;
+    "text"?: TextReplaceSpec | null;
+    "operations"?: StructuredOperation[] | null;
+}
+
 export interface EditorAnnotation {
     "start": number;
     "end": number;
@@ -155,6 +197,25 @@ export interface StoredFileSetEntry {
     "ids"?: string[] | null;
     "size": number;
     "dataType": number;
+}
+
+export interface StructuredOperation {
+    "kind": string;
+    "section": string;
+    "tokenIndex": number;
+    "value": string;
+    "createIfMissing": boolean;
+    "operator": string;
+    "operand": string;
+    "operandEnd": string;
+    "anchorSection": string;
+    "hasEndTag": boolean;
+}
+
+export interface TextReplaceSpec {
+    "find": string;
+    "replacement": string;
+    "regex": boolean;
 }
 
 export interface TreeAnnotation {

@@ -27,6 +27,7 @@ func emitEvent(name string, data ...any) {
 var (
 	ErrNoArchive      = errors.New("尚未打开归档文件")
 	ErrSearchIndexing = errors.New("搜索索引正在构建")
+	ErrBatchPlanStale = errors.New("批处理预览已过期,请重新预览")
 )
 
 // TreeNode is one entry in the explorer tree: either a directory or a file.
@@ -72,6 +73,8 @@ type core struct {
 	indexCancel         context.CancelFunc
 	indexDirty          map[int32]struct{}
 	indexGen            uint64
+	batchRevision       uint64
+	batchPlan           *batchPlan
 	advancedIndex       *pvf.StringPoolIndex
 	advancedStatus      AdvancedSearchIndexStatus
 	advancedCancel      context.CancelFunc
@@ -117,6 +120,8 @@ func (c *core) setArchive(a *pvf.Archive) error {
 		c.advancedCancel = nil
 	}
 	c.indexGen++
+	c.batchRevision++
+	c.batchPlan = nil
 	directories := make([]string, 0, len(children))
 	for path := range children {
 		if path != "" {
@@ -157,6 +162,8 @@ func (c *core) closeArchive() {
 		c.advancedCancel = nil
 	}
 	c.indexGen++
+	c.batchRevision++
+	c.batchPlan = nil
 	c.archive = nil
 	c.annotationRelations = nil
 	c.editorText = nil

@@ -7,6 +7,7 @@ import {
   DeleteDismiss24Regular,
   Dismiss24Regular,
   Document24Regular,
+  DocumentSync24Regular,
   Edit24Regular,
   ArrowExportLtr24Regular,
   PanelRightContract24Regular,
@@ -29,10 +30,12 @@ import { EditorService } from "../../bindings/pvfine/services";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
+import { useBatchStore } from "../stores/batch";
 
 const fileSets = useFileSetStore();
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const batch = useBatchStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -193,6 +196,25 @@ async function exportCurrent(): Promise<void> {
   }
 }
 
+async function openBatch(): Promise<void> {
+  const active = fileSets.activeSet;
+  if (!active || !archive.open || fileSets.resolving) return;
+  const paths = active.entries
+    .filter((entry) => entry.fileIndex >= 0)
+    .map((entry) => entry.path)
+    .filter(Boolean);
+  if (paths.length === 0) {
+    message.warning("当前文件集中没有可处理的文件");
+    return;
+  }
+  try {
+    await editor.flushPending();
+    batch.open(paths, `文件集“${active.name}”`);
+  } catch (error: any) {
+    message.error(`打开批处理失败: ${error?.message ?? error}`);
+  }
+}
+
 function openEntry(entry: FileSetEntry): void {
   if (!archive.open) {
     message.info("请先打开一个 PVF 归档");
@@ -329,6 +351,21 @@ watch(
           </NButton>
         </template>
         导出当前文件集
+      </NTooltip>
+      <NTooltip>
+        <template #trigger>
+          <NButton
+            quaternary
+            circle
+            size="small"
+            aria-label="批量处理当前文件集"
+            :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
+            @click="openBatch"
+          >
+            <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+          </NButton>
+        </template>
+        批量处理当前文件集
       </NTooltip>
       <NTooltip>
         <template #trigger>

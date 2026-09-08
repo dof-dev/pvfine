@@ -15,6 +15,7 @@ import EditorTabs from "./components/EditorTabs.vue";
 import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
+import BatchProcessModal from "./components/BatchProcessModal.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
@@ -107,6 +108,7 @@ async function onKeydown(e: KeyboardEvent) {
         <div class="app-root" :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />
+          <BatchProcessModal />
           <SettingsModal />
           <div class="app-body">
             <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">

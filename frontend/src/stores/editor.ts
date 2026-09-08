@@ -507,6 +507,25 @@ export const useEditorStore = defineStore("editor", () => {
     );
   }
 
+  /** 批处理写入 overlay 后刷新已经打开的标签,但保留原始文本基准。 */
+  async function refreshBatchFiles(indexes: number[]) {
+    const uniqueIndexes = [...new Set(indexes)];
+    await Promise.all(
+      uniqueIndexes.map(async (index) => {
+        const current = tabs.value.find((tab) => tab.index === index);
+        if (!current) return;
+        const meta = await EditorService.GetFile(index);
+        if (!meta) return;
+        current.path = meta.path;
+        current.text = meta.text;
+        current.modified = meta.modified;
+        current.annotations = (meta.annotations ?? []).filter(
+          (annotation): annotation is EditorAnnotation => !!annotation
+        );
+      })
+    );
+  }
+
   return {
     tabs,
     panes,
@@ -536,5 +555,6 @@ export const useEditorStore = defineStore("editor", () => {
     saveAs,
     flushPending,
     refreshAnnotations,
+    refreshBatchFiles,
   };
 });
