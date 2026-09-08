@@ -42,6 +42,7 @@ export const useExplorerStore = defineStore("explorer", () => {
   const archive = useArchiveStore();
   const roots = ref<TreeItem[]>([]);
   const expanded = ref<Set<string>>(new Set([""]));
+  const selectedKey = ref<string | null>(null);
   const itemsByKey = new Map<string, TreeItem>();
 
   // 搜索状态
@@ -114,6 +115,31 @@ export const useExplorerStore = defineStore("explorer", () => {
     registerItems(node.children);
   }
 
+  /** 加载目标文件的父目录，并将其设为资源树当前选中项。 */
+  async function revealPath(path: string): Promise<boolean> {
+    if (!archive.open) return false;
+    const parts = normalizePath(path).split("/").filter(Boolean);
+    if (parts.length === 0) return false;
+
+    if (roots.value.length === 0) await loadRoots();
+    let items = roots.value;
+    let node: TreeItem | undefined;
+    for (let index = 0; index < parts.length; index++) {
+      const key = parts.slice(0, index + 1).join("/");
+      node = items.find((item) => item.key === key);
+      if (!node) return false;
+      if (index === parts.length - 1) break;
+      if (!node.isDir) return false;
+      await loadChildren(node);
+      if (!node.children) return false;
+      items = node.children;
+    }
+
+    if (!node || node.isDir) return false;
+    selectedKey.value = node.key;
+    return true;
+  }
+
   function getItem(path: string): TreeItem | undefined {
     return itemsByKey.get(path);
   }
@@ -124,6 +150,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     window.clearTimeout(refreshTimer);
     roots.value = [];
     itemsByKey.clear();
+    selectedKey.value = null;
     expanded.value = new Set([""]);
     clearSearch();
     mode.value = "tree";
@@ -237,6 +264,7 @@ export const useExplorerStore = defineStore("explorer", () => {
   return {
     roots,
     expanded,
+    selectedKey,
     query,
     hits,
     nextCursor,
@@ -248,6 +276,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     getItem,
     loadRoots,
     loadChildren,
+    revealPath,
     refreshTreeTags,
     refreshAnnotations,
     reset,
@@ -264,4 +293,8 @@ function cleanAnnotations(
   return (annotations ?? []).filter(
     (annotation): annotation is TreeAnnotation => !!annotation
   );
+}
+
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
 }

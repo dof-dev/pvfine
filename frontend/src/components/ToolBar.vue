@@ -8,6 +8,7 @@ import {
   FolderArrowUp24Regular,
   Stop24Regular,
   Search24Regular,
+  DocumentSearch24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
   ArrowSync24Regular,
@@ -42,11 +43,15 @@ const message = useMessage();
 const dialog = useDialog();
 const checkingUpdates = ref(false);
 const reloadingAnnotations = ref(false);
+const revealingFile = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
 const canOpenSplitMenu = computed(() => editor.activeTab !== null || editor.isSplit);
 const canCreateSplit = computed(() => editor.activeTab !== null);
+const canRevealActiveFile = computed(
+  () => archive.open && editor.activeTab !== null && !revealingFile.value
+);
 const splitMenuOptions = computed(() => [
   {
     label: "左右分屏",
@@ -170,6 +175,23 @@ async function onReloadAnnotations() {
   }
 }
 
+async function onRevealActiveFile(): Promise<void> {
+  if (revealingFile.value) return;
+  const tab = editor.activeTab;
+  if (!archive.open || !tab) return;
+
+  revealingFile.value = true;
+  try {
+    if (explorer.mode === "search") explorer.clearSearch();
+    const found = await explorer.revealPath(tab.path);
+    if (!found) message.info("当前文件未在资源管理器中找到");
+  } catch (error: any) {
+    message.error(`定位文件失败: ${error?.message ?? error}`);
+  } finally {
+    revealingFile.value = false;
+  }
+}
+
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -216,6 +238,21 @@ function isCancel(e: any): boolean {
           </NButton>
         </template>
         在当前归档中搜索二进制或字符串池
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :loading="revealingFile"
+            :disabled="!canRevealActiveFile"
+            @click="onRevealActiveFile"
+          >
+            <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
+            在资源管理器中选中
+          </NButton>
+        </template>
+        定位当前焦点文件
       </NTooltip>
 
       <NDropdown

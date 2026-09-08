@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, h, ref, watch, type VNodeChild } from "vue";
-import { NTag, NTree, type TreeOption } from "naive-ui";
+import { computed, h, nextTick, ref, watch, type VNodeChild } from "vue";
+import { NTag, NTree, type TreeInst, type TreeOption } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import type { TreeItem } from "../stores/explorer";
 import type { ExplorerOpenMode } from "../stores/settings";
@@ -11,9 +11,10 @@ const props = withDefaults(
     height?: string;
     expandAll?: boolean;
     openMode?: ExplorerOpenMode;
+    selectedKey?: string | null;
     loadChildren?: (item: TreeItem) => Promise<void>;
   }>(),
-  { height: "100%", expandAll: false, openMode: "single-click" }
+  { height: "100%", expandAll: false, openMode: "single-click", selectedKey: null }
 );
 
 const emit = defineEmits<{
@@ -55,8 +56,10 @@ const itemsByKey = computed(() => {
 
 const expandedKeys = ref<Array<string | number>>([]);
 const checkedKeys = ref<string[]>([]);
+const treeRef = ref<TreeInst | null>(null);
 const directoryToggleKeys = new Set<string>();
 const handledClickEvents = new WeakSet<MouseEvent>();
+const selectedKeys = computed(() => (props.selectedKey ? [props.selectedKey] : []));
 
 function isTreeControl(event: MouseEvent): boolean {
   const target = event.target;
@@ -93,9 +96,43 @@ watch(
       collectExpandedKeys(props.items, next);
       expandedKeys.value = next;
     }
+    if (props.selectedKey) void revealSelectedKey(props.selectedKey);
   },
   { deep: true }
 );
+
+watch(
+  () => props.selectedKey,
+  (key) => {
+    if (key) void revealSelectedKey(key);
+  },
+  { immediate: true }
+);
+
+function findAncestorKeys(key: string): string[] {
+  const parts = key.split("/").filter(Boolean);
+  if (parts.length < 2) return [];
+
+  const ancestors: string[] = [];
+  let items = props.items;
+  for (let index = 0; index < parts.length - 1; index++) {
+    const ancestorKey = parts.slice(0, index + 1).join("/");
+    const item = items.find((candidate) => candidate.key === ancestorKey);
+    if (!item || !item.isDir) return [];
+    ancestors.push(item.key);
+    items = item.children ?? [];
+  }
+  return ancestors;
+}
+
+async function revealSelectedKey(key: string): Promise<void> {
+  const ancestors = findAncestorKeys(key);
+  if (ancestors.length > 0) {
+    expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors])];
+  }
+  await nextTick();
+  if (props.selectedKey === key) treeRef.value?.scrollTo({ key, behavior: "smooth" });
+}
 
 async function onLoad(node: TreeOption): Promise<void> {
   const item = (node as FileTreeNode).treeItem;
@@ -246,6 +283,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
     @contextmenu="onShellContextMenu"
   >
     <NTree
+      ref="treeRef"
       block-line
       checkable
       cascade
@@ -256,6 +294,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
       :data="treeData"
       :expanded-keys="expandedKeys"
       :checked-keys="checkedKeys"
+      :selected-keys="selectedKeys"
       :on-load="onLoad"
       :on-update:expanded-keys="onExpandedKeys"
       :on-update:checked-keys="onChecked"

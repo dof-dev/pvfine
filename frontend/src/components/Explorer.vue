@@ -108,7 +108,10 @@ async function onTreeLoad(item: TreeItem): Promise<void> {
 }
 
 function onTreeOpen(item: TreeItem): void {
-  if (item && !item.isDir) editor.openFile(item.fileIndex);
+  if (item && !item.isDir) {
+    explorer.selectedKey = item.key;
+    void editor.openFile(item.fileIndex);
+  }
 }
 
 function hideContextMenu(): void {
@@ -468,6 +471,7 @@ function sortTree(items: TreeItem[]): void {
               :items="visibleTreeItems"
               :expand-all="explorer.mode === 'search'"
               :open-mode="settings.explorerOpenMode"
+              :selected-key="explorer.selectedKey"
               :load-children="onTreeLoad"
               @open="onTreeOpen"
               @contextmenu="onTreeContextMenu"
