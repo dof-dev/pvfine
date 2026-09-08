@@ -42,10 +42,15 @@ go test ./...
 - 若有任何测试失败，立即终止发版流程并排查。
 
 ### 1.3 真实 PVF 集成测试（可选但推荐）
-若根目录存在 `Script.pvf` 文件（或环境变量 `PVF_TESTFILE` 已指定），执行真实归档回归测试：
+若根目录存在 `Script.pvf` 文件（或环境变量 `PVF_TESTFILE` 已指定），执行真实归档回归测试。由于 `go test ./...` 会在各 package 目录中执行测试，必须将 `PVF_TESTFILE` 转换为绝对路径，避免 `./Script.pvf` 被解析到子 package 目录：
 ```bash
-if [ -f "Script.pvf" ]; then
-  PVF_TESTFILE=./Script.pvf go test ./...
+if [ -n "${PVF_TESTFILE:-}" ] || [ -f "Script.pvf" ]; then
+  PVF_FILE="${PVF_TESTFILE:-$PWD/Script.pvf}"
+  case "$PVF_FILE" in
+    /*) ;;
+    *) PVF_FILE="$PWD/$PVF_FILE" ;;
+  esac
+  PVF_TESTFILE="$PVF_FILE" go test ./...
 fi
 ```
 

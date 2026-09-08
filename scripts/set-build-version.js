@@ -18,11 +18,10 @@ function write(file, content) {
 
 function replaceOnce(file, pattern, replacement) {
   const content = read(file);
-  const updated = content.replace(pattern, replacement);
-  if (updated === content) {
+  if (!pattern.test(content)) {
     throw new Error(`Version field not found in ${file}`);
   }
-  write(file, updated);
+  write(file, content.replace(pattern, replacement));
 }
 
 const windowsInfoFile = "build/windows/info.json";
