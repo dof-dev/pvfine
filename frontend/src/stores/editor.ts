@@ -26,6 +26,11 @@ export interface EditorPaneState {
   activeKey: number | null;
 }
 
+export interface DraggedEditorTab {
+  paneId: EditorPaneId;
+  index: number;
+}
+
 export interface EditorLayoutPane {
   kind: "pane";
   paneId: EditorPaneId;
@@ -61,6 +66,7 @@ export const useEditorStore = defineStore("editor", () => {
   });
   const layout = ref<EditorLayoutNode>({ kind: "pane", paneId: initialPaneId });
   const activePaneId = ref<EditorPaneId>(initialPaneId);
+  const draggingTab = ref<DraggedEditorTab | null>(null);
   const openingPaneId = ref<EditorPaneId | null>(null);
   const saving = ref(false);
   let paneSequence = 1;
@@ -111,6 +117,14 @@ export const useEditorStore = defineStore("editor", () => {
   function activatePane(paneId: EditorPaneId): void {
     if (!paneStates[paneId] || !panes.value.some((pane) => pane.id === paneId)) return;
     activePaneId.value = paneId;
+  }
+
+  function beginTabDrag(paneId: EditorPaneId, index: number): void {
+    draggingTab.value = { paneId, index };
+  }
+
+  function endTabDrag(): void {
+    draggingTab.value = null;
   }
 
   function activateTab(paneId: EditorPaneId, index: number): void {
@@ -195,6 +209,42 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  /** 把标签引用移动到另一个窗格,源窗格变空时默认自动收起。 */
+  function moveTab(
+    index: number,
+    requestedSourcePaneId: EditorPaneId,
+    requestedTargetPaneId: EditorPaneId,
+    closeEmptySource = true
+  ): void {
+    const sourcePaneId = resolvePaneId(requestedSourcePaneId);
+    const targetPaneId = resolvePaneId(requestedTargetPaneId);
+    if (sourcePaneId === targetPaneId) {
+      activateTab(targetPaneId, index);
+      return;
+    }
+
+    const source = paneStates[sourcePaneId];
+    const target = paneStates[targetPaneId];
+    if (!source || !target) return;
+    const sourceIndex = source.tabIndexes.indexOf(index);
+    if (sourceIndex < 0) return;
+
+    source.tabIndexes.splice(sourceIndex, 1);
+    if (source.activeKey === index) {
+      source.activeKey = source.tabIndexes[Math.min(sourceIndex, source.tabIndexes.length - 1)] ?? null;
+    }
+    if (!target.tabIndexes.includes(index)) target.tabIndexes.push(index);
+    target.activeKey = index;
+    activePaneId.value = targetPaneId;
+
+    if (closeEmptySource && source.tabIndexes.length === 0 && isSplit.value) {
+      closeSplit(sourcePaneId);
+      if (paneStates[targetPaneId] && panes.value.some((pane) => pane.id === targetPaneId)) {
+        activePaneId.value = targetPaneId;
+      }
+    }
+  }
+
   function nextPaneId(): EditorPaneId {
     paneSequence += 1;
     return `pane-${paneSequence}`;
@@ -223,29 +273,61 @@ export const useEditorStore = defineStore("editor", () => {
     return { node, found: false };
   }
 
-  function split(orientation: SplitOrientation, requestedPaneId: EditorPaneId = activePaneId.value): void {
-    const targetPaneId = resolvePaneId(requestedPaneId);
+  function createSplit(
+    targetPaneId: EditorPaneId,
+    orientation: SplitOrientation,
+    insertBefore: boolean,
+    cloneActiveTab: boolean
+  ): EditorPaneId | null {
     const targetPane = paneStates[targetPaneId];
-    if (!targetPane) return;
+    if (!targetPane) return null;
 
     const newPaneId = nextPaneId();
+    const targetNode: EditorLayoutPane = { kind: "pane", paneId: targetPaneId };
+    const newNode: EditorLayoutPane = { kind: "pane", paneId: newPaneId };
     const replacement: EditorLayoutSplit = {
       kind: "split",
       id: nextSplitId(),
       orientation,
       ratio: 0.5,
-      first: { kind: "pane", paneId: targetPaneId },
-      second: { kind: "pane", paneId: newPaneId },
+      first: insertBefore ? newNode : targetNode,
+      second: insertBefore ? targetNode : newNode,
     };
     const result = replacePane(layout.value, targetPaneId, replacement);
-    if (!result.found) return;
+    if (!result.found) return null;
 
+    const clonedTab = cloneActiveTab ? targetPane.activeKey : null;
     paneStates[newPaneId] = {
       id: newPaneId,
-      tabIndexes: targetPane.activeKey === null ? [] : [targetPane.activeKey],
-      activeKey: targetPane.activeKey,
+      tabIndexes: clonedTab === null ? [] : [clonedTab],
+      activeKey: clonedTab,
     };
     layout.value = result.node;
+    return newPaneId;
+  }
+
+  function split(orientation: SplitOrientation, requestedPaneId: EditorPaneId = activePaneId.value): void {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const newPaneId = createSplit(targetPaneId, orientation, false, true);
+    if (!newPaneId) return;
+    activePaneId.value = newPaneId;
+  }
+
+  function splitAndMoveTab(
+    index: number,
+    requestedSourcePaneId: EditorPaneId,
+    requestedTargetPaneId: EditorPaneId,
+    orientation: SplitOrientation,
+    insertBefore: boolean
+  ): void {
+    const sourcePaneId = resolvePaneId(requestedSourcePaneId);
+    const targetPaneId = resolvePaneId(requestedTargetPaneId);
+    const source = paneStates[sourcePaneId];
+    if (!source || !source.tabIndexes.includes(index)) return;
+
+    const newPaneId = createSplit(targetPaneId, orientation, insertBefore, false);
+    if (!newPaneId) return;
+    moveTab(index, sourcePaneId, newPaneId, false);
     activePaneId.value = newPaneId;
   }
 
@@ -433,15 +515,20 @@ export const useEditorStore = defineStore("editor", () => {
     activeTab,
     dirtyCount,
     activePaneId,
+    draggingTab,
     isSplit,
     opening: computed(() => openingPaneId.value !== null),
     openingPaneId,
     saving,
     openFile,
     activatePane,
+    beginTabDrag,
+    endTabDrag,
     activateTab,
     closeTab,
+    moveTab,
     split,
+    splitAndMoveTab,
     closeSplit,
     setSplitRatio,
     updateContent,
