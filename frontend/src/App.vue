@@ -59,6 +59,7 @@ function onResizeEnd() {
 
 onMounted(() => {
 	void settings.load();
+	void fileSets.load();
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
   window.addEventListener("keydown", onKeydown);

@@ -4,12 +4,14 @@
 import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
 import * as EditorService from "./editorservice.js";
+import * as FileSetService from "./filesetservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
 export {
     AnnotationService,
     ArchiveService,
     EditorService,
+    FileSetService,
     SettingsService,
     UpdateService
 };
@@ -24,9 +26,12 @@ export type {
     ArchiveInfo,
     EditorAnnotation,
     FileMeta,
+    FileSetDocument,
     IndexStatus,
     SearchHit,
     SearchResult,
+    StoredFileSet,
+    StoredFileSetEntry,
     TreeAnnotation,
     TreeNode,
     TreeTag

@@ -93,6 +93,15 @@ export interface FileMeta {
 }
 
 /**
+ * FileSetDocument 是全部文件集的持久化文档,与当前打开的 PVF 无关。
+ */
+export interface FileSetDocument {
+    "version": number;
+    "fileSets": StoredFileSet[] | null;
+    "activeSetId": string;
+}
+
+/**
  * IndexStatus is the current state of the semantic search index.
  */
 export interface IndexStatus {
@@ -126,6 +135,23 @@ export interface SearchResult {
     "hits": (SearchHit | null)[] | null;
     "nextCursor": number;
     "scanned": number;
+}
+
+export interface StoredFileSet {
+    "id": string;
+    "name": string;
+    "entries": StoredFileSetEntry[] | null;
+}
+
+/**
+ * StoredFileSetEntry 是文件集落盘格式。fileIndex 不持久化,因为它只对当前 PVF 有效。
+ */
+export interface StoredFileSetEntry {
+    "path": string;
+    "name": string;
+    "ids"?: string[] | null;
+    "size": number;
+    "dataType": number;
 }
 
 export interface TreeAnnotation {

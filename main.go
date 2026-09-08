@@ -40,6 +40,7 @@ func main() {
 			application.NewService(services.NewEditorService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewSettingsService()),
+			application.NewService(services.NewFileSetService()),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -10,6 +10,7 @@ import {
   Edit24Regular,
   ArrowExportLtr24Regular,
   PanelRightContract24Regular,
+  Save24Regular,
 } from "@vicons/fluent";
 import {
   NButton,
@@ -101,7 +102,7 @@ function submitNaming(): void {
 
 function deleteCurrent(): void {
   const active = fileSets.activeSet;
-  if (!active || fileSets.fileSets.length <= 1) return;
+  if (!active) return;
   dialog.warning({
     title: "删除文件集",
     content: `确定删除“${active.name}”及其中的 ${active.entries.length} 个文件吗？`,
@@ -123,12 +124,41 @@ function clearCurrent(): void {
   });
 }
 
+async function saveFileSets(): Promise<void> {
+  if (fileSets.saving) return;
+  try {
+    await fileSets.save();
+    message.success("文件集已保存到硬盘");
+  } catch (error: any) {
+    message.error(`保存文件集失败: ${error?.message ?? error}`);
+  }
+}
+
 async function exportCurrent(): Promise<void> {
   const active = fileSets.activeSet;
-  if (!active || active.entries.length === 0 || exporting.value || !archive.open) return;
+  if (
+    !active ||
+    active.entries.length === 0 ||
+    exporting.value ||
+    fileSets.resolving ||
+    !archive.open
+  ) {
+    return;
+  }
 
-  const paths = [...new Set(active.entries.map((entry) => entry.path).filter(Boolean))];
-  if (paths.length === 0) return;
+  const unavailableCount = active.entries.filter((entry) => entry.fileIndex < 0).length;
+  const paths = [
+    ...new Set(
+      active.entries
+        .filter((entry) => entry.fileIndex >= 0)
+        .map((entry) => entry.path)
+        .filter(Boolean)
+    ),
+  ];
+  if (paths.length === 0) {
+    message.warning("当前归档中没有可导出的文件");
+    return;
+  }
 
   const archivePath = archive.info?.path ?? "";
   const session = fileSets.sessionId;
@@ -144,7 +174,10 @@ async function exportCurrent(): Promise<void> {
       return;
     }
     const path = await EditorService.ExportFilesDialog(paths);
-    if (path) message.success(`已导出文件集“${active.name}”到 ${path}`);
+    if (path) {
+      const skippedText = unavailableCount > 0 ? `，跳过 ${unavailableCount} 个不存在的文件` : "";
+      message.success(`已导出文件集“${active.name}”到 ${path}${skippedText}`);
+    }
   } catch (error: any) {
     if (!isCancel(error)) message.error(`导出文件集失败: ${error?.message ?? error}`);
   } finally {
@@ -153,6 +186,18 @@ async function exportCurrent(): Promise<void> {
 }
 
 function openEntry(entry: FileSetEntry): void {
+  if (!archive.open) {
+    message.info("请先打开一个 PVF 归档");
+    return;
+  }
+  if (fileSets.resolving) {
+    message.info("正在匹配当前归档中的文件");
+    return;
+  }
+  if (entry.fileIndex < 0) {
+    message.warning(`当前归档中不存在文件: ${entry.path}`);
+    return;
+  }
   void editor.openFile(entry.fileIndex);
 }
 
@@ -164,6 +209,12 @@ watch(
   () => fileSets.sessionId,
   () => {
     closeNaming();
+  }
+);
+watch(
+  () => fileSets.loadError,
+  (error) => {
+    if (error) message.error(`读取文件集失败: ${error}`);
   }
 );
 </script>
@@ -206,8 +257,24 @@ watch(
               quaternary
               circle
               size="tiny"
+              aria-label="保存文件集"
+              :loading="fileSets.saving"
+              :disabled="!fileSets.dirty"
+              @click="saveFileSets"
+            >
+              <template #icon><NIcon><Save24Regular /></NIcon></template>
+            </NButton>
+          </template>
+          保存文件集到硬盘
+        </NTooltip>
+        <NTooltip>
+          <template #trigger>
+            <NButton
+              quaternary
+              circle
+              size="tiny"
               aria-label="删除文件集"
-              :disabled="fileSets.fileSets.length <= 1"
+              :disabled="!fileSets.activeSet"
               @click="deleteCurrent"
             >
               <template #icon><NIcon><Delete24Regular /></NIcon></template>
@@ -247,7 +314,7 @@ watch(
             size="small"
             aria-label="导出当前文件集"
             :loading="exporting"
-            :disabled="!archive.open || activeEntries.length === 0"
+            :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
             @click="exportCurrent"
           >
             <template #icon><NIcon><ArrowExportLtr24Regular /></NIcon></template>
@@ -279,7 +346,7 @@ watch(
       <div
         v-for="entry in activeEntries"
         :key="entry.path"
-        class="fileset-entry"
+        :class="['fileset-entry', { 'fileset-entry--missing': entry.fileIndex < 0 }]"
         :title="entry.path"
         @dblclick="openEntry(entry)"
       >
@@ -296,6 +363,21 @@ watch(
               class="fileset-entry-id"
             >
               {{ id }}
+            </NTag>
+            <NTag
+              v-if="entry.fileIndex < 0"
+              size="tiny"
+              type="warning"
+              :bordered="false"
+              class="fileset-entry-missing"
+            >
+              {{
+                fileSets.resolving
+                  ? "正在匹配"
+                  : archive.open
+                    ? "当前归档不存在"
+                    : "未打开归档"
+              }}
             </NTag>
           </div>
           <span class="fileset-entry-path">{{ entry.path }}</span>
@@ -421,6 +503,9 @@ watch(
 .fileset-entry:hover {
   background: rgba(79, 140, 255, 0.09);
 }
+.fileset-entry--missing {
+  opacity: 0.72;
+}
 .fileset-entry-icon {
   flex: 0 0 auto;
   color: #7fb1ff;
@@ -449,6 +534,9 @@ watch(
   color: rgba(235, 238, 245, 0.95);
 }
 .fileset-entry-id {
+  flex: 0 0 auto;
+}
+.fileset-entry-missing {
   flex: 0 0 auto;
 }
 .fileset-entry-path {
