@@ -29,6 +29,7 @@ const message = useMessage();
 const searchInput = ref("");
 const adding = ref(false);
 const exporting = ref(false);
+const copying = ref(false);
 const contextMenu = ref({
   show: false,
   x: 0,
@@ -45,13 +46,31 @@ const contextMenuOptions = computed(() => [
     label: "导出文件",
     key: "export",
     disabled:
-      adding.value || exporting.value || !archive.open || contextMenu.value.items.length === 0,
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
+  },
+  {
+    label: "复制文件路径",
+    key: "copy-paths",
+    disabled:
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
   },
   {
     label: `加入“${fileSets.activeSet?.name ?? "当前文件集"}”`,
     key: "add",
     disabled:
-      adding.value || exporting.value || !archive.open || contextMenu.value.items.length === 0,
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
   },
 ]);
 
@@ -185,9 +204,60 @@ async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
     .map(serviceEntry);
 }
 
+async function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // 某些桌面 WebView 不允许直接访问 Clipboard API，继续使用兼容方案。
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("系统剪贴板不可用");
+}
+
+async function onCopyPaths(items: TreeItem[]): Promise<void> {
+  if (copying.value) return;
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  hideContextMenu();
+  copying.value = true;
+  try {
+    const paths = await collectFilePaths(items);
+    if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
+    if (paths.length === 0) {
+      message.info("选中的目录中没有文件");
+      return;
+    }
+    await writeClipboardText(paths.join("\n"));
+    message.success(`已复制 ${paths.length} 个文件路径`);
+  } catch (error: any) {
+    if (session === fileSets.sessionId && archive.info?.path === archivePath) {
+      message.error(`复制文件路径失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    copying.value = false;
+  }
+}
+
 async function onContextMenuSelect(key: string | number): Promise<void> {
   if (key === "export") {
     await onExportSelected(contextMenu.value.items);
+    return;
+  }
+  if (key === "copy-paths") {
+    await onCopyPaths(contextMenu.value.items);
     return;
   }
   if (key !== "add" || adding.value) return;
@@ -368,7 +438,7 @@ function sortTree(items: TreeItem[]): void {
 
     <NSpin
       class="exp-spin"
-      :show="archive.loading || explorer.searching || adding || exporting"
+      :show="archive.loading || explorer.searching || adding || exporting || copying"
     >
       <div class="exp-body">
         <!-- 空态 -->
