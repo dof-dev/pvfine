@@ -1,6 +1,9 @@
 package pvf
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseScriptViewFlatAndDuplicateSections(t *testing.T) {
 	view := ParseScriptView("[rarity]\n3\n[name]\n`first`\n[rarity]\n4")
@@ -52,4 +55,34 @@ func TestParseScriptViewUsesUTF16Offsets(t *testing.T) {
 		return
 	}
 	t.Fatal("name token not found")
+}
+
+func TestParseScriptViewNormalizesLineEndingOffsets(t *testing.T) {
+	text := "[name]\n`line1\r\nline2`\r[rarity]\r\n3"
+	normalized := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
+	view := ParseScriptView(text)
+
+	var section, token *ScriptElement
+	for i := range view.Elements {
+		element := &view.Elements[i]
+		if element.Kind == ScriptElementSection && element.Section == "rarity" {
+			section = element
+		}
+		if element.Kind == ScriptElementToken && element.Section == "rarity" {
+			token = element
+		}
+	}
+	if section == nil || token == nil {
+		t.Fatalf("rarity elements not found: %#v", view.Elements)
+	}
+
+	wantSectionStart := strings.Index(normalized, "[rarity]")
+	wantSectionEnd := wantSectionStart + len("[rarity]")
+	wantTokenStart := strings.LastIndex(normalized, "3")
+	if section.Start != wantSectionStart || section.End != wantSectionEnd {
+		t.Fatalf("section range = [%d,%d), want [%d,%d)", section.Start, section.End, wantSectionStart, wantSectionEnd)
+	}
+	if token.Start != wantTokenStart || token.End != wantTokenStart+1 {
+		t.Fatalf("token range = [%d,%d), want [%d,%d)", token.Start, token.End, wantTokenStart, wantTokenStart+1)
+	}
 }

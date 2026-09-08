@@ -12,7 +12,8 @@ const (
 )
 
 // ScriptView is a tolerant semantic projection of the exact editor text.
-// Start and End are JavaScript UTF-16 code-unit offsets.
+// Start and End are JavaScript UTF-16 code-unit offsets after normalizing line
+// endings the same way as the editor (CRLF and CR each occupy one unit).
 type ScriptView struct {
 	Text     string
 	Elements []ScriptElement
@@ -133,10 +134,7 @@ func ParseScriptView(text string) ScriptView {
 
 func lexScriptText(text string) []scriptLexeme {
 	rs := []rune(text)
-	offsets := make([]int, len(rs)+1)
-	for i, r := range rs {
-		offsets[i+1] = offsets[i] + utf16RuneLen(r)
-	}
+	offsets := editorOffsets(rs)
 	isWS := func(r rune) bool {
 		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f'
 	}
@@ -221,6 +219,22 @@ func lexScriptText(text string) []scriptLexeme {
 		})
 	}
 	return lexemes
+}
+
+// editorOffsets maps offsets in the original Go string to offsets in the
+// editor's normalized JavaScript string. CodeMirror treats CRLF and lone CR
+// as a single line break, so the carriage return in a CRLF pair contributes
+// no additional code unit.
+func editorOffsets(rs []rune) []int {
+	offsets := make([]int, len(rs)+1)
+	for i, r := range rs {
+		if r == '\r' && i+1 < len(rs) && rs[i+1] == '\n' {
+			offsets[i+1] = offsets[i]
+			continue
+		}
+		offsets[i+1] = offsets[i] + utf16RuneLen(r)
+	}
+	return offsets
 }
 
 func parseTextMarker(marker string) (int32, string, bool) {

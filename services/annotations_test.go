@@ -196,6 +196,54 @@ func TestAnnotationServicesAndCacheInvalidation(t *testing.T) {
 	}
 }
 
+func TestEditorAnnotationsUseNormalizedLineEndingOffsets(t *testing.T) {
+	index := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version:   1,
+		Relations: map[string]annotationrules.RelationSpec{},
+		Rules: []annotationrules.Rule{
+			{
+				ID: "rarity.section", Target: annotationrules.TargetSpec{Kind: "section", Section: "rarity"},
+				Annotation: annotationrules.AnnotationSpec{Title: "稀有度区域", Type: "text"},
+			},
+			{
+				ID: "rarity.value", Target: annotationrules.TargetSpec{Kind: "token", Section: "rarity", Index: &index},
+				Annotation: annotationrules.AnnotationSpec{Title: "稀有度", Type: "enum", Values: map[string]string{"3": "神器"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := pvf.New()
+	source := mustAddText(t, a, "equipment/line-ending.equ", "[name]\n`line1\r\nline2`\r[rarity]\r\n3", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	meta, err := NewEditorService(c).GetFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized := strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(meta.Text)
+	wantSectionStart := strings.Index(normalized, "[rarity]")
+	wantTokenStart := strings.LastIndex(normalized, "3")
+	section := findEditorAnnotation(meta.Annotations, "稀有度区域")
+	token := findEditorAnnotation(meta.Annotations, "神器")
+	if section == nil || token == nil {
+		t.Fatalf("annotations = %#v", meta.Annotations)
+	}
+	if section.Start != int32(wantSectionStart) || section.End != int32(wantSectionStart+len("[rarity]")) {
+		t.Fatalf("section range = [%d,%d), want [%d,%d)", section.Start, section.End, wantSectionStart, wantSectionStart+len("[rarity]"))
+	}
+	if token.Start != int32(wantTokenStart) || token.End != int32(wantTokenStart+1) {
+		t.Fatalf("token range = [%d,%d), want [%d,%d)", token.Start, token.End, wantTokenStart, wantTokenStart+1)
+	}
+}
+
 func TestSearchIncludesAncestorPathAnnotations(t *testing.T) {
 	engine, err := annotationrules.Compile(annotationrules.Document{
 		Version:   1,
