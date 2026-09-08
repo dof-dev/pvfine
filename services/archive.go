@@ -92,6 +92,7 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 	result := make([]*TreeNode, len(list))
 	for i, node := range list {
 		copyNode := *node
+		copyNode.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[copyNode.Path])
 		if !copyNode.IsDir {
 			copyNode.Tags = cloneTreeTags(s.c.treeTagsByFile[copyNode.FileIndex])
 		}
@@ -126,12 +127,13 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 			break
 		}
 		result = append(result, &TreeNode{
-			Name:      pathBase(entry.path),
-			Path:      entry.path,
-			Size:      entry.size,
-			DataType:  entry.typ,
-			FileIndex: entry.idx,
-			Tags:      cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+			Name:        pathBase(entry.path),
+			Path:        entry.path,
+			Size:        entry.size,
+			DataType:    entry.typ,
+			FileIndex:   entry.idx,
+			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
 		})
 	}
 	return result, nil
@@ -166,12 +168,13 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 		}
 		entry := s.c.sortedPaths[index]
 		result = append(result, &TreeNode{
-			Name:      pathBase(entry.path),
-			Path:      entry.path,
-			Size:      entry.size,
-			DataType:  entry.typ,
-			FileIndex: entry.idx,
-			Tags:      cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+			Name:        pathBase(entry.path),
+			Path:        entry.path,
+			Size:        entry.size,
+			DataType:    entry.typ,
+			FileIndex:   entry.idx,
+			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
+			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
 		})
 	}
 	return result, nil
@@ -246,6 +249,8 @@ func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchRes
 			strings.Contains(record.lowerName, q) ||
 			strings.Contains(record.lowerID, q) {
 			hit := record.hit
+			hit.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[hit.Path])
+			hit.PathAnnotations = clonePathAnnotationChain(s.c.pathAnnotations, hit.Path)
 			res.Hits = append(res.Hits, &hit)
 		}
 	}
@@ -254,4 +259,19 @@ func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchRes
 	}
 	res.Scanned = i
 	return res, nil
+}
+
+func clonePathAnnotationChain(values map[string][]TreeAnnotation, filePath string) map[string][]TreeAnnotation {
+	result := make(map[string][]TreeAnnotation)
+	current := filePath
+	for current != "" {
+		if annotations := cloneTreeAnnotations(values[current]); len(annotations) > 0 {
+			result[current] = annotations
+		}
+		current, _ = splitParent(current)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

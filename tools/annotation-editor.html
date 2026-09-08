@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pvfine 标注规则编辑器</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      background: #17191e;
+      color: #e6e8ee;
+      font-size: 13px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1040px; min-height: 100vh; overflow: hidden; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: .45; }
+    .app { height: 100vh; display: flex; flex-direction: column; }
+    .toolbar {
+      height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+      background: #20232a; border-bottom: 1px solid #363a45; flex: 0 0 auto;
+    }
+    .brand { font-size: 15px; font-weight: 650; margin-right: 10px; }
+    .toolbar-spacer { flex: 1; }
+    .status { max-width: 440px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9aa1ad; }
+    .status.ok { color: #66c99a; }
+    .status.error { color: #ee8585; }
+    .btn {
+      height: 30px; padding: 0 10px; border-radius: 5px; border: 1px solid #454b58;
+      background: #292d36; color: #e6e8ee;
+    }
+    .btn:hover { background: #343945; }
+    .btn.primary { background: #376fc2; border-color: #4f8ddd; }
+    .btn.danger { color: #ffabab; }
+    .btn.icon { width: 30px; padding: 0; font-weight: 700; }
+    .workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px 430px minmax(360px, 1fr); }
+    .pane { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid #343842; }
+    .pane:last-child { border-right: 0; }
+    .pane-head {
+      position: sticky; top: 0; z-index: 2; min-height: 42px; padding: 8px 12px;
+      display: flex; align-items: center; gap: 8px; background: #1d2026; border-bottom: 1px solid #343842;
+    }
+    .pane-title { font-weight: 650; flex: 1; }
+    .tabs { display: flex; gap: 4px; }
+    .tab { border: 0; background: transparent; color: #9da5b2; padding: 6px 8px; border-bottom: 2px solid transparent; }
+    .tab.active { color: #fff; border-bottom-color: #5d9cf0; }
+    .list { padding: 8px; }
+    .list-item {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center;
+      padding: 8px; margin-bottom: 6px; background: #22262e; border: 1px solid #353a45; border-radius: 6px;
+    }
+    .list-item.active { border-color: #5b91d8; background: #252c37; }
+    .list-main { min-width: 0; cursor: pointer; }
+    .list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .list-meta { margin-top: 3px; color: #9098a5; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-actions { display: flex; gap: 3px; }
+    .item-actions button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #aab1bc; }
+    .item-actions button:hover { background: #3a404c; color: #fff; }
+    .rule-group { display: block; width: 100%; padding: 10px; border: 0; border-bottom: 1px solid #3a404c; background: #252a33; color: inherit; text-align: left; overflow-wrap: anywhere; }
+    .form { padding: 14px; }
+    .section { margin-bottom: 18px; }
+    .section-title { margin: 0 0 10px; color: #7fb4f3; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .field { margin-bottom: 11px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; margin-bottom: 5px; color: #b7bdc7; }
+    input, select, textarea {
+      width: 100%; border: 1px solid #424854; border-radius: 5px; background: #171a20; color: #edf0f5;
+      padding: 7px 8px; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #5b96e4; box-shadow: 0 0 0 2px rgba(91,150,228,.14); }
+    textarea { min-height: 78px; resize: vertical; line-height: 1.45; }
+    .hint { color: #858d99; font-size: 11px; margin-top: 4px; line-height: 1.4; }
+    .preview-controls { padding: 12px; border-bottom: 1px solid #343842; background: #1d2026; }
+    .preview-controls textarea { height: 180px; font-family: "SF Mono", Menlo, Consolas, monospace; }
+    .preview-wrap { padding: 14px; }
+    .preview-path-tags { display: flex; min-height: 19px; gap: 6px; margin-bottom: 10px; }
+    .preview-code {
+      min-height: 220px; margin: 0; padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
+      border: 1px solid #383d48; border-radius: 6px; background: #14171c;
+      font-family: "SF Mono", Menlo, Consolas, monospace; line-height: 1.75; user-select: text;
+    }
+    .annotation-tag {
+      display: inline-flex; align-items: center; max-width: 220px; height: 19px; margin-left: 6px; padding: 0 6px;
+      vertical-align: 1px; border: 1px solid #4e87c7; border-radius: 4px; background: #243d5b;
+      color: #b8d9ff; font: 11px/17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none;
+    }
+    .annotation-tag.enum { border-color: #a77d38; background: #4a3922; color: #ffd99a; }
+    .annotation-tag.reference { border-color: #438a69; background: #213f34; color: #a9e7c9; }
+    .preview-empty { color: #858d99; }
+    .error-box { margin: 10px 12px; padding: 9px; border: 1px solid #7a4141; border-radius: 5px; color: #ffb3b3; background: #382323; white-space: pre-wrap; }
+    .hidden { display: none !important; }
+    .file-input { display: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="toolbar">
+      <div class="brand">pvfine 标注规则编辑器</div>
+      <button class="btn" id="importButton">导入 JSON</button>
+      <button class="btn" id="exportButton">导出 JSON</button>
+      <input class="file-input" id="importFile" type="file" accept="application/json,.json" />
+      <div class="toolbar-spacer"></div>
+      <div class="status" id="status">正在载入规则...</div>
+    </header>
+
+    <main class="workspace">
+      <aside class="pane">
+        <div class="pane-head">
+          <div class="tabs">
+            <button class="tab active" data-tab="rules">规则</button>
+            <button class="tab" data-tab="relations">关联类型</button>
+          </div>
+          <button class="btn primary" id="addButton">新增</button>
+        </div>
+        <div class="list" id="itemList"></div>
+      </aside>
+
+      <section class="pane">
+        <div class="pane-head"><div class="pane-title" id="formTitle">规则详情</div></div>
+        <div class="error-box hidden" id="errorBox"></div>
+        <form class="form" id="editorForm"></form>
+      </section>
+
+      <section class="pane">
+        <div class="pane-head"><div class="pane-title">示例预览</div><button class="btn" id="previewButton">刷新预览</button></div>
+        <div class="preview-controls">
+          <div class="field">
+            <label for="previewPath">文件路径</label>
+            <input id="previewPath" value="equipment/example.equ" />
+          </div>
+          <div class="field">
+            <label for="previewText">反编译文本</label>
+            <textarea id="previewText">[rarity]
+3
+
+[name]
+`示例装备`</textarea>
+          </div>
+        </div>
+        <div class="preview-wrap">
+          <div class="preview-path-tags" id="previewPathTags"></div>
+          <pre class="preview-code" id="previewCode"><span class="preview-empty">暂无预览</span></pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API_TOKEN = "__EDITOR_TOKEN__";
+    const state = { document: null, tab: "rules", selected: 0, saveTimer: 0, previewTimer: 0 };
+    const expandedGroups = new Set([""]);
+    function ruleGroup(rule) { return (rule.group || "").trim(); }
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const headers = { ...(options.headers || {}), "X-Annotation-Editor-Token": API_TOKEN };
+      if (options.body) headers["Content-Type"] = "application/json";
+      const response = await fetch(path, { ...options, headers, cache: "no-store" });
+      if (!response.ok) {
+        let message = `请求失败 (${response.status})`;
+        try { message = (await response.json()).error || message; } catch {}
+        throw new Error(message);
+      }
+      return response.json();
+    }
+
+    function setStatus(message, kind = "") {
+      $("status").textContent = message;
+      $("status").className = `status ${kind}`;
+    }
+
+    function showError(message = "") {
+      $("errorBox").textContent = message;
+      $("errorBox").classList.toggle("hidden", !message);
+    }
+
+    function rules() { return state.document.rules || (state.document.rules = []); }
+    function relationEntries() { return Object.entries(state.document.relations || (state.document.relations = {})); }
+    function currentRule() { return rules()[state.selected] || null; }
+    function currentRelation() { return relationEntries()[state.selected] || null; }
+
+    function renderAll() {
+      if (state.tab === "rules" && currentRule()) expandedGroups.add(ruleGroup(currentRule()));
+      document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === state.tab));
+      renderList();
+      renderForm();
+    }
+
+    function renderList() {
+      const container = $("itemList");
+      container.replaceChildren();
+      const items = state.tab === "rules"
+        ? rules().map((rule, index) => ({ key: rule.id || `未命名规则 ${index + 1}`, meta: `${rule.target?.kind || "?"} · ${rule.annotation?.title || "无标题"}` }))
+        : relationEntries().map(([name, relation]) => ({ key: name, meta: relation.listPath || "未配置列表文件" }));
+      const appendItem = (item, index) => {
+        const row = document.createElement("div");
+        row.className = `list-item ${index === state.selected ? "active" : ""}`;
+        const main = document.createElement("div");
+        main.className = "list-main";
+        main.innerHTML = `<div class="list-name"></div><div class="list-meta"></div>`;
+        main.querySelector(".list-name").textContent = item.key;
+        main.querySelector(".list-meta").textContent = item.meta;
+        main.onclick = () => { state.selected = index; renderAll(); };
+        const actions = document.createElement("div");
+        actions.className = "item-actions";
+        if (state.tab === "rules") {
+          actions.append(actionButton("↑", "上移", () => moveRule(index, -1), index === 0));
+          actions.append(actionButton("↓", "下移", () => moveRule(index, 1), index === items.length - 1));
+        }
+        actions.append(actionButton("×", "删除", () => removeItem(index), false));
+        if (state.tab === "rules") {
+          const copyButton = actionButton("⧉", "复制规则", () => copyRule(index), false);
+          copyButton.setAttribute("aria-label", "复制规则");
+          actions.append(copyButton);
+        }
+        row.append(main, actions);
+        container.append(row);
+      };
+      if (state.tab !== "rules") {
+        items.forEach(appendItem);
+        return;
+      }
+      const groups = new Map();
+      rules().forEach((rule, index) => {
+        const group = ruleGroup(rule);
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(index);
+      });
+      for (const [group, indices] of groups) {
+        const expanded = expandedGroups.has(group);
+        const header = document.createElement("button");
+        header.type = "button";
+        header.className = "rule-group";
+        header.textContent = `${expanded ? "▾" : "▸"} ${group || "未分组"} (${indices.length})`;
+        header.setAttribute("aria-expanded", String(expanded));
+        header.onclick = () => {
+          if (expanded) expandedGroups.delete(group);
+          else expandedGroups.add(group);
+          renderList();
+        };
+        container.append(header);
+        if (expanded) indices.forEach((index) => appendItem(items[index], index));
+      }
+    }
+
+    function actionButton(text, title, handler, disabled) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.title = title;
+      button.disabled = disabled;
+      button.onclick = (event) => { event.stopPropagation(); handler(); };
+      return button;
+    }
+
+    function renderForm() {
+      showError();
+      if (state.tab === "rules") renderRuleForm(currentRule());
+      else renderRelationForm(currentRelation());
+    }
+
+    function renderRuleForm(rule) {
+      $("formTitle").textContent = "规则详情";
+      const form = $("editorForm");
+      if (!rule) { form.innerHTML = '<div class="preview-empty">点击“新增”创建规则</div>'; return; }
+      const target = rule.target || (rule.target = { kind: "section", section: "name" });
+      const annotation = rule.annotation || (rule.annotation = { title: "", type: "text" });
+      const match = rule.match || (rule.match = {});
+      form.innerHTML = `
+        <div class="section"><div class="section-title">基本信息</div>
+          ${field("规则 ID", input("rule-id", rule.id || ""), "规则顺序决定冲突时显示优先级")}
+          ${field("说明", textarea("rule-description", rule.description || ""))}
+          ${field("分组", `<input id="rule-group" list="rule-groups" value="${escapeAttr(rule.group || "")}" /><datalist id="rule-groups">${[...new Set(rules().map(ruleGroup).filter(Boolean))].map((group) => `<option value="${escapeAttr(group)}"></option>`).join("")}</datalist>`, "输入新分组或选择已有分组；留空为未分组，不影响规则优先级")}
+        </div>
+        <div class="section"><div class="section-title">文件匹配</div>
+          ${field("文件后缀", input("match-extensions", (match.extensions || []).join(", ")), "逗号分隔，例如 .equ, .stk；留空表示不限")}
+          ${field("路径 Glob", input("match-glob", match.glob || ""), "支持 *、? 和跨目录的 **")}
+        </div>
+        <div class="section"><div class="section-title">目标位置</div>
+          ${field("目标类型", select("target-kind", target.kind, [["path","路径"],["section","Section"],["token","Token"]]))}
+          <div id="sectionFields" class="${target.kind === "path" ? "hidden" : ""}">
+            ${field("Section 名称", input("target-section", target.section || ""), "所有同名 section 都会命中")}
+          </div>
+          <div id="tokenFields" class="${target.kind === "token" ? "" : "hidden"}">
+            ${field("Token 选择", select("token-mode", target.range ? "range" : "index", [["index","单个下标"],["range","下标范围"]]))}
+            <div id="tokenIndexField" class="${target.range ? "hidden" : ""}">${field("Token 下标", numberInput("target-index", target.index ?? 0))}</div>
+            <div id="tokenRangeFields" class="${target.range ? "field-row" : "hidden"}">
+              ${field("起始下标", numberInput("range-start", target.range?.start ?? 0))}
+              ${field("结束下标（不含）", numberInput("range-end", target.range?.endExclusive ?? 1))}
+            </div>
+          </div>
+        </div>
+        <div class="section"><div class="section-title">标注内容</div>
+          ${field("Tag 标题", input("annotation-title", annotation.title || ""))}
+          ${field("标注类型", select("annotation-type", annotation.type, [["text","文本"],["enum","枚举"],["reference","关联 ID"]]))}
+          ${field("Tooltip 内容", textarea("annotation-content", annotation.content || ""))}
+          <div id="enumFields" class="${annotation.type === "enum" ? "" : "hidden"}">
+            ${field("枚举映射", textarea("annotation-values", valuesToText(annotation.values)), "每行一个 value=名称")}
+          </div>
+          <div id="referenceFields" class="${annotation.type === "reference" ? "" : "hidden"}">
+            ${field("关联类型", select("annotation-relation", annotation.relation || "", [["","请选择"], ...relationEntries().map(([name]) => [name, name])]))}
+          </div>
+        </div>`;
+      bindRuleForm(rule);
+    }
+
+    function bindRuleForm(rule) {
+      bind("rule-id", "input", (value) => rule.id = value);
+      bind("rule-description", "input", (value) => rule.description = value);
+      bind("rule-group", "change", (value) => {
+        rule.group = value.trim();
+        expandedGroups.add(ruleGroup(rule));
+      });
+      bind("match-extensions", "input", (value) => rule.match.extensions = value.split(",").map((item) => item.trim()).filter(Boolean));
+      bind("match-glob", "input", (value) => rule.match.glob = value);
+      bind("target-section", "input", (value) => rule.target.section = value);
+      bind("target-index", "input", (value) => rule.target.index = number(value));
+      bind("range-start", "input", (value) => rule.target.range.start = number(value));
+      bind("range-end", "input", (value) => rule.target.range.endExclusive = number(value));
+      bind("annotation-title", "input", (value) => rule.annotation.title = value);
+      bind("annotation-content", "input", (value) => rule.annotation.content = value);
+      bind("annotation-values", "input", (value) => rule.annotation.values = textToValues(value));
+      bind("annotation-relation", "change", (value) => rule.annotation.relation = value);
+      bind("target-kind", "change", (value) => {
+        rule.target.kind = value;
+        if (value === "path") { delete rule.target.index; delete rule.target.range; rule.annotation.type = "text"; }
+        if (value === "section") { delete rule.target.index; delete rule.target.range; rule.annotation.type = "text"; }
+        if (value === "token" && rule.target.index == null && !rule.target.range) rule.target.index = 0;
+        renderAll(); scheduleSave();
+      });
+      bind("token-mode", "change", (value) => {
+        if (value === "range") { delete rule.target.index; rule.target.range = { start: 0, endExclusive: 1 }; rule.annotation.type = "text"; }
+        else { rule.target.index = 0; delete rule.target.range; }
+        renderAll(); scheduleSave();
+      });
+      bind("annotation-type", "change", (value) => {
+        rule.annotation.type = value;
+        if (value === "enum") rule.annotation.values ||= {};
+        if (value === "reference") rule.annotation.relation ||= "";
+        if ((rule.target.kind !== "token" || rule.target.range) && value !== "text") rule.annotation.type = "text";
+        renderAll(); scheduleSave();
+      });
+    }
+
+    function renderRelationForm(entry) {
+      $("formTitle").textContent = "关联类型详情";
+      const form = $("editorForm");
+      if (!entry) { form.innerHTML = '<div class="preview-empty">点击“新增”创建关联类型</div>'; return; }
+      const [name, relation] = entry;
+      form.innerHTML = `
+        <div class="section"><div class="section-title">关联索引</div>
+          ${field("类型名称", input("relation-name", name))}
+          ${field("列表文件", input("relation-list", relation.listPath || ""))}
+          <div class="field-row">
+            ${field("ID Token", numberInput("relation-id-token", relation.idToken ?? 0))}
+            ${field("路径 Token", numberInput("relation-path-token", relation.pathToken ?? 1))}
+          </div>
+          ${field("每条记录 Token 数", numberInput("relation-record-tokens", relation.recordTokens || 2), "为 0 时按最大 token 下标自动推导")}
+          ${field("名称 Section", input("relation-name-section", relation.nameSection || "name"))}
+        </div>`;
+      bind("relation-name", "change", (value) => renameRelation(name, value));
+      bind("relation-list", "input", (value) => relation.listPath = value);
+      bind("relation-id-token", "input", (value) => relation.idToken = number(value));
+      bind("relation-path-token", "input", (value) => relation.pathToken = number(value));
+      bind("relation-record-tokens", "input", (value) => relation.recordTokens = number(value));
+      bind("relation-name-section", "input", (value) => relation.nameSection = value);
+    }
+
+    function bind(id, eventName, setter) {
+      const element = $(id);
+      if (!element) return;
+      element.addEventListener(eventName, () => { setter(element.value); renderList(); scheduleSave(); });
+    }
+
+    function field(label, control, hint = "") {
+      return `<div class="field"><label>${escapeHTML(label)}</label>${control}${hint ? `<div class="hint">${escapeHTML(hint)}</div>` : ""}</div>`;
+    }
+    function input(id, value) { return `<input id="${id}" value="${escapeAttr(value)}" />`; }
+    function numberInput(id, value) { return `<input id="${id}" type="number" min="0" step="1" value="${Number(value) || 0}" />`; }
+    function textarea(id, value) { return `<textarea id="${id}">${escapeHTML(value)}</textarea>`; }
+    function select(id, value, options) {
+      return `<select id="${id}">${options.map(([key, label]) => `<option value="${escapeAttr(key)}" ${key === value ? "selected" : ""}>${escapeHTML(label)}</option>`).join("")}</select>`;
+    }
+
+    function addItem() {
+      if (state.tab === "rules") {
+        const index = rules().length + 1;
+        rules().push({ id: `rule.${index}`, description: "", match: {}, target: { kind: "section", section: "name" }, annotation: { title: "新标注", type: "text", content: "" } });
+        state.selected = rules().length - 1;
+      } else {
+        let index = relationEntries().length + 1;
+        let name = `relation${index}`;
+        while (state.document.relations[name]) name = `relation${++index}`;
+        state.document.relations[name] = { listPath: "", idToken: 0, pathToken: 1, recordTokens: 2, nameSection: "name" };
+        state.selected = relationEntries().length - 1;
+      }
+      renderAll(); scheduleSave();
+    }
+
+    function removeItem(index) {
+      if (state.tab === "rules") rules().splice(index, 1);
+      else delete state.document.relations[relationEntries()[index][0]];
+      state.selected = Math.max(0, Math.min(state.selected, (state.tab === "rules" ? rules().length : relationEntries().length) - 1));
+      renderAll(); scheduleSave();
+    }
+
+    function moveRule(index, delta) {
+      const target = index + delta;
+      if (target < 0 || target >= rules().length) return;
+      [rules()[index], rules()[target]] = [rules()[target], rules()[index]];
+      state.selected = target;
+      renderAll(); scheduleSave();
+    }
+
+    function copyRule(index) {
+      const source = rules()[index];
+      if (!source) return;
+      const copy = structuredClone(source);
+      const baseID = `${source.id || "rule"}.copy`;
+      const existingIDs = new Set(rules().map((rule) => rule.id));
+      copy.id = baseID;
+      let suffix = 2;
+      while (existingIDs.has(copy.id)) copy.id = `${baseID}.${suffix++}`;
+      rules().push(copy);
+      state.selected = rules().length - 1;
+      renderAll(); scheduleSave();
+    }
+
+    function renameRelation(oldName, newName) {
+      newName = newName.trim();
+      if (!newName || (newName !== oldName && state.document.relations[newName])) {
+        showError("关联类型名称不能为空或重复");
+        return;
+      }
+      const relation = state.document.relations[oldName];
+      const entries = relationEntries();
+      const rebuilt = {};
+      entries.forEach(([name, value]) => rebuilt[name === oldName ? newName : name] = value);
+      state.document.relations = rebuilt;
+      rules().forEach((rule) => {
+        if (rule.annotation?.relation === oldName) rule.annotation.relation = newName;
+      });
+      renderAll(); scheduleSave();
+    }
+
+    function scheduleSave() {
+      clearTimeout(state.saveTimer);
+      setStatus("等待校验...");
+      state.saveTimer = setTimeout(saveRules, 350);
+    }
+
+    async function saveRules() {
+      try {
+        setStatus("正在校验并写入...");
+        await api("/api/rules", { method: "PUT", body: JSON.stringify(state.document) });
+        showError(); setStatus("已写入 default.json，并更新备份", "ok");
+        await refreshPreview();
+      } catch (error) {
+        showError(error.message); setStatus("规则未写入", "error");
+      }
+    }
+
+    async function refreshPreview() {
+      try {
+        const path = $("previewPath").value;
+        const text = $("previewText").value;
+        const result = await api("/api/preview", {
+          method: "POST",
+          body: JSON.stringify({ path, text, document: state.document }),
+        });
+        renderPathPreview(result.pathAnnotations || []);
+        renderPreview(text, result.annotations || []);
+      } catch (error) {
+        $("previewPathTags").replaceChildren();
+        $("previewCode").textContent = error.message;
+      }
+    }
+
+    function renderPathPreview(annotations) {
+      const container = $("previewPathTags");
+      container.replaceChildren();
+      annotations.forEach((annotation) => {
+        const tag = document.createElement("span");
+        tag.className = `annotation-tag ${annotation.type || "text"}`;
+        tag.textContent = annotation.title;
+        tag.title = annotation.content;
+        tag.setAttribute("aria-label", annotation.content || annotation.title);
+        container.append(tag);
+      });
+    }
+
+    function renderPreview(text, annotations) {
+      const container = $("previewCode");
+      container.replaceChildren();
+      if (!annotations.length) {
+        const empty = document.createElement("span");
+        empty.className = "preview-empty";
+        empty.textContent = text || "当前示例没有命中标注";
+        container.append(empty);
+        return;
+      }
+      let cursor = 0;
+      annotations.slice().sort((a, b) => a.end - b.end).forEach((annotation) => {
+        const end = Math.max(cursor, Math.min(text.length, annotation.end));
+        container.append(document.createTextNode(text.slice(cursor, end)));
+        const tag = document.createElement("span");
+        tag.className = `annotation-tag ${annotation.type || "text"}`;
+        tag.textContent = annotation.title;
+        tag.title = annotation.content;
+        tag.setAttribute("aria-label", annotation.content || annotation.title);
+        container.append(tag);
+        cursor = end;
+      });
+      container.append(document.createTextNode(text.slice(cursor)));
+    }
+
+    function valuesToText(values) {
+      return Object.entries(values || {}).map(([key, value]) => `${key}=${value}`).join("\n");
+    }
+    function textToValues(text) {
+      const values = {};
+      text.split(/\r?\n/).forEach((line) => {
+        const index = line.indexOf("=");
+        if (index > 0) values[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+      });
+      return values;
+    }
+    function number(value) { return Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : 0; }
+    function escapeHTML(value) { return String(value).replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char])); }
+    function escapeAttr(value) { return escapeHTML(value).replace(/"/g, "&quot;"); }
+
+    async function importRules(file) {
+      try {
+        state.document = JSON.parse(await file.text());
+        state.tab = "rules"; state.selected = 0;
+        renderAll(); await saveRules();
+      } catch (error) {
+        showError(`导入失败: ${error.message}`); setStatus("导入失败", "error");
+      }
+    }
+
+    function exportRules() {
+      const blob = new Blob([JSON.stringify(state.document, null, 2) + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = "default.json"; link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.querySelectorAll(".tab").forEach((tab) => tab.onclick = () => {
+      state.tab = tab.dataset.tab; state.selected = 0; renderAll();
+    });
+    $("addButton").onclick = addItem;
+    $("importButton").onclick = () => $("importFile").click();
+    $("importFile").onchange = () => { const file = $("importFile").files[0]; if (file) importRules(file); };
+    $("exportButton").onclick = exportRules;
+    $("previewButton").onclick = refreshPreview;
+    $("previewPath").oninput = () => {
+      clearTimeout(state.previewTimer);
+      state.previewTimer = setTimeout(refreshPreview, 250);
+    };
+    $("previewText").oninput = () => { clearTimeout(state.previewTimer); state.previewTimer = setTimeout(refreshPreview, 250); };
+
+    (async () => {
+      try {
+        state.document = await api("/api/rules");
+        state.document.relations ||= {};
+        state.document.rules ||= [];
+        renderAll(); await refreshPreview(); setStatus("规则已载入", "ok");
+      } catch (error) {
+        showError(error.message); setStatus("载入失败", "error");
+      }
+    })();
+  </script>
+</body>
+</html>

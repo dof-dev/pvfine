@@ -34,13 +34,15 @@ type IndexStatus struct {
 
 // SearchHit is one searchable file/list record.
 type SearchHit struct {
-	Name      string `json:"name"`
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	Category  string `json:"category"`
-	Size      int32  `json:"size"`
-	DataType  int32  `json:"dataType"`
-	FileIndex int32  `json:"fileIndex"`
+	Name            string                      `json:"name"`
+	ID              string                      `json:"id"`
+	Path            string                      `json:"path"`
+	Category        string                      `json:"category"`
+	Size            int32                       `json:"size"`
+	DataType        int32                       `json:"dataType"`
+	FileIndex       int32                       `json:"fileIndex"`
+	Annotations     []TreeAnnotation            `json:"annotations,omitempty"`
+	PathAnnotations map[string][]TreeAnnotation `json:"pathAnnotations,omitempty"`
 }
 
 // TreeTag is one list mapping displayed after a file name in the explorer.
@@ -272,6 +274,12 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.mu.Unlock()
 		return false, "", err
 	}
+	if c.editorText == nil {
+		c.editorText = make(map[int32]string)
+	}
+	c.editorText[index] = text
+	c.annotationRelations = make(map[string]map[string]*relationTarget)
+	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
 	if c.indexStatus.State != IndexStateReady {
 		if c.indexDirty == nil {

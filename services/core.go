@@ -13,6 +13,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	annotationrules "pvfine/internal/annotations"
 	"pvfine/internal/pvf"
 )
 
@@ -30,14 +31,15 @@ var (
 
 // TreeNode is one entry in the explorer tree: either a directory or a file.
 type TreeNode struct {
-	Name       string    `json:"name"`
-	Path       string    `json:"path"`
-	IsDir      bool      `json:"isDir"`
-	Size       int32     `json:"size"`
-	DataType   int32     `json:"dataType"`
-	ChildCount int32     `json:"childCount"`
-	FileIndex  int32     `json:"fileIndex"` // -1 for directories
-	Tags       []TreeTag `json:"tags,omitempty"`
+	Name        string           `json:"name"`
+	Path        string           `json:"path"`
+	IsDir       bool             `json:"isDir"`
+	Size        int32            `json:"size"`
+	DataType    int32            `json:"dataType"`
+	ChildCount  int32            `json:"childCount"`
+	FileIndex   int32            `json:"fileIndex"` // -1 for directories
+	Tags        []TreeTag        `json:"tags,omitempty"`
+	Annotations []TreeAnnotation `json:"annotations,omitempty"`
 }
 
 // pathEntry feeds the search scanner.
@@ -52,34 +54,55 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
-	mu             sync.RWMutex
-	archive        *pvf.Archive
-	dirChildren    map[string][]*TreeNode // dirPath -> ordered children ("" = root)
-	directories    []string
-	sortedPaths    []pathEntry
-	searchRecords  []searchRecord
-	searchByFile   map[int32][]int
-	treeTagsByFile map[int32][]TreeTag
-	indexStatus    IndexStatus
-	indexCancel    context.CancelFunc
-	indexDirty     map[int32]struct{}
-	indexGen       uint64
-	advancedIndex  *pvf.StringPoolIndex
-	advancedStatus AdvancedSearchIndexStatus
-	advancedCancel context.CancelFunc
-	binaryCache    map[binarySearchKey][]advancedFileMatch
-	unpackCancel   atomic.Bool
-	unpackRunning  atomic.Bool
+	mu                  sync.RWMutex
+	archive             *pvf.Archive
+	annotationEngine    *annotationrules.Engine
+	annotationErr       error
+	annotationRelations map[string]map[string]*relationTarget
+	editorText          map[int32]string
+	editorAnnotation    editorAnnotationCache
+	pathAnnotations     map[string][]TreeAnnotation
+	dirChildren         map[string][]*TreeNode // dirPath -> ordered children ("" = root)
+	directories         []string
+	sortedPaths         []pathEntry
+	searchRecords       []searchRecord
+	searchByFile        map[int32][]int
+	treeTagsByFile      map[int32][]TreeTag
+	indexStatus         IndexStatus
+	indexCancel         context.CancelFunc
+	indexDirty          map[int32]struct{}
+	indexGen            uint64
+	advancedIndex       *pvf.StringPoolIndex
+	advancedStatus      AdvancedSearchIndexStatus
+	advancedCancel      context.CancelFunc
+	binaryCache         map[binarySearchKey][]advancedFileMatch
+	unpackCancel        atomic.Bool
+	unpackRunning       atomic.Bool
 }
 
-func newCore() *core { return &core{} }
+type editorAnnotationCache struct {
+	valid       bool
+	fileIndex   int32
+	text        string
+	annotations []EditorAnnotation
+}
+
+func newCore() *core { return makeCore() }
 
 // NewCore creates the shared service state (one per application).
-func NewCore() *core { return &core{} }
+func NewCore() *core { return makeCore() }
+
+func makeCore() *core {
+	engine, err := annotationrules.LoadDefault()
+	return &core{annotationEngine: engine, annotationErr: err}
+}
 
 // setArchive loads an archive and builds derived indexes. Index building
 // walks every path once (~1M entries, well under a second in Go).
 func (c *core) setArchive(a *pvf.Archive) error {
+	if c.annotationErr != nil {
+		return c.annotationErr
+	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
 		return err
@@ -102,6 +125,10 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	}
 	sort.Strings(directories)
 	c.archive = a
+	c.annotationRelations = make(map[string]map[string]*relationTarget)
+	c.editorText = make(map[int32]string)
+	c.editorAnnotation = editorAnnotationCache{}
+	c.pathAnnotations = buildPathAnnotations(c.annotationEngine, children)
 	c.dirChildren = children
 	c.directories = directories
 	c.sortedPaths = paths
@@ -131,6 +158,10 @@ func (c *core) closeArchive() {
 	}
 	c.indexGen++
 	c.archive = nil
+	c.annotationRelations = nil
+	c.editorText = nil
+	c.editorAnnotation = editorAnnotationCache{}
+	c.pathAnnotations = nil
 	c.dirChildren = nil
 	c.directories = nil
 	c.sortedPaths = nil

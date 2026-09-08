@@ -15,13 +15,16 @@ import EditorTabs from "./components/EditorTabs.vue";
 import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
+import SettingsModal from "./components/SettingsModal.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
+import { useSettingsStore } from "./stores/settings";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const settings = useSettingsStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -55,6 +58,7 @@ function onResizeEnd() {
 }
 
 onMounted(() => {
+	void settings.load();
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
   window.addEventListener("keydown", onKeydown);
@@ -92,6 +96,7 @@ async function onKeydown(e: KeyboardEvent) {
         <div class="app-root" :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />
+          <SettingsModal />
           <div class="app-body">
             <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">
               <Explorer />

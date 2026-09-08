@@ -47,6 +47,11 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  annotation:editor:
+    summary: Starts the built-in annotation rule editor
+    cmds:
+      - go run ./cmd/annotation-editor
+
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
     cmds:

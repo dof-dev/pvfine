@@ -5,9 +5,11 @@ import { Dismiss16Regular } from "@vicons/fluent";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import CodeEditor from "./CodeEditor.vue";
+import { useSettingsStore } from "../stores/settings";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const settings = useSettingsStore();
 
 function typeTag(t: number): string {
   if (t === 1) return "script";
@@ -87,7 +89,10 @@ function sizeText(n: number): string {
             v-else
             :doc="tab.text"
             :read-only="!tab.editable"
+            :annotations="tab.annotations"
+            :tag-placement="settings.annotationTagPlacement"
             @change="(text: string) => editor.updateContent(tab.index, text)"
+            @open-reference="editor.openFile"
           />
         </div>
       </NTabPane>

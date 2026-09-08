@@ -209,6 +209,7 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
           dataType: 0,
           childCount: 0,
           tags: [],
+          annotations: item.pathAnnotations[path] ?? [],
         };
         nodesByPath.set(path, directory);
         children.push(directory);
@@ -231,9 +232,14 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
         dataType: item.dataType,
         childCount: 0,
         tags: [],
+        annotations: item.annotations,
       };
       nodesByPath.set(filePath, file);
       children.push(file);
+    }
+
+    if (file.annotations.length === 0 && item.annotations.length > 0) {
+      file.annotations = item.annotations;
     }
 
     if (item.category !== "file") {

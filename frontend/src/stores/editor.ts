@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { EditorService } from "../../bindings/pvfine/services";
-import type { FileMeta } from "../../bindings/pvfine/services/models";
+import type { EditorAnnotation, FileMeta } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
 export interface EditorTab {
@@ -14,6 +14,7 @@ export interface EditorTab {
   original: string; // 打开时的文本(脏判定基准)
   text: string; // 当前编辑器内容
   modified: boolean; // 后端 overlay 状态
+  annotations: EditorAnnotation[];
 }
 
 /** 编辑器状态:多标签 + 防抖内存同步 */
@@ -54,6 +55,9 @@ export const useEditorStore = defineStore("editor", () => {
         original: meta.text,
         text: meta.text,
         modified: meta.modified,
+        annotations: (meta.annotations ?? []).filter(
+          (annotation): annotation is EditorAnnotation => !!annotation
+        ),
       });
       activeKey.value = index;
     } finally {
@@ -86,7 +90,7 @@ export const useEditorStore = defineStore("editor", () => {
         const t = tabs.value.find((x) => x.index === i);
         if (!t) continue;
         try {
-          await EditorService.SetText(i, t.text);
+          await syncTab(t);
         } catch (e) {
           console.error("sync failed", e);
         }
@@ -140,8 +144,34 @@ export const useEditorStore = defineStore("editor", () => {
     pendingSync.clear();
     for (const i of batch) {
       const t = tabs.value.find((x) => x.index === i);
-      if (t) await EditorService.SetText(i, t.text);
+      if (t) await syncTab(t);
     }
+  }
+
+  async function syncTab(tab: EditorTab) {
+    const text = tab.text;
+    await EditorService.SetText(tab.index, text);
+    const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
+    const current = tabs.value.find((item) => item.index === tab.index);
+    if (!current || current.text !== text) return;
+    current.annotations = annotations.filter(
+      (annotation): annotation is EditorAnnotation => !!annotation
+    );
+  }
+
+  async function refreshAnnotations() {
+    await flushPending();
+    await Promise.all(
+      tabs.value.map(async (tab) => {
+        const text = tab.text;
+        const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
+        const current = tabs.value.find((item) => item.index === tab.index);
+        if (!current || current.text !== text) return;
+        current.annotations = annotations.filter(
+          (annotation): annotation is EditorAnnotation => !!annotation
+        );
+      })
+    );
   }
 
   return {
@@ -157,5 +187,6 @@ export const useEditorStore = defineStore("editor", () => {
     save,
     saveAs,
     flushPending,
+    refreshAnnotations,
   };
 });

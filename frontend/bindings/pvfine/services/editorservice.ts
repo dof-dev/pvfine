@@ -29,6 +29,13 @@ export function ExportFileDialog(index: number): $CancellablePromise<string> {
 }
 
 /**
+ * GetAnnotations recomputes annotations against the exact current editor text.
+ */
+export function GetAnnotations(index: number): $CancellablePromise<$models.EditorAnnotation[] | null> {
+    return $Call.ByID(1902721074, index);
+}
+
+/**
  * GetFile 返回文件的反编译文本(内存编辑视图)。
  */
 export function GetFile(index: number): $CancellablePromise<$models.FileMeta | null> {

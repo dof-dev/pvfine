@@ -54,10 +54,29 @@ export interface AdvancedSearchResult {
     "scanned": number;
 }
 
+export interface AnnotationReloadResult {
+    "ruleCount": number;
+    "relationCount": number;
+}
+
+export interface AppSettings {
+    "annotationTagPlacement": string;
+}
+
 /**
  * ArchiveInfo 是前端可观察的归档状态快照。
  */
 export type ArchiveInfo = pvf$0.ArchiveInfoView;
+
+export interface EditorAnnotation {
+    "start": number;
+    "end": number;
+    "title": string;
+    "content": string;
+    "type": string;
+    "targetFileIndex": number;
+    "ruleIds"?: string[] | null;
+}
 
 /**
  * FileMeta 返回给前端的单个文件视图。
@@ -70,6 +89,7 @@ export interface FileMeta {
     "editable": boolean;
     "text": string;
     "modified": boolean;
+    "annotations"?: EditorAnnotation[] | null;
 }
 
 /**
@@ -95,6 +115,8 @@ export interface SearchHit {
     "size": number;
     "dataType": number;
     "fileIndex": number;
+    "annotations"?: TreeAnnotation[] | null;
+    "pathAnnotations"?: { [_ in string]?: TreeAnnotation[] | null } | null;
 }
 
 /**
@@ -104,6 +126,13 @@ export interface SearchResult {
     "hits": (SearchHit | null)[] | null;
     "nextCursor": number;
     "scanned": number;
+}
+
+export interface TreeAnnotation {
+    "title": string;
+    "content": string;
+    "type": string;
+    "ruleIds"?: string[] | null;
 }
 
 /**
@@ -122,6 +151,7 @@ export interface TreeNode {
      */
     "fileIndex": number;
     "tags"?: TreeTag[] | null;
+    "annotations"?: TreeAnnotation[] | null;
 }
 
 /**

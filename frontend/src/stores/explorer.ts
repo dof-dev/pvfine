@@ -2,7 +2,12 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService } from "../../bindings/pvfine/services";
-import type { SearchHit, TreeNode, TreeTag } from "../../bindings/pvfine/services/models";
+import type {
+  SearchHit,
+  TreeAnnotation,
+  TreeNode,
+  TreeTag,
+} from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
 export interface TreeItem {
@@ -16,6 +21,7 @@ export interface TreeItem {
   dataType: number;
   childCount: number;
   tags: TreeTag[];
+  annotations: TreeAnnotation[];
 }
 
 export interface SearchItem {
@@ -27,6 +33,8 @@ export interface SearchItem {
   fileIndex: number;
   size: number;
   dataType: number;
+  annotations: TreeAnnotation[];
+  pathAnnotations: Record<string, TreeAnnotation[]>;
 }
 
 /** 资源管理器状态:懒加载树 + 搜索 */
@@ -58,6 +66,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       dataType: n.dataType,
       childCount: n.childCount,
       tags: (n.tags ?? []).filter((tag): tag is TreeTag => !!tag),
+      annotations: cleanAnnotations(n.annotations),
     };
   }
 
@@ -76,6 +85,13 @@ export const useExplorerStore = defineStore("explorer", () => {
       fileIndex: n.fileIndex,
       size: n.size,
       dataType: n.dataType,
+      annotations: cleanAnnotations(n.annotations),
+      pathAnnotations: Object.fromEntries(
+        Object.entries(n.pathAnnotations ?? {}).map(([path, annotations]) => [
+          path,
+          cleanAnnotations(annotations),
+        ])
+      ),
     };
   }
 
@@ -112,9 +128,9 @@ export const useExplorerStore = defineStore("explorer", () => {
     mode.value = "tree";
   }
 
-  /** 刷新当前已加载文件的索引标签;未展开的目录在下次加载时自然获得最新标签。 */
+  /** 刷新已加载节点的路径标注和可用的索引标签。 */
   async function refreshTreeTags() {
-    if (!archive.open || !archive.indexReady) return;
+    if (!archive.open) return;
     const request = ++treeRefreshRequest;
     const loadedDirectories = Array.from(itemsByKey.values())
       .filter((item) => item.isDir && item.children !== null)
@@ -123,22 +139,35 @@ export const useExplorerStore = defineStore("explorer", () => {
     const nodeLists = await Promise.all(
       paths.map(async (path) => (await ArchiveService.ListChildren(path)) ?? [])
     );
-    if (request !== treeRefreshRequest || !archive.open || !archive.indexReady) return;
+    if (request !== treeRefreshRequest || !archive.open) return;
 
     const tagsByFile = new Map<number, TreeTag[]>();
+    const annotationsByPath = new Map<string, TreeAnnotation[]>();
     for (const nodes of nodeLists) {
       for (const node of nodes) {
-        if (!node || node.isDir || node.fileIndex < 0) continue;
-        tagsByFile.set(
-          node.fileIndex,
-          (node.tags ?? []).filter((tag): tag is TreeTag => !!tag)
-        );
+        if (!node) continue;
+        annotationsByPath.set(node.path, cleanAnnotations(node.annotations));
+        if (archive.indexReady && !node.isDir && node.fileIndex >= 0) {
+          tagsByFile.set(
+            node.fileIndex,
+            (node.tags ?? []).filter((tag): tag is TreeTag => !!tag)
+          );
+        }
       }
     }
     for (const item of itemsByKey.values()) {
-      if (item.isDir) continue;
-      const tags = tagsByFile.get(item.fileIndex);
-      if (tags) item.tags = tags;
+      item.annotations = annotationsByPath.get(item.key) ?? item.annotations;
+      if (!item.isDir) {
+        const tags = tagsByFile.get(item.fileIndex);
+        if (tags) item.tags = tags;
+      }
+    }
+  }
+
+  async function refreshAnnotations() {
+    await refreshTreeTags();
+    if (mode.value === "search" && query.value.trim() && archive.indexReady) {
+      await search(query.value);
     }
   }
 
@@ -209,9 +238,18 @@ export const useExplorerStore = defineStore("explorer", () => {
     loadRoots,
     loadChildren,
     refreshTreeTags,
+    refreshAnnotations,
     reset,
     search,
     loadMore,
     clearSearch,
   };
 });
+
+function cleanAnnotations(
+  annotations: (TreeAnnotation | null)[] | null | undefined
+): TreeAnnotation[] {
+  return (annotations ?? []).filter(
+    (annotation): annotation is TreeAnnotation => !!annotation
+  );
+}

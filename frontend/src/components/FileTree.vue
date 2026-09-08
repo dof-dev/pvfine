@@ -135,6 +135,21 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
   const children: VNodeChild[] = [
     h("span", { class: "tree-item-name" }, item.label),
   ];
+  for (const annotation of item.annotations) {
+    children.push(
+      h(
+        NTag,
+        {
+          size: "tiny",
+          bordered: false,
+          type: annotation.type === "reference" ? "success" : annotation.type === "enum" ? "warning" : "info",
+          class: "tree-tag tree-tag-annotation",
+          title: annotation.content,
+        },
+        { default: () => annotation.title }
+      )
+    );
+  }
   if (archive.indexReady && !item.isDir) {
     for (const tag of item.tags) {
       if (tag.id) {

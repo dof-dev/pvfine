@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "description": "pvfine built-in annotation rules",
+  "relations": {
+    "装备": {
+      "listPath": "equipment/equipment.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "道具": {
+      "listPath": "stackable/stackable.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    }
+  },
+  "rules": [
+    {
+      "id": "global.rarity.1",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "rarity"
+      },
+      "annotation": {
+        "title": "稀有度",
+        "type": "text"
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.rarity.2",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "rarity",
+        "index": 0
+      },
+      "annotation": {
+        "title": "稀有度",
+        "type": "enum",
+        "values": {
+          "0": "普通",
+          "1": "魔法",
+          "2": "稀有",
+          "3": "神器",
+          "4": "史诗",
+          "5": "勇者",
+          "6": "传说"
+        }
+      },
+      "group": "global"
+    },
+    {
+      "id": "booster装备关联",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "etc",
+        "index": 1
+      },
+      "annotation": {
+        "title": "非法 ID",
+        "type": "reference",
+        "relation": "装备"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "booster道具关联",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stackable",
+        "index": 1
+      },
+      "annotation": {
+        "title": "非法 ID",
+        "type": "reference",
+        "relation": "道具"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "booster·道具权重",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stackable",
+        "index": 2
+      },
+      "annotation": {
+        "title": "权重",
+        "type": "text"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "booster·道具数量",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stackable",
+        "index": 3
+      },
+      "annotation": {
+        "title": "数量",
+        "type": "text"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "booster·装备权重",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "etc",
+        "index": 2
+      },
+      "annotation": {
+        "title": "权重",
+        "type": "text"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "booster·装备数量",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "etc",
+        "index": 3
+      },
+      "annotation": {
+        "title": "数量",
+        "type": "text"
+      },
+      "group": "booster"
+    },
+    {
+      "id": "global.cool_time",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "cool time"
+      },
+      "annotation": {
+        "title": "冷却时间 ms",
+        "type": "text"
+      },
+      "group": "global"
+    }
+  ]
+}

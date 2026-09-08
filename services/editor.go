@@ -20,25 +20,26 @@ func NewEditorService(c *core) *EditorService { return &EditorService{c: c} }
 
 // FileMeta 返回给前端的单个文件视图。
 type FileMeta struct {
-	Index    int32  `json:"index"`
-	Path     string `json:"path"`
-	DataType int32  `json:"dataType"`
-	Size     int32  `json:"size"`
-	Editable bool   `json:"editable"`
-	Text     string `json:"text"`
-	Modified bool   `json:"modified"`
+	Index       int32              `json:"index"`
+	Path        string             `json:"path"`
+	DataType    int32              `json:"dataType"`
+	Size        int32              `json:"size"`
+	Editable    bool               `json:"editable"`
+	Text        string             `json:"text"`
+	Modified    bool               `json:"modified"`
+	Annotations []EditorAnnotation `json:"annotations,omitempty"`
 }
 
 // GetFile 返回文件的反编译文本(内存编辑视图)。
 func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
-	s.c.mu.RLock()
-	defer s.c.mu.RUnlock()
+	s.c.mu.Lock()
+	defer s.c.mu.Unlock()
 	a := s.c.archive
 	if a == nil {
 		return nil, ErrNoArchive
 	}
-	if index < 0 || index >= a.FileCount() {
-		return nil, fmt.Errorf("文件索引越界: %d", index)
+	if err := validateAnnotationIndex(a, index); err != nil {
+		return nil, err
 	}
 	f := a.File(index)
 	meta := &FileMeta{
@@ -54,17 +55,52 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节", f.DataSize, maxEditableBytes)
 			return meta, nil
 		}
-		text, err := a.Text(index)
-		if err != nil {
-			return nil, err
+		text, ok := s.c.editorText[index]
+		if !ok {
+			var err error
+			text, err = a.Text(index)
+			if err != nil {
+				return nil, err
+			}
 		}
 		meta.Editable = true
 		meta.Text = text
+		if f.DataType == pvf.TypeScript {
+			annotations, err := s.c.editorAnnotationsLocked(index, text)
+			if err != nil {
+				return nil, err
+			}
+			meta.Annotations = annotations
+		}
 	default:
 		meta.Text = fmt.Sprintf("; 不支持的类型 %d(v1 仅支持脚本/文本编辑)", f.DataType)
 	}
 	meta.Modified = a.IsModified(index)
 	return meta, nil
+}
+
+// GetAnnotations recomputes annotations against the exact current editor text.
+func (s *EditorService) GetAnnotations(index int32) ([]EditorAnnotation, error) {
+	s.c.mu.Lock()
+	defer s.c.mu.Unlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+	if err := validateAnnotationIndex(s.c.archive, index); err != nil {
+		return nil, err
+	}
+	if s.c.archive.File(index).DataType != pvf.TypeScript {
+		return []EditorAnnotation{}, nil
+	}
+	text, ok := s.c.editorText[index]
+	if !ok {
+		var err error
+		text, err = s.c.archive.Text(index)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return s.c.editorAnnotationsLocked(index, text)
 }
 
 // SetText 把编辑后的文本写入内存 overlay(不落盘)。

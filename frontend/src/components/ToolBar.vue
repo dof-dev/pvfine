@@ -12,21 +12,28 @@ import {
   PanelRight24Regular,
   PanelRightContract24Regular,
   ArrowSync24Regular,
+  DocumentSync24Regular,
+  Settings24Regular,
 } from "@vicons/fluent";
 import { NButton, NIcon, NTooltip, NProgress, NText, useDialog } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useFileSetStore } from "../stores/fileSets";
-import { UpdateService } from "../../bindings/pvfine/services";
+import { AnnotationService, UpdateService } from "../../bindings/pvfine/services";
+import { useSettingsStore } from "../stores/settings";
+import { useExplorerStore } from "../stores/explorer";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
 const fileSets = useFileSetStore();
+const settings = useSettingsStore();
+const explorer = useExplorerStore();
 const message = useMessage();
 const dialog = useDialog();
 const checkingUpdates = ref(false);
+const reloadingAnnotations = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
@@ -117,6 +124,23 @@ async function onCheckUpdates() {
   }
 }
 
+async function onReloadAnnotations() {
+  if (reloadingAnnotations.value) return;
+  reloadingAnnotations.value = true;
+  try {
+    await editor.flushPending();
+    const result = await AnnotationService.ReloadRules();
+    await Promise.all([editor.refreshAnnotations(), explorer.refreshAnnotations()]);
+    message.success(
+      `已重载 ${result.ruleCount} 条标注规则、${result.relationCount} 个关联类型`
+    );
+  } catch (e: any) {
+    message.error(`重载标注规则失败: ${e?.message ?? e}`);
+  } finally {
+    reloadingAnnotations.value = false;
+  }
+}
+
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -195,6 +219,20 @@ function isCancel(e: any): boolean {
       <template #trigger>
         <NButton
           quaternary
+          :loading="reloadingAnnotations"
+          aria-label="重载标注规则"
+          @click="onReloadAnnotations"
+        >
+          <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+        </NButton>
+      </template>
+      从磁盘重新加载标注规则
+    </NTooltip>
+
+    <NTooltip trigger="hover">
+      <template #trigger>
+        <NButton
+          quaternary
           :loading="checkingUpdates"
           aria-label="检查更新"
           @click="onCheckUpdates"
@@ -204,6 +242,15 @@ function isCancel(e: any): boolean {
         </NButton>
       </template>
       检查 pvfine 更新
+    </NTooltip>
+
+    <NTooltip trigger="hover">
+      <template #trigger>
+        <NButton quaternary aria-label="设置" @click="settings.open">
+          <template #icon><NIcon><Settings24Regular /></NIcon></template>
+        </NButton>
+      </template>
+      设置
     </NTooltip>
 
     <div v-if="archive.unpacking" class="unpack-progress">
