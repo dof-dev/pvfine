@@ -22,10 +22,11 @@ export function CancelUnpack(): $CancellablePromise<void> {
 }
 
 /**
- * ExportFileDialog 把单个文件导出到磁盘(保留原始字节)。
+ * ExportFilesDialog 将选中的文件或目录导出到目标目录,文件内容使用渲染后的 UTF-8 文本。
+ * 目录会递归展开,并保留归档内的相对路径。
  */
-export function ExportFileDialog(index: number): $CancellablePromise<string> {
-    return $Call.ByID(3544092612, index);
+export function ExportFilesDialog(scopes: string[] | null): $CancellablePromise<string> {
+    return $Call.ByID(2444537465, scopes);
 }
 
 /**

@@ -178,10 +178,6 @@ export const useArchiveStore = defineStore("archive", () => {
     EditorService.CancelUnpack();
   }
 
-  async function exportFile(index: number) {
-    return EditorService.ExportFileDialog(index);
-  }
-
   // 后端事件
   Events.On("archive:opened", (event: any) => {
     const data = eventData(event);
@@ -238,6 +234,5 @@ export const useArchiveStore = defineStore("archive", () => {
     refreshInfo,
     unpackDialog,
     cancelUnpack,
-    exportFile,
   };
 });

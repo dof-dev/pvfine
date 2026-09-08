@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -170,44 +172,139 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	return path, nil
 }
 
-// ExportFileDialog 把单个文件导出到磁盘(保留原始字节)。
-func (s *EditorService) ExportFileDialog(index int32) (string, error) {
+type exportSelection struct {
+	index int32
+	path  string
+}
+
+// ExportFilesDialog 将选中的文件或目录导出到目标目录,文件内容使用渲染后的 UTF-8 文本。
+// 目录会递归展开,并保留归档内的相对路径。
+func (s *EditorService) ExportFilesDialog(scopes []string) (string, error) {
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {
 		s.c.mu.RUnlock()
 		return "", ErrNoArchive
 	}
+	selections := collectExportSelections(a, s.c.sortedPaths, scopes)
 	s.c.mu.RUnlock()
-	if index < 0 || index >= a.FileCount() {
-		return "", fmt.Errorf("文件索引越界: %d", index)
+	if len(selections) == 0 {
+		return "", fmt.Errorf("没有可导出的文件")
 	}
-	defName := filepath.Base(a.Path(index))
-	path, err := application.Get().Dialog.SaveFile().
-		SetFilename(defName).
-		SetMessage("导出文件").
+	dir, err := application.Get().Dialog.OpenFile().
+		CanChooseFiles(false).
+		CanChooseDirectories(true).
+		CanCreateDirectories(true).
+		SetTitle("选择导出目标目录").
 		PromptForSingleSelection()
 	if err != nil {
 		return "", err
 	}
-	if path == "" {
+	if dir == "" {
 		return "", nil
 	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+
 	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
 	if s.c.archive != a {
-		s.c.mu.RUnlock()
 		return "", ErrNoArchive
 	}
-	raw, err := a.RawBytes(index)
-	data := append([]byte(nil), raw...)
-	s.c.mu.RUnlock()
-	if err != nil {
-		return "", err
+	for _, selection := range selections {
+		text, err := a.Text(selection.index)
+		if err != nil {
+			return "", fmt.Errorf("渲染 %q 失败: %w", selection.path, err)
+		}
+		dst, err := safeExportPath(dir, selection.path)
+		if err != nil {
+			return "", err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dst, []byte(text), 0o644); err != nil {
+			return "", err
+		}
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return "", err
+	return dir, nil
+}
+
+func collectExportSelections(a *pvf.Archive, sortedPaths []pathEntry, scopes []string) []exportSelection {
+	selections := make([]exportSelection, 0, len(scopes))
+	seenPaths := make(map[string]struct{}, len(scopes))
+	add := func(index int32, path string) {
+		path = normalizeExportPath(path)
+		if path == "" {
+			return
+		}
+		if _, exists := seenPaths[path]; exists {
+			return
+		}
+		seenPaths[path] = struct{}{}
+		selections = append(selections, exportSelection{index: index, path: path})
 	}
-	return path, nil
+
+	for _, rawScope := range scopes {
+		scope := normalizeExportPath(rawScope)
+		if scope == "" {
+			continue
+		}
+		if index, ok := a.Find(scope); ok {
+			add(index, a.Path(index))
+			continue
+		}
+
+		prefix := scope + "/"
+		start := sort.Search(len(sortedPaths), func(i int) bool {
+			return sortedPaths[i].path >= prefix
+		})
+		for _, entry := range sortedPaths[start:] {
+			if !strings.HasPrefix(entry.path, prefix) {
+				break
+			}
+			add(entry.idx, entry.path)
+		}
+	}
+	return selections
+}
+
+func normalizeExportPath(path string) string {
+	path = strings.ReplaceAll(path, "\\", "/")
+	return strings.Trim(path, "/")
+}
+
+func safeExportPath(base, internal string) (string, error) {
+	parts := strings.Split(strings.ReplaceAll(internal, "\\", "/"), "/")
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			return "", fmt.Errorf("导出路径越界: %q", internal)
+		}
+		cleaned = append(cleaned, sanitizeExportName(part))
+	}
+	if len(cleaned) == 0 {
+		return "", fmt.Errorf("导出路径为空: %q", internal)
+	}
+	return filepath.Join(append([]string{base}, cleaned...)...), nil
+}
+
+func sanitizeExportName(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			return '_'
+		case strings.ContainsRune(`<>:"|?*`, r):
+			return '_'
+		default:
+			return r
+		}
+	}, name)
 }
 
 // UnpackDialog 选择目录后,在后台协程把整包解包到该目录。

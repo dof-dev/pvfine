@@ -68,6 +68,7 @@ func main() {
 	appMenu.Add("退出").OnClick(func(*application.Context) {
 		app.Quit()
 	})
+	menu.AddRole(application.EditMenu)
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "pvfine — PVF 归档编辑器",

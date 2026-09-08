@@ -4,7 +4,6 @@ import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
   Save24Regular,
-  ArrowExportLtr24Regular,
   ArchiveMultiple24Regular,
   FolderArrowUp24Regular,
   Stop24Regular,
@@ -73,16 +72,6 @@ async function onSaveAs() {
     if (path) message.success(`已另存为 ${path}`);
   } catch (e: any) {
     if (!isCancel(e)) message.error(`另存为失败: ${e?.message ?? e}`);
-  }
-}
-
-async function onExport() {
-  if (!editor.activeTab) return;
-  try {
-    const path = await archive.exportFile(editor.activeTab.index);
-    if (path) message.success(`已导出 ${path}`);
-  } catch (e: any) {
-    if (!isCancel(e)) message.error(`导出失败: ${e?.message ?? e}`);
   }
 }
 
@@ -193,16 +182,6 @@ function isCancel(e: any): boolean {
     <div class="tb-sep" />
 
     <div class="tb-group">
-      <NTooltip trigger="hover">
-        <template #trigger>
-          <NButton quaternary :disabled="!archive.open || !editor.activeTab" @click="onExport">
-            <template #icon><NIcon><ArrowExportLtr24Regular /></NIcon></template>
-            导出文件
-          </NButton>
-        </template>
-        导出当前文件原始字节
-      </NTooltip>
-
       <NButton quaternary v-if="!archive.unpacking" :disabled="!archive.open" @click="onUnpack">
         <template #icon><NIcon><ArchiveMultiple24Regular /></NIcon></template>
         解包

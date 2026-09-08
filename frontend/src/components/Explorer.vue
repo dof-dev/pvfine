@@ -12,7 +12,7 @@ import {
   useMessage,
 } from "naive-ui";
 import { Target20Regular } from "@vicons/fluent";
-import { ArchiveService } from "../../bindings/pvfine/services";
+import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
@@ -28,6 +28,7 @@ const message = useMessage();
 
 const searchInput = ref("");
 const adding = ref(false);
+const exporting = ref(false);
 const contextMenu = ref({
   show: false,
   x: 0,
@@ -41,9 +42,16 @@ const visibleTreeItems = computed(() =>
 const treeKey = computed(() => `${explorer.mode}:${explorer.query}`);
 const contextMenuOptions = computed(() => [
   {
+    label: "导出文件",
+    key: "export",
+    disabled:
+      adding.value || exporting.value || !archive.open || contextMenu.value.items.length === 0,
+  },
+  {
     label: `加入“${fileSets.activeSet?.name ?? "当前文件集"}”`,
     key: "add",
-    disabled: adding.value || !archive.open || contextMenu.value.items.length === 0,
+    disabled:
+      adding.value || exporting.value || !archive.open || contextMenu.value.items.length === 0,
   },
 ]);
 
@@ -118,25 +126,35 @@ function serviceEntry(node: TreeNode): FileSetEntry {
   };
 }
 
-function appendSearchPaths(item: TreeItem, paths: string[]): void {
+function appendSearchPaths(item: TreeItem, paths: string[], seen: Set<string>): void {
   if (!item.isDir) {
-    if (item.fileIndex >= 0) paths.push(item.key);
+    if (item.fileIndex >= 0 && !seen.has(item.key)) {
+      seen.add(item.key);
+      paths.push(item.key);
+    }
     return;
   }
-  for (const child of item.children ?? []) appendSearchPaths(child, paths);
+  for (const child of item.children ?? []) appendSearchPaths(child, paths, seen);
 }
 
 async function collectFilePaths(items: TreeItem[]): Promise<string[]> {
   const paths: string[] = [];
+  const seen = new Set<string>();
+  const appendPath = (path: string) => {
+    if (!seen.has(path)) {
+      seen.add(path);
+      paths.push(path);
+    }
+  };
   const directoryRequests = new Map<string, Promise<TreeNode[]>>();
 
   for (const item of items) {
     if (!item.isDir) {
-      if (item.fileIndex >= 0) paths.push(item.key);
+      if (item.fileIndex >= 0) appendPath(item.key);
       continue;
     }
     if (explorer.mode === "search") {
-      appendSearchPaths(item, paths);
+      appendSearchPaths(item, paths, seen);
       continue;
     }
     let request = directoryRequests.get(item.key);
@@ -149,9 +167,14 @@ async function collectFilePaths(items: TreeItem[]): Promise<string[]> {
       );
       directoryRequests.set(item.key, request);
     }
-    for (const node of await request) paths.push(node.path);
+    for (const node of await request) appendPath(node.path);
   }
   return paths;
+}
+
+async function collectExportScopes(items: TreeItem[]): Promise<string[]> {
+  if (explorer.mode === "search") return collectFilePaths(items);
+  return [...new Set(items.map((item) => item.key).filter(Boolean))];
 }
 
 async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
@@ -163,6 +186,10 @@ async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
 }
 
 async function onContextMenuSelect(key: string | number): Promise<void> {
+  if (key === "export") {
+    await onExportSelected(contextMenu.value.items);
+    return;
+  }
   if (key !== "add" || adding.value) return;
   const selectedItems = contextMenu.value.items;
   const archivePath = archive.info?.path ?? "";
@@ -186,6 +213,35 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
   } finally {
     adding.value = false;
   }
+}
+
+async function onExportSelected(items: TreeItem[]): Promise<void> {
+  if (exporting.value) return;
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  hideContextMenu();
+  exporting.value = true;
+  try {
+    await editor.flushPending();
+    const scopes = await collectExportScopes(items);
+    if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
+    if (scopes.length === 0) {
+      message.info("选中的目录中没有文件");
+      return;
+    }
+    const path = await EditorService.ExportFilesDialog(scopes);
+    if (path) message.success(`已导出选中文件到 ${path}`);
+  } catch (error: any) {
+    if (session === fileSets.sessionId && archive.info?.path === archivePath) {
+      if (!isCancel(error)) message.error(`导出失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    exporting.value = false;
+  }
+}
+
+function isCancel(error: any): boolean {
+  return String(error?.message ?? error).toLowerCase().includes("cancel");
 }
 
 function buildSearchTree(items: SearchItem[]): TreeItem[] {
@@ -310,7 +366,10 @@ function sortTree(items: TreeItem[]): void {
       </NInput>
     </div>
 
-    <NSpin class="exp-spin" :show="archive.loading || explorer.searching || adding">
+    <NSpin
+      class="exp-spin"
+      :show="archive.loading || explorer.searching || adding || exporting"
+    >
       <div class="exp-body">
         <!-- 空态 -->
         <NEmpty

@@ -8,6 +8,7 @@ import {
   Dismiss24Regular,
   Document24Regular,
   Edit24Regular,
+  ArrowExportLtr24Regular,
   PanelRightContract24Regular,
 } from "@vicons/fluent";
 import {
@@ -20,13 +21,18 @@ import {
   NTag,
   NText,
   NTooltip,
+  useMessage,
   useDialog,
 } from "naive-ui";
+import { EditorService } from "../../bindings/pvfine/services";
+import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 
 const fileSets = useFileSetStore();
+const archive = useArchiveStore();
 const editor = useEditorStore();
+const message = useMessage();
 const dialog = useDialog();
 
 const namingVisible = ref(false);
@@ -34,6 +40,7 @@ const namingMode = ref<"create" | "rename">("create");
 const namingSetId = ref("");
 const namingValue = ref("");
 const namingError = ref("");
+const exporting = ref(false);
 
 const setOptions = computed(() =>
   fileSets.fileSets.map((fileSet) => ({
@@ -116,8 +123,41 @@ function clearCurrent(): void {
   });
 }
 
+async function exportCurrent(): Promise<void> {
+  const active = fileSets.activeSet;
+  if (!active || active.entries.length === 0 || exporting.value || !archive.open) return;
+
+  const paths = [...new Set(active.entries.map((entry) => entry.path).filter(Boolean))];
+  if (paths.length === 0) return;
+
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  const setId = active.id;
+  exporting.value = true;
+  try {
+    await editor.flushPending();
+    if (
+      session !== fileSets.sessionId ||
+      archive.info?.path !== archivePath ||
+      fileSets.activeSet?.id !== setId
+    ) {
+      return;
+    }
+    const path = await EditorService.ExportFilesDialog(paths);
+    if (path) message.success(`已导出文件集“${active.name}”到 ${path}`);
+  } catch (error: any) {
+    if (!isCancel(error)) message.error(`导出文件集失败: ${error?.message ?? error}`);
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function openEntry(entry: FileSetEntry): void {
   void editor.openFile(entry.fileIndex);
+}
+
+function isCancel(error: any): boolean {
+  return String(error?.message ?? error).toLowerCase().includes("cancel");
 }
 
 watch(
@@ -199,6 +239,22 @@ watch(
         :options="setOptions"
         placeholder="选择文件集"
       />
+      <NTooltip>
+        <template #trigger>
+          <NButton
+            quaternary
+            circle
+            size="small"
+            aria-label="导出当前文件集"
+            :loading="exporting"
+            :disabled="!archive.open || activeEntries.length === 0"
+            @click="exportCurrent"
+          >
+            <template #icon><NIcon><ArrowExportLtr24Regular /></NIcon></template>
+          </NButton>
+        </template>
+        导出当前文件集
+      </NTooltip>
       <NTooltip>
         <template #trigger>
           <NButton
