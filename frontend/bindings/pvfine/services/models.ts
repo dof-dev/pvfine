@@ -61,6 +61,7 @@ export interface AnnotationReloadResult {
 
 export interface AppSettings {
     "annotationTagPlacement": string;
+    "explorerOpenMode": string;
 }
 
 /**

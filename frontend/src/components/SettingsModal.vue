@@ -3,6 +3,7 @@ import { NModal, NRadioButton, NRadioGroup, NSpin, useMessage } from "naive-ui";
 import {
   useSettingsStore,
   type AnnotationTagPlacement,
+  type ExplorerOpenMode,
 } from "../stores/settings";
 
 const settings = useSettingsStore();
@@ -11,6 +12,14 @@ const message = useMessage();
 async function onPlacementChange(value: string | number | boolean) {
   try {
     await settings.savePlacement(value as AnnotationTagPlacement);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onExplorerOpenModeChange(value: string | number | boolean) {
+  try {
+    await settings.saveExplorerOpenMode(value as ExplorerOpenMode);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
@@ -41,6 +50,23 @@ async function onPlacementChange(value: string | number | boolean) {
             <NRadioButton value="after-target">内容后</NRadioButton>
             <NRadioButton value="line-end">行末</NRadioButton>
             <NRadioButton value="hidden">隐藏</NRadioButton>
+          </NRadioGroup>
+        </div>
+      </section>
+      <section class="settings-section">
+        <div class="section-title">资源管理器</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">打开节点方式</div>
+            <div class="setting-description">设置文件和目录使用单击还是双击操作</div>
+          </div>
+          <NRadioGroup
+            :value="settings.explorerOpenMode"
+            size="small"
+            @update:value="onExplorerOpenModeChange"
+          >
+            <NRadioButton value="single-click">单击打开</NRadioButton>
+            <NRadioButton value="double-click">双击打开</NRadioButton>
           </NRadioGroup>
         </div>
       </section>

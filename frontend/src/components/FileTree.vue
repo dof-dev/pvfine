@@ -3,19 +3,21 @@ import { computed, h, ref, watch, type VNodeChild } from "vue";
 import { NTag, NTree, type TreeOption } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import type { TreeItem } from "../stores/explorer";
+import type { ExplorerOpenMode } from "../stores/settings";
 
 const props = withDefaults(
   defineProps<{
     items: TreeItem[];
     height?: string;
     expandAll?: boolean;
+    openMode?: ExplorerOpenMode;
     loadChildren?: (item: TreeItem) => Promise<void>;
   }>(),
-  { height: "100%", expandAll: false }
+  { height: "100%", expandAll: false, openMode: "single-click" }
 );
 
 const emit = defineEmits<{
-  select: [item: TreeItem];
+  open: [item: TreeItem];
   contextmenu: [event: MouseEvent, item: TreeItem | null, items: TreeItem[]];
 }>();
 
@@ -53,6 +55,13 @@ const itemsByKey = computed(() => {
 
 const expandedKeys = ref<Array<string | number>>([]);
 const checkedKeys = ref<string[]>([]);
+const directoryToggleKeys = new Set<string>();
+const handledClickEvents = new WeakSet<MouseEvent>();
+
+function isTreeControl(event: MouseEvent): boolean {
+  const target = event.target;
+  return target instanceof Element && !!target.closest("[data-switcher], [data-checkbox]");
+}
 
 function collectExpandedKeys(items: TreeItem[], result: Array<string | number>): void {
   for (const item of items) {
@@ -99,6 +108,51 @@ function onChecked(keys: Array<string | number>): void {
   checkedKeys.value = keys.map(String);
 }
 
+async function toggleDirectory(item: TreeItem): Promise<void> {
+  if (!item.isDir || directoryToggleKeys.has(item.key)) return;
+  directoryToggleKeys.add(item.key);
+  try {
+    if (item.children === null) {
+      await props.loadChildren?.(item);
+      if (item.children === null) return;
+    }
+    const next = new Set(expandedKeys.value);
+    if (next.has(item.key)) next.delete(item.key);
+    else next.add(item.key);
+    expandedKeys.value = [...next];
+  } finally {
+    directoryToggleKeys.delete(item.key);
+  }
+}
+
+function openNode(item: TreeItem): void {
+  if (item.isDir) {
+    void toggleDirectory(item).catch((error) => {
+      console.error("load explorer directory failed", error);
+    });
+    return;
+  }
+  emit("open", item);
+}
+
+function onNodeClick(event: MouseEvent, item: TreeItem): void {
+  // NTree calls nodeProps.onClick once from its own handler and once from the
+  // merged DOM handler when block-line is enabled. Handle the same event only once.
+  if (handledClickEvents.has(event)) return;
+  handledClickEvents.add(event);
+  if (isTreeControl(event)) return;
+  if (props.openMode !== "single-click") return;
+  event.stopPropagation();
+  openNode(item);
+}
+
+function onNodeDblclick(event: MouseEvent, item: TreeItem): void {
+  if (isTreeControl(event)) return;
+  if (props.openMode !== "double-click") return;
+  event.stopPropagation();
+  openNode(item);
+}
+
 function onNodeContextMenu(event: MouseEvent, item: TreeItem): void {
   event.preventDefault();
   event.stopPropagation();
@@ -112,10 +166,8 @@ function nodeProps({ option }: { option: TreeOption }) {
   const item = (option as FileTreeNode).treeItem;
   return {
     onContextmenu: (event: MouseEvent) => onNodeContextMenu(event, item),
-    onDblclick: (event: MouseEvent) => {
-      event.stopPropagation();
-      if (!item.isDir) emit("select", item);
-    },
+    onClick: (event: MouseEvent) => onNodeClick(event, item),
+    onDblclick: (event: MouseEvent) => onNodeDblclick(event, item),
   };
 }
 
@@ -211,7 +263,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
       :render-label="renderLabel"
       :scrollbar-props="{ xScrollable: true }"
       :style="{ height }"
-      expand-on-click
+      :expand-on-click="false"
     />
   </div>
 </template>

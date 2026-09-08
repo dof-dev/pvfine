@@ -12,14 +12,20 @@ const (
 	AnnotationTagAfterTarget = "after-target"
 	AnnotationTagLineEnd     = "line-end"
 	AnnotationTagHidden      = "hidden"
+	ExplorerOpenSingleClick  = "single-click"
+	ExplorerOpenDoubleClick  = "double-click"
 )
 
 type AppSettings struct {
 	AnnotationTagPlacement string `json:"annotationTagPlacement"`
+	ExplorerOpenMode       string `json:"explorerOpenMode"`
 }
 
 func DefaultAppSettings() AppSettings {
-	return AppSettings{AnnotationTagPlacement: AnnotationTagAfterTarget}
+	return AppSettings{
+		AnnotationTagPlacement: AnnotationTagAfterTarget,
+		ExplorerOpenMode:       ExplorerOpenSingleClick,
+	}
 }
 
 type SettingsService struct {
@@ -110,8 +116,13 @@ func (s *SettingsService) SaveSettings(settings AppSettings) error {
 func validateSettings(settings AppSettings) error {
 	switch settings.AnnotationTagPlacement {
 	case AnnotationTagAfterTarget, AnnotationTagLineEnd, AnnotationTagHidden:
-		return nil
 	default:
 		return fmt.Errorf("无效的标注 Tag 显示位置: %q", settings.AnnotationTagPlacement)
+	}
+	switch settings.ExplorerOpenMode {
+	case ExplorerOpenSingleClick, ExplorerOpenDoubleClick:
+		return nil
+	default:
+		return fmt.Errorf("无效的资源管理器打开方式: %q", settings.ExplorerOpenMode)
 	}
 }

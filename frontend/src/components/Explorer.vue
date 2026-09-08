@@ -18,12 +18,14 @@ import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
+import { useSettingsStore } from "../stores/settings";
 import FileTree from "./FileTree.vue";
 
 const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const settings = useSettingsStore();
 const message = useMessage();
 
 const searchInput = ref("");
@@ -105,7 +107,7 @@ async function onTreeLoad(item: TreeItem): Promise<void> {
   await explorer.loadChildren(item);
 }
 
-function onTreeSelect(item: TreeItem): void {
+function onTreeOpen(item: TreeItem): void {
   if (item && !item.isDir) editor.openFile(item.fileIndex);
 }
 
@@ -465,8 +467,9 @@ function sortTree(items: TreeItem[]): void {
               :key="treeKey"
               :items="visibleTreeItems"
               :expand-all="explorer.mode === 'search'"
+              :open-mode="settings.explorerOpenMode"
               :load-children="onTreeLoad"
-              @select="onTreeSelect"
+              @open="onTreeOpen"
               @contextmenu="onTreeContextMenu"
             />
           </div>

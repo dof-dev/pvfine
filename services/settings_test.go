@@ -16,8 +16,12 @@ func TestSettingsServiceDefaultsAndRoundTrip(t *testing.T) {
 	if settings.AnnotationTagPlacement != AnnotationTagAfterTarget {
 		t.Fatalf("default placement = %q", settings.AnnotationTagPlacement)
 	}
+	if settings.ExplorerOpenMode != ExplorerOpenSingleClick {
+		t.Fatalf("default explorer open mode = %q", settings.ExplorerOpenMode)
+	}
 
 	settings.AnnotationTagPlacement = AnnotationTagLineEnd
+	settings.ExplorerOpenMode = ExplorerOpenDoubleClick
 	if err := service.SaveSettings(settings); err != nil {
 		t.Fatal(err)
 	}
@@ -35,8 +39,22 @@ func TestSettingsServiceDefaultsAndRoundTrip(t *testing.T) {
 
 func TestSettingsServiceRejectsInvalidPlacement(t *testing.T) {
 	service := newSettingsService(filepath.Join(t.TempDir(), "settings.json"))
-	err := service.SaveSettings(AppSettings{AnnotationTagPlacement: "floating"})
+	err := service.SaveSettings(AppSettings{
+		AnnotationTagPlacement: "floating",
+		ExplorerOpenMode:       ExplorerOpenSingleClick,
+	})
 	if err == nil {
 		t.Fatal("expected invalid placement error")
+	}
+}
+
+func TestSettingsServiceRejectsInvalidExplorerOpenMode(t *testing.T) {
+	service := newSettingsService(filepath.Join(t.TempDir(), "settings.json"))
+	err := service.SaveSettings(AppSettings{
+		AnnotationTagPlacement: AnnotationTagAfterTarget,
+		ExplorerOpenMode:       "middle-click",
+	})
+	if err == nil {
+		t.Fatal("expected invalid explorer open mode error")
 	}
 }
