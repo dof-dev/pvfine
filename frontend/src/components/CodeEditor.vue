@@ -15,11 +15,12 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 import { EditorState, Compartment, StateEffect, StateField } from "@codemirror/state";
+import { indentUnit } from "@codemirror/language";
 import {
   defaultKeymap,
   history,
   historyKeymap,
-  indentWithTab,
+  insertTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { vim } from "@replit/codemirror-vim";
@@ -171,10 +172,16 @@ function makeExtensions() {
     crosshairCursor(),
     highlightSelectionMatches(),
     vimComp.of(props.vimMode ? vim() : []),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    keymap.of([
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...searchKeymap,
+      { key: "Tab", run: insertTab },
+    ]),
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
     annotationField,
     pvfLanguage.extension,
+    indentUnit.of("\t"),
     pvfHighlighting,
     darkTheme,
     EditorView.lineWrapping,
