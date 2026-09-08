@@ -22,10 +22,14 @@ func TestSettingsServiceDefaultsAndRoundTrip(t *testing.T) {
 	if settings.VimMode {
 		t.Fatal("default vim mode = true, want false")
 	}
+	if !settings.BackupSourceOnSave {
+		t.Fatal("default backup source on save = false, want true")
+	}
 
 	settings.AnnotationTagPlacement = AnnotationTagLineEnd
 	settings.ExplorerOpenMode = ExplorerOpenDoubleClick
 	settings.VimMode = true
+	settings.BackupSourceOnSave = false
 	if err := service.SaveSettings(settings); err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +53,22 @@ func TestSettingsServiceRejectsInvalidPlacement(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected invalid placement error")
+	}
+}
+
+func TestSettingsServiceEnablesBackupForLegacySettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{"annotationTagPlacement":"after-target","explorerOpenMode":"single-click","vimMode":false}`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	settings, err := newSettingsService(path).GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.BackupSourceOnSave {
+		t.Fatal("legacy settings disabled source backup, want true")
 	}
 }
 

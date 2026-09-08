@@ -20,6 +20,7 @@ type AppSettings struct {
 	AnnotationTagPlacement string `json:"annotationTagPlacement"`
 	ExplorerOpenMode       string `json:"explorerOpenMode"`
 	VimMode                bool   `json:"vimMode"`
+	BackupSourceOnSave     bool   `json:"backupSourceOnSave"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -27,6 +28,7 @@ func DefaultAppSettings() AppSettings {
 		AnnotationTagPlacement: AnnotationTagAfterTarget,
 		ExplorerOpenMode:       ExplorerOpenSingleClick,
 		VimMode:                false,
+		BackupSourceOnSave:     true,
 	}
 }
 

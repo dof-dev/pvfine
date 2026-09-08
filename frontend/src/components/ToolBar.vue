@@ -90,17 +90,30 @@ async function onOpen() {
   }
 }
 
-async function onSave() {
+async function saveToSource() {
   try {
-    if (archive.info?.path) {
-      await editor.save();
-      message.success("已保存到源文件");
-    } else {
-      await onSaveAs();
-    }
+    await editor.save();
+    message.success("已保存到源文件");
   } catch (e: any) {
     if (!isCancel(e)) message.error(`保存失败: ${e?.message ?? e}`);
   }
+}
+
+function onSave() {
+  if (!archive.info?.path) {
+    void onSaveAs();
+    return;
+  }
+  const backupHint = settings.backupSourceOnSave
+    ? "保存前会将当前源文件备份为同目录下的 .bak 文件。"
+    : "当前未启用源文件备份。";
+  dialog.warning({
+    title: "确认保存到源文件",
+    content: `保存会覆盖源文件中的当前内容。${backupHint}确定继续吗？`,
+    positiveText: "确认保存",
+    negativeText: "取消",
+    onPositiveClick: saveToSource,
+  });
 }
 
 async function onSaveAs() {
@@ -217,7 +230,7 @@ function isCancel(e: any): boolean {
             保存
           </NButton>
         </template>
-        保存到源文件 (Cmd+S)
+        保存到源文件（需要确认）
       </NTooltip>
 
       <NTooltip trigger="hover">

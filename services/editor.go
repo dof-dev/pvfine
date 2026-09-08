@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,9 +17,18 @@ import (
 const maxEditableBytes = 8 << 20 // 8MB
 
 // EditorService: 文件内容读取、内存编辑、保存/另存为、导出与整包解包。
-type EditorService struct{ c *core }
+type EditorService struct {
+	c        *core
+	settings *SettingsService
+}
 
-func NewEditorService(c *core) *EditorService { return &EditorService{c: c} }
+func NewEditorService(c *core, settings ...*SettingsService) *EditorService {
+	service := &EditorService{c: c}
+	if len(settings) > 0 {
+		service.settings = settings[0]
+	}
+	return service
+}
 
 // FileMeta 返回给前端的单个文件视图。
 type FileMeta struct {
@@ -123,6 +133,12 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, fmt.Errorf("归档没有源文件,请使用另存为")
 	}
+	if s.shouldBackupSource() {
+		if err := backupSourceFile(a.SourcePath()); err != nil {
+			s.c.mu.Unlock()
+			return ArchiveInfo{}, err
+		}
+	}
 	if err := a.Save(); err != nil {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, err
@@ -131,6 +147,63 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 	s.c.mu.Unlock()
 	emitEvent("archive:saved", info)
 	return info, nil
+}
+
+func (s *EditorService) shouldBackupSource() bool {
+	if s.settings == nil {
+		return true
+	}
+	settings, err := s.settings.GetSettings()
+	if err != nil {
+		// 读取设置失败时使用安全默认值,不要因为配置文件问题阻止保存。
+		return true
+	}
+	return settings.BackupSourceOnSave
+}
+
+func backupSourceFile(sourcePath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("打开源文件以创建备份失败: %w", err)
+	}
+	defer source.Close()
+
+	info, err := source.Stat()
+	if err != nil {
+		return fmt.Errorf("读取源文件信息失败: %w", err)
+	}
+
+	backupPath := sourcePath + ".bak"
+	temp, err := os.CreateTemp(filepath.Dir(backupPath), "."+filepath.Base(backupPath)+"-*.tmp")
+	if err != nil {
+		return fmt.Errorf("创建源文件备份临时文件失败: %w", err)
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+
+	mode := info.Mode().Perm()
+	if mode == 0 {
+		mode = 0o644
+	}
+	if err := temp.Chmod(mode); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("设置源文件备份权限失败: %w", err)
+	}
+	if _, err := io.CopyBuffer(temp, source, make([]byte, 1<<20)); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("写入源文件备份失败: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("同步源文件备份失败: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("关闭源文件备份失败: %w", err)
+	}
+	if err := os.Rename(tempPath, backupPath); err != nil {
+		return fmt.Errorf("替换源文件备份失败: %w", err)
+	}
+	return nil
 }
 
 // SaveAsDialog 弹出保存对话框并另存为新 PVF。返回保存路径。

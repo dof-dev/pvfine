@@ -91,9 +91,6 @@ async function onKeydown(e: KeyboardEvent) {
   } else if (key === "s" && e.shiftKey) {
     e.preventDefault();
     if (archive.open) await editor.saveAs();
-  } else if (key === "s") {
-    e.preventDefault();
-    if (archive.open) await editor.save();
   } else if (key === "w") {
     e.preventDefault();
     if (editor.activeKey !== null) editor.closeTab(editor.activeKey);

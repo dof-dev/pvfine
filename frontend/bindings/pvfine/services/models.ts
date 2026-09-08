@@ -63,6 +63,7 @@ export interface AppSettings {
     "annotationTagPlacement": string;
     "explorerOpenMode": string;
     "vimMode": boolean;
+    "backupSourceOnSave": boolean;
 }
 
 /**

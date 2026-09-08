@@ -31,15 +31,16 @@ var assets embed.FS
 
 func main() {
 	core := services.NewCore()
+	settingsService := services.NewSettingsService()
 
 	app := application.New(application.Options{
 		Name:        "pvfine",
 		Description: "PVF 归档编辑器",
 		Services: []application.Service{
 			application.NewService(services.NewArchiveService(core)),
-			application.NewService(services.NewEditorService(core)),
+			application.NewService(services.NewEditorService(core, settingsService)),
 			application.NewService(services.NewAnnotationService(core)),
-			application.NewService(services.NewSettingsService()),
+			application.NewService(settingsService),
 			application.NewService(services.NewFileSetService()),
 		},
 		Assets: application.AssetOptions{

@@ -32,6 +32,14 @@ async function onVimModeChange(value: boolean) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
 }
+
+async function onBackupSourceOnSaveChange(value: boolean) {
+  try {
+    await settings.saveBackupSourceOnSave(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
 </script>
 
 <template>
@@ -66,6 +74,19 @@ async function onVimModeChange(value: boolean) {
             <div class="setting-description">使用 Vim 的普通、插入和可视模式编辑文本</div>
           </div>
           <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
+        </div>
+      </section>
+      <section class="settings-section">
+        <div class="section-title">保存</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">保存前备份源文件</div>
+            <div class="setting-description">覆盖源文件前，将原文件备份为同目录下的 .bak 文件</div>
+          </div>
+          <NSwitch
+            :value="settings.backupSourceOnSave"
+            @update:value="onBackupSourceOnSaveChange"
+          />
         </div>
       </section>
       <section class="settings-section">
