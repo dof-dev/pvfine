@@ -4,8 +4,12 @@ import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { ArchiveInfo, IndexStatus } from "../../bindings/pvfine/services/models";
 
+const recentArchivesKey = "pvfine.recentArchives";
+const maxRecentArchives = 8;
+
 /** 归档全局状态:打开/关闭/统计/解包进度 */
 export const useArchiveStore = defineStore("archive", () => {
+  const recentArchives = ref<string[]>(readRecentArchives());
   const info = ref<ArchiveInfo | null>(null);
   const loading = ref(false);
   const loadError = ref("");
@@ -29,6 +33,47 @@ export const useArchiveStore = defineStore("archive", () => {
   const indexReady = computed(() => open.value && indexStatus.value.state === "ready");
   let indexPollTimer: number | undefined;
   let indexPollBusy = false;
+
+  function readRecentArchives(): string[] {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(recentArchivesKey);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      const unique: string[] = [];
+      for (const path of parsed) {
+        if (typeof path !== "string" || path.trim() === "" || unique.includes(path)) continue;
+        unique.push(path);
+        if (unique.length >= maxRecentArchives) break;
+      }
+      return unique;
+    } catch {
+      return [];
+    }
+  }
+
+  function persistRecentArchives(): void {
+    try {
+      window.localStorage.setItem(recentArchivesKey, JSON.stringify(recentArchives.value));
+    } catch {
+      // 本地存储不可用时仍保留本次运行内的记录。
+    }
+  }
+
+  function rememberArchive(path: string): void {
+    if (!path.trim()) return;
+    recentArchives.value = [
+      path,
+      ...recentArchives.value.filter((item) => item !== path),
+    ].slice(0, maxRecentArchives);
+    persistRecentArchives();
+  }
+
+  function clearRecentArchives(): void {
+    recentArchives.value = [];
+    persistRecentArchives();
+  }
 
   function readIndexStatus(data: any): IndexStatus {
     return {
@@ -70,13 +115,37 @@ export const useArchiveStore = defineStore("archive", () => {
     indexPollTimer = window.setInterval(() => void refreshIndexStatus(), 250);
   }
 
+  function applyOpenedInfo(res: ArchiveInfo, poll = true): ArchiveInfo {
+    info.value = res;
+    rememberArchive(res.path);
+    indexStatus.value = readIndexStatus({ state: "building", stage: "preparing" });
+    if (poll) startIndexPolling();
+    return res;
+  }
+
+  async function openPath(path: string): Promise<ArchiveInfo | null> {
+    if (!path.trim()) return null;
+    loading.value = true;
+    loadError.value = "";
+    try {
+      const res = await ArchiveService.Open(path);
+      if (!res) return null;
+      return applyOpenedInfo(res);
+    } catch (e: any) {
+      loadError.value = String(e?.message ?? e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function openDialog() {
     loading.value = true;
     loadError.value = "";
     try {
       const res = await ArchiveService.OpenDialog();
       if (res) {
-        info.value = res;
+        applyOpenedInfo(res, false);
         indexStatus.value = readIndexStatus(await ArchiveService.IndexStatus());
         startIndexPolling();
       }
@@ -116,9 +185,7 @@ export const useArchiveStore = defineStore("archive", () => {
   // 后端事件
   Events.On("archive:opened", (event: any) => {
     const data = eventData(event);
-    info.value = data;
-    indexStatus.value = readIndexStatus({ state: "building", stage: "preparing" });
-    startIndexPolling();
+    applyOpenedInfo(data);
     loading.value = false;
   });
   Events.On("archive:closed", () => {
@@ -152,6 +219,7 @@ export const useArchiveStore = defineStore("archive", () => {
   });
 
   return {
+    recentArchives,
     info,
     loading,
     loadError,
@@ -164,6 +232,8 @@ export const useArchiveStore = defineStore("archive", () => {
     unpackProgress,
     unpackMessage,
     openDialog,
+    openPath,
+    clearRecentArchives,
     close,
     refreshInfo,
     unpackDialog,
