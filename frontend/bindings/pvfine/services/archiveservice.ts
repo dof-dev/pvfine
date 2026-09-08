@@ -96,6 +96,14 @@ export function Search(query: string, cursor: number, limit: number): $Cancellab
 }
 
 /**
+ * SearchExact 在路径、语义名称和 id 中做不区分大小写的全量匹配。
+ * cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
+ */
+export function SearchExact(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
+    return $Call.ByID(2978904002, query, cursor, limit);
+}
+
+/**
  * SuggestDirectories returns directory paths with a case-insensitive prefix
  * match. An empty prefix returns no suggestions to avoid flooding the UI.
  */

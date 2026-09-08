@@ -50,6 +50,7 @@ export const useExplorerStore = defineStore("explorer", () => {
   const nextCursor = ref(-1);
   const searching = ref(false);
   const mode = ref<"tree" | "search">("tree");
+  const exactMatch = ref(false);
   let searchRequest = 0;
   let refreshTimer: number | undefined;
   let treeRefreshRequest = 0;
@@ -187,13 +188,22 @@ export const useExplorerStore = defineStore("explorer", () => {
     await loadMore(request);
   }
 
+  /** 切换路径、名称和 id 的精确匹配模式。 */
+  async function setExactMatch(value: boolean): Promise<void> {
+    if (exactMatch.value === value) return;
+    exactMatch.value = value;
+    if (query.value.trim()) await search(query.value);
+  }
+
   /** 加载下一页搜索结果 */
   async function loadMore(request = searchRequest) {
     if (!archive.indexReady || request !== searchRequest) return;
     if (nextCursor.value === -1 && hits.value.length > 0) return;
     searching.value = true;
     try {
-      const res = await ArchiveService.Search(query.value, Math.max(nextCursor.value, 0), 200);
+      const res = exactMatch.value
+        ? await ArchiveService.SearchExact(query.value, Math.max(nextCursor.value, 0), 200)
+        : await ArchiveService.Search(query.value, Math.max(nextCursor.value, 0), 200);
       if (request !== searchRequest) return;
       const page = (res?.hits ?? [])
         .filter((n): n is SearchHit => !!n)
@@ -231,6 +241,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     hits,
     nextCursor,
     searching,
+    exactMatch,
     mode,
     toTreeItem,
     toSearchItem,
@@ -241,6 +252,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     refreshAnnotations,
     reset,
     search,
+    setExactMatch,
     loadMore,
     clearSearch,
   };

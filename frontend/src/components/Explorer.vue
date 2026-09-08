@@ -4,11 +4,14 @@ import {
   NButton,
   NDropdown,
   NEmpty,
+  NIcon,
   NInput,
   NSpin,
   NTag,
+  NTooltip,
   useMessage,
 } from "naive-ui";
+import { Target20Regular } from "@vicons/fluent";
 import { ArchiveService } from "../../bindings/pvfine/services";
 import type { TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
@@ -65,6 +68,10 @@ function submitSearch(event: KeyboardEvent): void {
 function clearSearch(): void {
   searchInput.value = "";
   explorer.clearSearch();
+}
+
+function toggleExactMatch(): void {
+  void explorer.setExactMatch(!explorer.exactMatch);
 }
 
 async function onTreeLoad(item: TreeItem): Promise<void> {
@@ -274,10 +281,33 @@ function sortTree(items: TreeItem[]): void {
         :placeholder="archive.indexReady ? '搜索路径、名称或 id…' : '索引完成后可搜索路径、名称或 id…'"
         clearable
         size="small"
-        :disabled="!archive.open || !archive.indexReady"
+        :disabled="!archive.open"
+        :readonly="!archive.indexReady"
         @clear="clearSearch"
         @keydown.enter.prevent="submitSearch"
-      />
+      >
+        <template #suffix>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NButton
+                text
+                circle
+                size="tiny"
+                :type="explorer.exactMatch ? 'primary' : 'default'"
+                class="exact-toggle"
+                :class="{ 'exact-toggle--active': explorer.exactMatch }"
+                :disabled="!archive.open"
+                aria-label="切换精确匹配"
+                :aria-pressed="explorer.exactMatch"
+                @click.stop="toggleExactMatch"
+              >
+                <template #icon><NIcon><Target20Regular /></NIcon></template>
+              </NButton>
+            </template>
+            {{ explorer.exactMatch ? "关闭精确匹配" : "启用精确匹配" }}
+          </NTooltip>
+        </template>
+      </NInput>
     </div>
 
     <NSpin class="exp-spin" :show="archive.loading || explorer.searching || adding">
@@ -362,6 +392,13 @@ function sortTree(items: TreeItem[]): void {
 .exp-search {
   padding: 8px;
   flex-shrink: 0;
+}
+.exact-toggle {
+  color: rgba(128, 128, 128, 0.85);
+}
+.exact-toggle--active {
+  color: #6ba0ff;
+  background: rgba(79, 140, 255, 0.15);
 }
 .index-status {
   display: flex;

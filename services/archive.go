@@ -219,6 +219,16 @@ type SearchResult struct {
 // Search 在路径、语义名称和 id 中做不区分大小写的子串匹配。
 // cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
 func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchResult, error) {
+	return s.search(query, cursor, limit, false)
+}
+
+// SearchExact 在路径、语义名称和 id 中做不区分大小写的全量匹配。
+// cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
+func (s *ArchiveService) SearchExact(query string, cursor int, limit int) (*SearchResult, error) {
+	return s.search(query, cursor, limit, true)
+}
+
+func (s *ArchiveService) search(query string, cursor int, limit int, exact bool) (*SearchResult, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
 	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -245,9 +255,15 @@ func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchRes
 	i := cursor
 	for ; i < len(records) && len(res.Hits) < limit; i++ {
 		record := &records[i]
-		if strings.Contains(record.lowerPath, q) ||
-			strings.Contains(record.lowerName, q) ||
-			strings.Contains(record.lowerID, q) {
+		matched := false
+		if exact {
+			matched = record.lowerPath == q || record.lowerName == q || record.lowerID == q
+		} else {
+			matched = strings.Contains(record.lowerPath, q) ||
+				strings.Contains(record.lowerName, q) ||
+				strings.Contains(record.lowerID, q)
+		}
+		if matched {
 			hit := record.hit
 			hit.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[hit.Path])
 			hit.PathAnnotations = clonePathAnnotationChain(s.c.pathAnnotations, hit.Path)

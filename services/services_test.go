@@ -151,6 +151,15 @@ func TestSyntheticSearchIndex(t *testing.T) {
 		t.Fatalf("path hit = %#v", byPath.Hits[0])
 	}
 
+	exactName, err := svc.SearchExact("readme.txt", 0, 20)
+	if err != nil || len(exactName.Hits) != 1 {
+		t.Fatalf("exact name hits = %d, err = %v", len(exactName.Hits), err)
+	}
+	exactPartial, err := svc.SearchExact("readme", 0, 20)
+	if err != nil || len(exactPartial.Hits) != 0 {
+		t.Fatalf("exact partial hits = %d, err = %v", len(exactPartial.Hits), err)
+	}
+
 	amulet, err := svc.ListChildren("equipment/character/common/amulet")
 	if err != nil {
 		t.Fatal(err)
