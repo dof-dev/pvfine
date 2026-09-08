@@ -22,6 +22,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { vim } from "@replit/codemirror-vim";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
@@ -31,6 +32,7 @@ const props = defineProps<{
   readOnly?: boolean;
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
+  vimMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +43,7 @@ const emit = defineEmits<{
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
 const readOnlyComp = new Compartment();
+const vimComp = new Compartment();
 
 interface AnnotationDisplay {
   annotations: EditorAnnotation[];
@@ -167,6 +170,7 @@ function makeExtensions() {
     rectangularSelection(),
     crosshairCursor(),
     highlightSelectionMatches(),
+    vimComp.of(props.vimMode ? vim() : []),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
     annotationField,
@@ -222,6 +226,15 @@ watch(
   (ro) => {
     view?.dispatch({
       effects: readOnlyComp.reconfigure(EditorState.readOnly.of(!!ro)),
+    });
+  }
+);
+
+watch(
+  () => props.vimMode,
+  (enabled) => {
+    view?.dispatch({
+      effects: vimComp.reconfigure(enabled ? vim() : []),
     });
   }
 );

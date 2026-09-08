@@ -227,6 +227,7 @@ function onDrop(event: DragEvent): void {
             :read-only="!tab.editable"
             :annotations="tab.annotations"
             :tag-placement="settings.annotationTagPlacement"
+            :vim-mode="settings.vimMode"
             @change="(text: string) => editor.updateContent(tab.index, text)"
             @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
           />

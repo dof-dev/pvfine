@@ -9,6 +9,7 @@ export type ExplorerOpenMode = "single-click" | "double-click";
 const defaultSettings: AppSettings = {
   annotationTagPlacement: "after-target",
   explorerOpenMode: "single-click",
+  vimMode: false,
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -17,6 +18,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const saving = ref(false);
   const annotationTagPlacement = ref<AnnotationTagPlacement>("after-target");
   const explorerOpenMode = ref<ExplorerOpenMode>("single-click");
+  const vimMode = ref(false);
 
   async function load() {
     if (loaded.value) return;
@@ -24,10 +26,12 @@ export const useSettingsStore = defineStore("settings", () => {
       const settings = await SettingsService.GetSettings();
       annotationTagPlacement.value = normalizePlacement(settings.annotationTagPlacement);
       explorerOpenMode.value = normalizeExplorerOpenMode(settings.explorerOpenMode);
+      vimMode.value = normalizeVimMode(settings.vimMode);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
       explorerOpenMode.value = "single-click";
+      vimMode.value = false;
     } finally {
       loaded.value = true;
     }
@@ -37,6 +41,7 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveSettings({
       annotationTagPlacement: value,
       explorerOpenMode: explorerOpenMode.value,
+      vimMode: vimMode.value,
     });
   }
 
@@ -44,14 +49,25 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveSettings({
       annotationTagPlacement: annotationTagPlacement.value,
       explorerOpenMode: value,
+      vimMode: vimMode.value,
+    });
+  }
+
+  async function saveVimMode(value: boolean) {
+    await saveSettings({
+      annotationTagPlacement: annotationTagPlacement.value,
+      explorerOpenMode: explorerOpenMode.value,
+      vimMode: value,
     });
   }
 
   async function saveSettings(next: AppSettings) {
     const previousPlacement = annotationTagPlacement.value;
     const previousExplorerOpenMode = explorerOpenMode.value;
+    const previousVimMode = vimMode.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
+    vimMode.value = normalizeVimMode(next.vimMode);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -61,6 +77,7 @@ export const useSettingsStore = defineStore("settings", () => {
     } catch (error) {
       annotationTagPlacement.value = previousPlacement;
       explorerOpenMode.value = previousExplorerOpenMode;
+      vimMode.value = previousVimMode;
       throw error;
     } finally {
       saving.value = false;
@@ -78,9 +95,11 @@ export const useSettingsStore = defineStore("settings", () => {
     saving,
     annotationTagPlacement,
     explorerOpenMode,
+    vimMode,
     load,
     savePlacement,
     saveExplorerOpenMode,
+    saveVimMode,
     open,
   };
 });
@@ -92,4 +111,8 @@ function normalizePlacement(value: string): AnnotationTagPlacement {
 
 function normalizeExplorerOpenMode(value: string): ExplorerOpenMode {
   return value === "double-click" ? value : "single-click";
+}
+
+function normalizeVimMode(value: boolean): boolean {
+  return value === true;
 }

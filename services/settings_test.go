@@ -19,9 +19,13 @@ func TestSettingsServiceDefaultsAndRoundTrip(t *testing.T) {
 	if settings.ExplorerOpenMode != ExplorerOpenSingleClick {
 		t.Fatalf("default explorer open mode = %q", settings.ExplorerOpenMode)
 	}
+	if settings.VimMode {
+		t.Fatal("default vim mode = true, want false")
+	}
 
 	settings.AnnotationTagPlacement = AnnotationTagLineEnd
 	settings.ExplorerOpenMode = ExplorerOpenDoubleClick
+	settings.VimMode = true
 	if err := service.SaveSettings(settings); err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NModal, NRadioButton, NRadioGroup, NSpin, useMessage } from "naive-ui";
+import { NModal, NRadioButton, NRadioGroup, NSpin, NSwitch, useMessage } from "naive-ui";
 import {
   useSettingsStore,
   type AnnotationTagPlacement,
@@ -20,6 +20,14 @@ async function onPlacementChange(value: string | number | boolean) {
 async function onExplorerOpenModeChange(value: string | number | boolean) {
   try {
     await settings.saveExplorerOpenMode(value as ExplorerOpenMode);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onVimModeChange(value: boolean) {
+  try {
+    await settings.saveVimMode(value);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
@@ -51,6 +59,13 @@ async function onExplorerOpenModeChange(value: string | number | boolean) {
             <NRadioButton value="line-end">行末</NRadioButton>
             <NRadioButton value="hidden">隐藏</NRadioButton>
           </NRadioGroup>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Vim 模式</div>
+            <div class="setting-description">使用 Vim 的普通、插入和可视模式编辑文本</div>
+          </div>
+          <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
         </div>
       </section>
       <section class="settings-section">
@@ -89,6 +104,9 @@ async function onExplorerOpenModeChange(value: string | number | boolean) {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+}
+.setting-row + .setting-row {
+  margin-top: 16px;
 }
 .setting-label {
   color: rgba(255, 255, 255, 0.92);

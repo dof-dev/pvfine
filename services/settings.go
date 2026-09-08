@@ -19,12 +19,14 @@ const (
 type AppSettings struct {
 	AnnotationTagPlacement string `json:"annotationTagPlacement"`
 	ExplorerOpenMode       string `json:"explorerOpenMode"`
+	VimMode                bool   `json:"vimMode"`
 }
 
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
 		AnnotationTagPlacement: AnnotationTagAfterTarget,
 		ExplorerOpenMode:       ExplorerOpenSingleClick,
+		VimMode:                false,
 	}
 }
 
