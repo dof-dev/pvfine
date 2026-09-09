@@ -341,6 +341,76 @@ func TestSyntheticSkillSearchIndex(t *testing.T) {
 	}
 }
 
+func TestConfiguredListIndexesExposeTreeTags(t *testing.T) {
+	type listCase struct {
+		listPath  string
+		entryPath string
+		target    string
+		id        string
+		name      string
+	}
+	cases := []listCase{
+		{listPath: "appendage/appendage.lst", entryPath: "apd/example.apd", target: "appendage/apd/example.apd", id: "apd-1", name: "附加对象"},
+		{listPath: "character/character.lst", entryPath: "example.chr", target: "character/example.chr", id: "character-1", name: "鬼剑士"},
+		{listPath: "creature/creature.lst", entryPath: "example.cre", target: "creature/example.cre", id: "creature-1", name: "测试宠物"},
+		{listPath: "dungeon/dungeon.lst", entryPath: "example.dgn", target: "dungeon/example.dgn", id: "dungeon-1", name: "测试地下城"},
+		{listPath: "itemshop/itemshop.lst", entryPath: "example.shop", target: "itemshop/example.shop", id: "shop-1", name: "测试商店"},
+		{listPath: "map/map.lst", entryPath: "example.map", target: "map/example.map", id: "map-1", name: "测试地图"},
+		{listPath: "monster/monster.lst", entryPath: "example.mon", target: "monster/example.mon", id: "monster-1", name: "测试怪物"},
+		{listPath: "n_quest/quest.lst", entryPath: "example.qst", target: "n_quest/example.qst", id: "quest-1", name: "测试任务"},
+		{listPath: "npc/npc.lst", entryPath: "example.npc", target: "npc/example.npc", id: "npc-1", name: "测试 NPC"},
+		{listPath: "passiveobject/passiveobject.lst", entryPath: "example.obj", target: "passiveobject/example.obj", id: "object-1", name: "测试被动对象"},
+		{listPath: "region/region.lst", entryPath: "example.reg", target: "region/example.reg", id: "region-1", name: "测试区域"},
+		{listPath: "town/town.lst", entryPath: "example.twn", target: "town/example.twn", id: "town-1", name: "测试城镇"},
+		{listPath: "worldmap/worldmap.lst", entryPath: "example.wmp", target: "worldmap/example.wmp", id: "worldmap-1", name: "测试副本接口"},
+	}
+
+	c := NewCore()
+	a := pvf.New()
+	for _, item := range cases {
+		if _, err := a.AddFileText(item.listPath, item.id+" `"+item.entryPath+"`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.AddFileText(item.target, "[name]\n`"+item.name+"`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+
+	svc := NewArchiveService(c)
+	for _, item := range cases {
+		targetIndex, ok := a.Find(item.target)
+		if !ok {
+			t.Fatalf("fixture target missing: %s", item.target)
+		}
+		slash := strings.LastIndexByte(item.target, '/')
+		parent, base := item.target[:slash], item.target[slash+1:]
+		nodes, err := svc.ListChildren(parent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		node := findTreeNode(nodes, base)
+		if node == nil || node.FileIndex != targetIndex {
+			t.Fatalf("tree node for %s = %#v", item.target, node)
+		}
+		found := false
+		for _, tag := range node.Tags {
+			if tag.ID == item.id && tag.Name == item.name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("tree tags for %s = %#v", item.target, node.Tags)
+		}
+	}
+}
+
 func TestSearchIndexUsesConfiguredRelationListPaths(t *testing.T) {
 	indexToken := 0
 	engine, err := annotationrules.Compile(annotationrules.Document{

@@ -16,6 +16,97 @@
       "recordTokens": 2,
       "nameSection": "name"
     },
+    "apd": {
+      "listPath": "appendage/appendage.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "职业": {
+      "listPath": "character/character.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "宠物": {
+      "listPath": "creature/creature.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "地下城": {
+      "listPath": "dungeon/dungeon.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "商店": {
+      "listPath": "itemshop/itemshop.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "map": {
+      "listPath": "map/map.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "怪物": {
+      "listPath": "monster/monster.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "任务": {
+      "listPath": "n_quest/quest.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "npc": {
+      "listPath": "npc/npc.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "被动对象": {
+      "listPath": "passiveobject/passiveobject.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "区域": {
+      "listPath": "region/region.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "城镇": {
+      "listPath": "town/town.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
+    "副本接口": {
+      "listPath": "worldmap/worldmap.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
     "物品": {
       "kind": "union",
       "relations": ["装备", "道具"]
