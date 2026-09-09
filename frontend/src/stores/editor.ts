@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, reactive, ref } from "vue";
+import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
@@ -409,7 +410,7 @@ export const useEditorStore = defineStore("editor", () => {
     splitNode.ratio = Math.min(0.8, Math.max(0.2, value));
   }
 
-  /** 编辑器内容变化:立即更新本地脏状态,防抖同步到后端 overlay */
+  /** 编辑器内容变化:立即更新本地脏状态,短暂防抖后同步到后端 overlay */
   function updateContent(index: number, text: string) {
     const tab = tabs.value.find((item) => item.index === index);
     if (!tab || !tab.editable) return;
@@ -429,7 +430,7 @@ export const useEditorStore = defineStore("editor", () => {
         }
       }
       await useArchiveStore().refreshInfo();
-    }, 400);
+    }, 200);
   }
 
   /** 保存到源文件 */
@@ -532,7 +533,10 @@ export const useEditorStore = defineStore("editor", () => {
   }
 
   /** 文件表变化后按路径重新绑定标签，并刷新被自动修改的 lst 标签。 */
-  async function refreshAfterArchiveChange(refreshPaths: string[] = []): Promise<void> {
+  async function refreshAfterArchiveChange(
+    refreshPaths: string[] = [],
+    resetOriginal = false
+  ): Promise<void> {
     // 结构变更已经完成，旧索引上的待同步请求不能再发送；标签中的
     // 本地文本保留，后续编辑会按新的文件索引继续同步。
     discardPendingSync();
@@ -588,7 +592,12 @@ export const useEditorStore = defineStore("editor", () => {
           tab.dataType = meta.dataType;
           tab.size = meta.size;
           tab.text = meta.text;
-          tab.modified = meta.modified;
+          if (resetOriginal) {
+            tab.original = meta.text;
+            tab.modified = false;
+          } else {
+            tab.modified = meta.modified;
+          }
           tab.annotations = (meta.annotations ?? []).filter(
             (annotation): annotation is EditorAnnotation => !!annotation
           );
@@ -600,6 +609,10 @@ export const useEditorStore = defineStore("editor", () => {
       closeSplit(emptyPane.id);
     }
   }
+
+  Events.On("archive:reloaded", () => {
+    void refreshAfterArchiveChange(tabs.value.map((tab) => tab.path), true);
+  });
 
   return {
     tabs,

@@ -211,6 +211,11 @@ export const useArchiveStore = defineStore("archive", () => {
   Events.On("archive:batch-applied", () => {
     void refreshInfo();
   });
+  Events.On("archive:reloaded", (event: any) => {
+    const data = eventData(event);
+    if (data?.path) info.value = data;
+    else void refreshInfo();
+  });
   Events.On("unpack:progress", (event: any) => {
     const data = eventData(event);
     unpackProgress.value = { done: data.done ?? 0, total: data.total ?? 0 };

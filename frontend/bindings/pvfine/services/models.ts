@@ -265,3 +265,66 @@ export interface TreeTag {
     "name": string;
     "category": string;
 }
+
+/**
+ * VersionChange is a path-level worktree or commit change.
+ */
+export interface VersionChange {
+    "path": string;
+    "operation": string;
+    "beforeHash"?: string;
+    "afterHash"?: string;
+    "beforeType"?: number;
+    "afterType"?: number;
+}
+
+export interface VersionChangePage {
+    "changes": (VersionChange | null)[] | null;
+    "nextCursor": number;
+    "total": number;
+}
+
+export interface VersionCommit {
+    "id": string;
+    "parentId": string;
+    "message": string;
+    "createdAt": number;
+    "changeCount": number;
+}
+
+/**
+ * VersionFileDiff contains one commit change and its logical text values
+ * when the underlying PVF type is editable.
+ */
+export interface VersionFileDiff {
+    "path": string;
+    "operation": string;
+    "beforeHash"?: string;
+    "afterHash"?: string;
+    "beforeType"?: number;
+    "afterType"?: number;
+    "beforeText"?: string;
+    "afterText"?: string;
+    "textAvailable": boolean;
+}
+
+export interface VersionHistoryPage {
+    "commits": (VersionCommit | null)[] | null;
+    "nextCursor": number;
+}
+
+/**
+ * VersionStatus is the UI-facing version session state.
+ */
+export interface VersionStatus {
+    "enabled": boolean;
+    "repositoryPath": string;
+    "branch": string;
+    "headId": string;
+    "headMessage": string;
+    "changedFiles": number;
+    "pendingChangeSets": number;
+    "needsSave": boolean;
+    "viewCommitId": string;
+    "error": string;
+}

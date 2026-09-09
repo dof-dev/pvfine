@@ -4,6 +4,8 @@ bin
 frontend/dist
 frontend/node_modules
 *.pvf
+*.pvf.bak
+*.pvf.pvfine
 internal/annotations/default.json.bak
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe

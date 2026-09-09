@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"pvfine/internal/pvf"
+	pvfversion "pvfine/internal/version"
 )
 
 const (
@@ -325,12 +326,34 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.mu.Unlock()
 		return false, "", err
 	}
+	path := c.archive.Path(index)
+	var before pvfversion.ContentSnapshot
+	if c.versionRepo != nil {
+		var err error
+		before, err = pvfversion.ContentSnapshotFromArchive(c.archive, []string{path})
+		if err != nil {
+			c.mu.Unlock()
+			return false, "", err
+		}
+	}
 	if err := c.archive.SetText(index, text); err != nil {
 		c.mu.Unlock()
 		return false, "", err
 	}
+	if c.versionRepo != nil {
+		after, err := pvfversion.ContentSnapshotFromArchive(c.archive, []string{path})
+		if err != nil {
+			c.mu.Unlock()
+			return false, "", err
+		}
+		if err := c.recordVersionMutationLocked("编辑文件", before, after); err != nil {
+			c.mu.Unlock()
+			return false, "", err
+		}
+	}
 	c.batchRevision++
 	c.batchPlan = nil
+	versioned := c.versionRepo != nil
 	if c.editorText == nil {
 		c.editorText = make(map[int32]string)
 	}
@@ -345,6 +368,9 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.indexDirty[index] = struct{}{}
 		c.mu.Unlock()
 		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+		if versioned {
+			emitVersionState(c, "edited")
+		}
 		return false, "", nil
 	}
 
@@ -352,6 +378,9 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	if len(recordIndexes) == 0 {
 		c.mu.Unlock()
 		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+		if versioned {
+			emitVersionState(c, "edited")
+		}
 		return false, "", nil
 	}
 	name, _, err := c.archive.ScriptName(index)
@@ -370,6 +399,9 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	c.treeTagsByFile[index] = treeTagsForRecords(c.searchRecords, recordIndexes)
 	c.mu.Unlock()
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+	if versioned {
+		emitVersionState(c, "edited")
+	}
 	if updated {
 		emitEvent("archive:index-updated", map[string]any{
 			"fileIndex": index,

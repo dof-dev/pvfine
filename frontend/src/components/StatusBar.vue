@@ -3,9 +3,11 @@ import { computed } from "vue";
 import { NProgress, NText } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
+import { useVersionStore } from "../stores/version";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const version = useVersionStore();
 
 const currentPath = computed(() => editor.activeTab?.path ?? "");
 const sizeText = computed(() => {
@@ -51,6 +53,12 @@ const indexStateLabel = computed(() => {
       <template v-if="archive.modifiedCount > 0">
         <span class="sb-sep" />
         <span class="sb-item sb-modified">{{ archive.modifiedCount }} 个已修改</span>
+      </template>
+      <template v-if="version.enabled">
+        <span class="sb-sep" />
+        <span class="sb-item sb-version" :title="version.status.headMessage">
+          {{ version.status.branch }} · {{ version.status.changedFiles }} 个版本变更
+        </span>
       </template>
       <span class="sb-spacer" />
       <span v-if="archive.open" class="sb-item index-state" :class="{ 'sb-error': archive.indexStatus.state === 'error' }">
@@ -119,6 +127,9 @@ const indexStateLabel = computed(() => {
 }
 .sb-modified {
   color: #63e2b7;
+}
+.sb-version {
+  color: #8ab4ff;
 }
 .unpack {
   display: inline-flex;

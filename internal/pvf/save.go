@@ -244,7 +244,11 @@ func (a *Archive) rebuild() ([]byte, error) {
 	// File table (plaintext).
 	table := make([]byte, len(a.items)*0x18)
 	for i := range a.items {
-		marshalItem(table[i*0x18:], &a.items[i])
+		item := a.items[i]
+		if payload, ok := a.overlay[int32(i)]; ok {
+			item.size = int32(len(payload))
+		}
+		marshalItem(table[i*0x18:], &item)
 	}
 
 	// Hash section.

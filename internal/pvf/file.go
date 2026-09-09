@@ -71,7 +71,8 @@ func (a *Archive) SetText(i int32, text string) error {
 	}
 	switch a.items[i].typ {
 	case TypeUnicode:
-		a.overlay[i] = utf16le(text)
+		raw := utf16le(text)
+		a.overlay[i] = raw
 		return nil
 	case TypeScript:
 		raw, err := a.encodeScript(text)

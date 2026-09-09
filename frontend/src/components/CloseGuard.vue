@@ -5,6 +5,7 @@ import { useDialog } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore } from "../stores/fileSets";
+import { useVersionStore } from "../stores/version";
 
 type CloseAction = "close" | "quit";
 
@@ -12,11 +13,17 @@ const dialog = useDialog();
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const version = useVersionStore();
 const pendingAction = ref<CloseAction | null>(null);
 const closing = ref(false);
 
 const hasUnsavedChanges = computed(
-  () => archive.modifiedCount > 0 || editor.dirtyCount > 0 || fileSets.dirty
+  () =>
+    archive.modifiedCount > 0 ||
+    editor.dirtyCount > 0 ||
+    fileSets.dirty ||
+    version.status.changedFiles > 0 ||
+    version.status.needsSave
 );
 
 function eventData(event: any): any {

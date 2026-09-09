@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"pvfine/internal/pvf"
+	pvfversion "pvfine/internal/version"
 )
 
 // ArchiveService: 打开/关闭归档、状态查询、资源树懒加载与搜索。
@@ -62,8 +63,33 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
-	if err := s.c.setArchive(a); err != nil {
+	var repo *pvfversion.Repository
+	var working pvfversion.Snapshot
+	a, repo, working, err = prepareVersionedArchive(path, a)
+	if err != nil {
 		return ArchiveInfo{}, err
+	}
+	if err := s.c.setArchive(a); err != nil {
+		if repo != nil {
+			_ = repo.Close()
+		}
+		return ArchiveInfo{}, err
+	}
+	if repo != nil {
+		s.c.mu.Lock()
+		var attachErr error
+		if working == nil {
+			working, attachErr = pvfversion.SnapshotFromArchive(a)
+		}
+		if attachErr == nil {
+			attachErr = s.c.attachVersionLocked(repo, working)
+		}
+		s.c.mu.Unlock()
+		if attachErr != nil {
+			_ = repo.Close()
+			s.c.closeArchive()
+			return ArchiveInfo{}, attachErr
+		}
 	}
 	info := a.Info()
 	emitEvent("archive:opened", info)
@@ -230,10 +256,25 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		s.c.mu.Unlock()
 		return nil, fmt.Errorf("文件已存在: %s", path)
 	}
+	var before pvfversion.ContentSnapshot
+	if s.c.versionRepo != nil {
+		before = make(pvfversion.ContentSnapshot)
+	}
 	index := a.AddFile(path, []byte{}, dataType)
 	if err := s.c.rebuildArchiveIndexesLocked(a); err != nil {
 		s.c.mu.Unlock()
 		return nil, err
+	}
+	if s.c.versionRepo != nil {
+		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(a, []string{path})
+		if snapshotErr != nil {
+			s.c.mu.Unlock()
+			return nil, snapshotErr
+		}
+		if recordErr := s.c.recordVersionMutationLocked("新建文件", before, after); recordErr != nil {
+			s.c.mu.Unlock()
+			return nil, recordErr
+		}
 	}
 	node := &TreeNode{
 		Name:        a.File(index).Name,
@@ -244,10 +285,14 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		Annotations: cloneTreeAnnotations(s.c.pathAnnotations[a.Path(index)]),
 	}
 	info := a.Info()
+	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
 	s.c.startSearchIndex()
 	emitEvent("archive:changed", info)
+	if versioned {
+		emitVersionState(s.c, "file-created")
+	}
 	return node, nil
 }
 
@@ -278,8 +323,27 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	mutationPaths := make([]string, 0, len(fileIndexes))
+	for _, index := range fileIndexes {
+		mutationPaths = append(mutationPaths, a.Path(index))
+	}
+	var registrations []*FileRegistration
 	if syncRegistrations {
-		registrations := findFileRegistrationsLocked(a, specs, fileIndexes)
+		registrations = findFileRegistrationsLocked(a, specs, fileIndexes)
+		for _, registration := range registrations {
+			mutationPaths = append(mutationPaths, registration.ListPath)
+		}
+	}
+	var before pvfversion.ContentSnapshot
+	if s.c.versionRepo != nil {
+		var snapshotErr error
+		before, snapshotErr = pvfversion.ContentSnapshotFromArchive(a, mutationPaths)
+		if snapshotErr != nil {
+			s.c.mu.Unlock()
+			return nil, snapshotErr
+		}
+	}
+	if syncRegistrations {
 		byList := make(map[int32][]pvf.ListPair)
 		for _, registration := range registrations {
 			byList[registration.ListFileIndex] = append(
@@ -307,11 +371,26 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	if s.c.versionRepo != nil {
+		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(a, mutationPaths)
+		if snapshotErr != nil {
+			s.c.mu.Unlock()
+			return nil, snapshotErr
+		}
+		if recordErr := s.c.recordVersionMutationLocked("删除文件", before, after); recordErr != nil {
+			s.c.mu.Unlock()
+			return nil, recordErr
+		}
+	}
 	info := a.Info()
+	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
 	s.c.startSearchIndex()
 	emitEvent("archive:changed", info)
+	if versioned {
+		emitVersionState(s.c, "files-deleted")
+	}
 	return paths, nil
 }
 

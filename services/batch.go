@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"pvfine/internal/pvf"
+	pvfversion "pvfine/internal/version"
 )
 
 const (
@@ -214,9 +215,36 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 		selected[fileIndex] = struct{}{}
 		ordered = append(ordered, fileIndex)
 	}
+	var before pvfversion.ContentSnapshot
+	if s.c.versionRepo != nil {
+		paths := make([]string, 0, len(ordered))
+		for _, fileIndex := range ordered {
+			paths = append(paths, plan.archive.Path(fileIndex))
+		}
+		before, err = pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
+		if err != nil {
+			s.c.mu.Unlock()
+			return BatchApplyResult{}, err
+		}
+	}
 	if err := plan.archive.CommitBatch(plan.staged, selected); err != nil {
 		s.c.mu.Unlock()
 		return BatchApplyResult{}, err
+	}
+	if s.c.versionRepo != nil {
+		paths := make([]string, 0, len(ordered))
+		for _, fileIndex := range ordered {
+			paths = append(paths, plan.archive.Path(fileIndex))
+		}
+		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
+		if snapshotErr != nil {
+			s.c.mu.Unlock()
+			return BatchApplyResult{}, snapshotErr
+		}
+		if recordErr := s.c.recordVersionMutationLocked("批量操作", before, after); recordErr != nil {
+			s.c.mu.Unlock()
+			return BatchApplyResult{}, recordErr
+		}
 	}
 
 	if s.c.editorText == nil {
@@ -233,6 +261,7 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	s.c.invalidateAdvancedSearchLocked()
 	info := plan.archive.Info()
 	revision := s.c.batchRevision
+	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
 	emitEvent("archive:advanced-search-stale", map[string]any{"batch": true})
@@ -241,6 +270,9 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 		"modifiedCount": info.ModifiedCount,
 		"revision":      revision,
 	})
+	if versioned {
+		emitVersionState(s.c, "batch-applied")
+	}
 	// One rebuild updates all affected names/tags and avoids emitting one index
 	// invalidation per file.
 	s.c.startSearchIndex()

@@ -32,6 +32,7 @@ import { useFileSetStore } from "../stores/fileSets";
 import { AnnotationService, UpdateService } from "../../bindings/pvfine/services";
 import { useSettingsStore } from "../stores/settings";
 import { useExplorerStore } from "../stores/explorer";
+import { useVersionStore } from "../stores/version";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -39,6 +40,7 @@ const advancedSearch = useAdvancedSearchStore();
 const fileSets = useFileSetStore();
 const settings = useSettingsStore();
 const explorer = useExplorerStore();
+const version = useVersionStore();
 const message = useMessage();
 const dialog = useDialog();
 const checkingUpdates = ref(false);
@@ -221,6 +223,16 @@ function isCancel(e: any): boolean {
           </NButton>
         </template>
         打开 PVF 归档 (Cmd+O)
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton quaternary :disabled="!archive.open" @click="version.open">
+            <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+            版本
+          </NButton>
+        </template>
+        管理工作区版本、提交和历史
       </NTooltip>
 
       <NTooltip trigger="hover">

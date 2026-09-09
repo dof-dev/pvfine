@@ -15,6 +15,7 @@ import (
 
 	annotationrules "pvfine/internal/annotations"
 	"pvfine/internal/pvf"
+	pvfversion "pvfine/internal/version"
 )
 
 // emitEvent 安全地发事件:脱离 wails 运行时(如单元测试)时为 no-op。
@@ -55,32 +56,46 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
-	mu                  sync.RWMutex
-	archive             *pvf.Archive
-	annotationEngine    *annotationrules.Engine
-	annotationErr       error
-	annotationRelations map[string]map[string]*relationTarget
-	editorText          map[int32]string
-	editorAnnotation    editorAnnotationCache
-	pathAnnotations     map[string][]TreeAnnotation
-	dirChildren         map[string][]*TreeNode // dirPath -> ordered children ("" = root)
-	directories         []string
-	sortedPaths         []pathEntry
-	searchRecords       []searchRecord
-	searchByFile        map[int32][]int
-	treeTagsByFile      map[int32][]TreeTag
-	indexStatus         IndexStatus
-	indexCancel         context.CancelFunc
-	indexDirty          map[int32]struct{}
-	indexGen            uint64
-	batchRevision       uint64
-	batchPlan           *batchPlan
-	advancedIndex       *pvf.StringPoolIndex
-	advancedStatus      AdvancedSearchIndexStatus
-	advancedCancel      context.CancelFunc
-	binaryCache         map[binarySearchKey][]advancedFileMatch
-	unpackCancel        atomic.Bool
-	unpackRunning       atomic.Bool
+	mu                   sync.RWMutex
+	archive              *pvf.Archive
+	annotationEngine     *annotationrules.Engine
+	annotationErr        error
+	annotationRelations  map[string]map[string]*relationTarget
+	editorText           map[int32]string
+	editorAnnotation     editorAnnotationCache
+	pathAnnotations      map[string][]TreeAnnotation
+	dirChildren          map[string][]*TreeNode // dirPath -> ordered children ("" = root)
+	directories          []string
+	sortedPaths          []pathEntry
+	searchRecords        []searchRecord
+	searchByFile         map[int32][]int
+	treeTagsByFile       map[int32][]TreeTag
+	indexStatus          IndexStatus
+	indexCancel          context.CancelFunc
+	indexDirty           map[int32]struct{}
+	indexGen             uint64
+	batchRevision        uint64
+	batchPlan            *batchPlan
+	versionRepo          *pvfversion.Repository
+	versionHead          pvfversion.Commit
+	versionHeadSnapshot  pvfversion.Snapshot
+	versionWorking       pvfversion.Snapshot
+	versionChanges       []pvfversion.FileChange
+	versionChangeMap     map[string]pvfversion.FileChange
+	versionUndo          []versionUndoRecord
+	versionSavedSnapshot pvfversion.Snapshot
+	versionArtifactDirty map[string]struct{}
+	versionSavedTree     string
+	versionSavedPVF      string
+	versionSavedCommit   string
+	versionViewCommit    string
+	versionBaseArchive   *pvf.Archive
+	advancedIndex        *pvf.StringPoolIndex
+	advancedStatus       AdvancedSearchIndexStatus
+	advancedCancel       context.CancelFunc
+	binaryCache          map[binarySearchKey][]advancedFileMatch
+	unpackCancel         atomic.Bool
+	unpackRunning        atomic.Bool
 }
 
 type editorAnnotationCache struct {
@@ -111,8 +126,57 @@ func (c *core) setArchive(a *pvf.Archive) error {
 		return err
 	}
 	c.mu.Lock()
+	c.detachVersionLocked()
 	c.installArchiveIndexesLocked(a, children, paths)
 	c.mu.Unlock()
+	return nil
+}
+
+// replaceArchiveLocked installs a newly materialized archive while retaining
+// the current version repository session. The caller must hold c.mu.
+func (c *core) replaceArchiveLocked(a *pvf.Archive) error {
+	children, paths, err := buildIndex(a)
+	if err != nil {
+		return err
+	}
+	c.installArchiveIndexesLocked(a, children, paths)
+	return nil
+}
+
+// replaceArchivePayloadLocked installs an archive whose path and data-type
+// structure is unchanged. Reusing the existing tree/path indexes avoids a
+// second full directory walk when checkout or discard only changes payloads.
+// The caller must hold c.mu.
+func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[int32]struct{}) error {
+	if a == nil || c.archive == nil {
+		return ErrNoArchive
+	}
+	if c.indexCancel != nil {
+		c.indexCancel()
+		c.indexCancel = nil
+	}
+	if c.advancedCancel != nil {
+		c.advancedCancel()
+		c.advancedCancel = nil
+	}
+	c.indexGen++
+	c.batchRevision++
+	c.batchPlan = nil
+	c.archive = a
+	refreshArchiveIndexMetadataLocked(c, changedIndexes)
+	c.searchRecords = nil
+	c.searchByFile = make(map[int32][]int)
+	c.treeTagsByFile = make(map[int32][]TreeTag)
+	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexDirty = make(map[int32]struct{})
+	c.editorText = make(map[int32]string)
+	c.editorAnnotation = editorAnnotationCache{}
+	c.annotationRelations = make(map[string]map[string]*relationTarget)
+	c.advancedIndex = nil
+	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
+	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
+	c.unpackCancel.Store(false)
+	c.unpackRunning.Store(false)
 	return nil
 }
 
@@ -170,6 +234,7 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 
 func (c *core) closeArchive() {
 	c.mu.Lock()
+	c.detachVersionLocked()
 	if c.indexCancel != nil {
 		c.indexCancel()
 		c.indexCancel = nil

@@ -16,17 +16,20 @@ import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import BatchProcessModal from "./components/BatchProcessModal.vue";
+import VersionPanel from "./components/VersionPanel.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
 import { useSettingsStore } from "./stores/settings";
+import { useVersionStore } from "./stores/version";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
 const settings = useSettingsStore();
+const version = useVersionStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -87,7 +90,11 @@ async function onKeydown(e: KeyboardEvent) {
     return;
   }
   const key = e.key.toLowerCase();
-  if (key === "o") {
+  if (key === "enter" && version.canCommit) {
+    e.preventDefault();
+    await editor.flushPending();
+    void version.commit();
+  } else if (key === "o") {
     e.preventDefault();
     if (!archive.loading) await archive.openDialog();
   } else if (key === "s" && e.shiftKey) {
@@ -109,6 +116,7 @@ async function onKeydown(e: KeyboardEvent) {
           <ToolBar />
           <AdvancedSearchModal />
           <BatchProcessModal />
+          <VersionPanel />
           <SettingsModal />
           <div class="app-body">
             <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">

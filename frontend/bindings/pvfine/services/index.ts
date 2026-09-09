@@ -8,6 +8,7 @@ import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
+import * as VersionService from "./versionservice.js";
 export {
     AnnotationService,
     ArchiveService,
@@ -15,7 +16,8 @@ export {
     EditorService,
     FileSetService,
     SettingsService,
-    UpdateService
+    UpdateService,
+    VersionService
 };
 
 export type {
@@ -44,5 +46,11 @@ export type {
     TextReplaceSpec,
     TreeAnnotation,
     TreeNode,
-    TreeTag
+    TreeTag,
+    VersionChange,
+    VersionChangePage,
+    VersionCommit,
+    VersionFileDiff,
+    VersionHistoryPage,
+    VersionStatus
 } from "./models.js";

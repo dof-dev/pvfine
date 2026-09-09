@@ -143,6 +143,10 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, err
 	}
+	if err := s.c.markVersionArtifactSavedLocked(a.SourcePath()); err != nil {
+		s.c.mu.Unlock()
+		return ArchiveInfo{}, err
+	}
 	info := a.Info()
 	s.c.mu.Unlock()
 	emitEvent("archive:saved", info)

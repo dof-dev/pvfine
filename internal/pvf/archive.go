@@ -231,13 +231,17 @@ type File struct {
 // File returns entry i.
 func (a *Archive) File(i int32) File {
 	it := &a.items[i]
+	size := it.size
+	if payload, ok := a.overlay[i]; ok {
+		size = int32(len(payload))
+	}
 	return File{
 		Index:      i,
 		Name:       a.ResolveString(it.nameOff),
 		Path:       a.ResolveString(it.pathOff),
 		ChunkIndex: it.chunk,
 		DataOffset: it.off,
-		DataSize:   it.size,
+		DataSize:   size,
 		DataType:   it.typ,
 	}
 }

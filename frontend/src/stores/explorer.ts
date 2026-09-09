@@ -295,6 +295,10 @@ export const useExplorerStore = defineStore("explorer", () => {
       void search(query.value);
     }
   });
+  Events.On("archive:reloaded", () => {
+    reset();
+    void loadRoots();
+  });
 
   return {
     roots,
