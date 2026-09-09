@@ -131,6 +131,7 @@ export interface FileMeta {
     "path": string;
     "dataType": number;
     "size": number;
+    "tags"?: TreeTag[] | null;
     "editable": boolean;
     "text": string;
     "modified": boolean;

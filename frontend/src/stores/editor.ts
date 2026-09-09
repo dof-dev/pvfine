@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
-import type { EditorAnnotation, FileMeta } from "../../bindings/pvfine/services/models";
+import type { EditorAnnotation, FileMeta, TreeTag } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
 export type EditorPaneId = string;
@@ -14,6 +14,7 @@ export interface EditorTab {
   title: string;
   dataType: number;
   size: number;
+  tags: TreeTag[];
   editable: boolean;
   original: string; // 打开时的文本(脏判定基准)
   text: string; // 当前编辑器内容
@@ -172,6 +173,7 @@ export const useEditorStore = defineStore("editor", () => {
         title: meta.path.split("/").pop() ?? meta.path,
         dataType: meta.dataType,
         size: meta.size,
+        tags: cleanTreeTags(meta.tags),
         editable: meta.editable,
         original: meta.text,
         text: meta.text,
@@ -525,6 +527,7 @@ export const useEditorStore = defineStore("editor", () => {
         current.path = meta.path;
         current.text = meta.text;
         current.modified = meta.modified;
+        current.tags = cleanTreeTags(meta.tags);
         current.annotations = (meta.annotations ?? []).filter(
           (annotation): annotation is EditorAnnotation => !!annotation
         );
@@ -564,6 +567,7 @@ export const useEditorStore = defineStore("editor", () => {
       tab.title = node.path.split("/").pop() ?? node.path;
       tab.size = node.size;
       tab.dataType = node.dataType;
+      tab.tags = cleanTreeTags(node.tags);
       remainingTabs.push(tab);
     }
 
@@ -591,6 +595,7 @@ export const useEditorStore = defineStore("editor", () => {
           tab.title = meta.path.split("/").pop() ?? meta.path;
           tab.dataType = meta.dataType;
           tab.size = meta.size;
+          tab.tags = cleanTreeTags(meta.tags);
           tab.text = meta.text;
           if (resetOriginal) {
             tab.original = meta.text;
@@ -610,8 +615,26 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  async function refreshOpenTabTags(): Promise<void> {
+    const currentTabs = [...tabs.value];
+    await Promise.all(
+      currentTabs.map(async (tab) => {
+        const meta = await EditorService.GetFile(tab.index).catch(() => null);
+        const current = tabs.value.find((item) => item.index === tab.index);
+        if (!current || !meta) return;
+        current.tags = cleanTreeTags(meta.tags);
+      })
+    );
+  }
+
   Events.On("archive:reloaded", () => {
     void refreshAfterArchiveChange(tabs.value.map((tab) => tab.path), true);
+  });
+  Events.On("archive:index-ready", () => {
+    void refreshOpenTabTags();
+  });
+  Events.On("archive:index-updated", () => {
+    void refreshOpenTabTags();
   });
 
   return {
@@ -647,3 +670,7 @@ export const useEditorStore = defineStore("editor", () => {
     refreshAfterArchiveChange,
   };
 });
+
+function cleanTreeTags(tags: (TreeTag | null)[] | null | undefined): TreeTag[] {
+  return (tags ?? []).filter((tag): tag is TreeTag => !!tag);
+}

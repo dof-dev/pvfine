@@ -36,6 +36,7 @@ type FileMeta struct {
 	Path        string             `json:"path"`
 	DataType    int32              `json:"dataType"`
 	Size        int32              `json:"size"`
+	Tags        []TreeTag          `json:"tags,omitempty"`
 	Editable    bool               `json:"editable"`
 	Text        string             `json:"text"`
 	Modified    bool               `json:"modified"`
@@ -59,6 +60,7 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 		Path:     a.Path(index),
 		DataType: f.DataType,
 		Size:     f.DataSize,
+		Tags:     cloneTreeTags(s.c.treeTagsByFile[index]),
 		Editable: false,
 	}
 	switch f.DataType {

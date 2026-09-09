@@ -1,21 +1,31 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { Clipboard } from "@wailsio/runtime";
 import {
   NButton,
   NEmpty,
   NIcon,
   NSpin,
+  NTag,
   NTabPane,
   NTabs,
   NTooltip,
+  useMessage,
 } from "naive-ui";
-import { Dismiss16Regular } from "@vicons/fluent";
+import {
+  Dismiss16Regular,
+  DocumentSearch24Regular,
+  SplitHorizontal24Regular,
+  SplitVertical24Regular,
+} from "@vicons/fluent";
 import {
   useEditorStore,
   type DraggedEditorTab,
   type EditorPaneId,
   type EditorTab,
 } from "../stores/editor";
+import { useArchiveStore } from "../stores/archive";
+import { useExplorerStore } from "../stores/explorer";
 import CodeEditor from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 
@@ -25,9 +35,13 @@ const props = defineProps<{
 
 const paneId = props.paneId;
 const editor = useEditorStore();
+const archive = useArchiveStore();
+const explorer = useExplorerStore();
 const settings = useSettingsStore();
+const message = useMessage();
 const host = ref<HTMLDivElement | null>(null);
 const draggingIndex = ref<number | null>(null);
+const revealingFile = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
 
@@ -45,6 +59,31 @@ const activeKeyStr = computed(() => {
   const key = pane.value?.activeKey;
   return key === null || key === undefined ? undefined : String(key);
 });
+const activeTab = computed(() => {
+  const activeKey = pane.value?.activeKey;
+  return paneTabs.value.find((tab) => tab.index === activeKey) ?? null;
+});
+const fileTags = computed(() => {
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  const result: Array<{ kind: "id" | "name"; value: string }> = [];
+  for (const tag of activeTab.value?.tags ?? []) {
+    const id = tag.id.trim();
+    if (id && !ids.has(id)) {
+      ids.add(id);
+      result.push({ kind: "id", value: id });
+    }
+    const name = tag.name.trim();
+    if (name && !names.has(name)) {
+      names.add(name);
+      result.push({ kind: "name", value: name });
+    }
+  }
+  return result;
+});
+const canRevealActiveFile = computed(
+  () => archive.open && !!activeTab.value && !revealingFile.value
+);
 
 function activatePane(): void {
   editor.activatePane(paneId);
@@ -56,6 +95,53 @@ function onActive(key: string | number): void {
 
 function onClose(index: number): void {
   editor.closeTab(index, paneId);
+}
+
+async function onRevealActiveFile(): Promise<void> {
+  if (revealingFile.value) return;
+  const tab = activeTab.value;
+  if (!archive.open || !tab) return;
+
+  revealingFile.value = true;
+  try {
+    if (explorer.mode === "search") explorer.clearSearch();
+    const found = await explorer.revealPath(tab.path);
+    if (!found) message.info("当前文件未在资源管理器中找到");
+  } catch (error: any) {
+    message.error(`定位文件失败: ${error?.message ?? error}`);
+  } finally {
+    revealingFile.value = false;
+  }
+}
+
+async function copyTag(value: string): Promise<void> {
+  try {
+    // Wails 桌面端使用原生剪贴板,不受 WebView 的 Clipboard 权限限制。
+    await Clipboard.SetText(value);
+    message.success(`已复制 ${value}`);
+  } catch {
+    try {
+      // 浏览器开发模式没有 Wails runtime 时使用 Web Clipboard API。
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("clipboard unavailable");
+      }
+      message.success(`已复制 ${value}`);
+    } catch {
+      message.error("复制失败,请重试");
+    }
+  }
 }
 
 function sizeText(n: number): string {
@@ -216,6 +302,77 @@ function onDrop(event: DragEvent): void {
           </span>
         </template>
 
+        <div class="editor-info-bar" role="toolbar" aria-label="当前文件操作">
+          <div class="editor-file-tags" aria-label="当前文件关联信息">
+            <NTag
+              v-for="tag in fileTags"
+              :key="`${tag.kind}:${tag.value}`"
+              size="tiny"
+              :bordered="false"
+              :type="tag.kind === 'id' ? 'info' : 'success'"
+              class="editor-file-tag"
+              role="button"
+              tabindex="0"
+              :title="`点击复制${tag.kind === 'id' ? 'id' : 'name'}: ${tag.value}`"
+              @click="copyTag(tag.value)"
+              @keydown.enter.prevent="copyTag(tag.value)"
+              @keydown.space.prevent="copyTag(tag.value)"
+            >
+              {{ tag.value }}
+            </NTag>
+          </div>
+
+          <div class="editor-pane-actions" role="group" aria-label="编辑器操作">
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :loading="revealingFile"
+                  :disabled="!canRevealActiveFile"
+                  @click="onRevealActiveFile"
+                >
+                  <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
+                  在资源管理器中选中
+                </NButton>
+              </template>
+              定位当前文件
+            </NTooltip>
+
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :disabled="!activeTab"
+                  aria-label="左右分屏"
+                  @click="editor.split('columns', paneId)"
+                >
+                  <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
+                  左右分屏
+                </NButton>
+              </template>
+              左右分屏 (Cmd/Ctrl+\)
+            </NTooltip>
+
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :disabled="!activeTab"
+                  aria-label="上下分屏"
+                  @click="editor.split('rows', paneId)"
+                >
+                  <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
+                  上下分屏
+                </NButton>
+              </template>
+              上下分屏 (Cmd/Ctrl+Shift+\)
+            </NTooltip>
+          </div>
+        </div>
+
         <div class="pane-body">
           <div v-if="!tab.editable" class="readonly-hint">
             该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
@@ -374,6 +531,46 @@ function onDrop(event: DragEvent): void {
 .tab-close {
   padding: 0 2px;
   height: auto;
+}
+.editor-info-bar {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  background: rgba(255, 255, 255, 0.018);
+}
+.editor-file-tags {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.editor-file-tags::-webkit-scrollbar {
+  display: none;
+}
+.editor-file-tag {
+  flex: 0 0 auto;
+  max-width: 240px;
+  cursor: pointer;
+  user-select: none;
+}
+.editor-file-tag :deep(.n-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-pane-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .pane-body {
   flex: 1;

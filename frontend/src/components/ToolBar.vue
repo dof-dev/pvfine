@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
@@ -8,13 +8,10 @@ import {
   FolderArrowUp24Regular,
   Stop24Regular,
   Search24Regular,
-  DocumentSearch24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
   DocumentSync24Regular,
   Settings24Regular,
-  SplitHorizontal24Regular,
-  SplitVertical24Regular,
 } from "@vicons/fluent";
 import {
   NButton,
@@ -29,7 +26,6 @@ import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useFileSetStore } from "../stores/fileSets";
 import { useSettingsStore } from "../stores/settings";
-import { useExplorerStore } from "../stores/explorer";
 import { useVersionStore } from "../stores/version";
 
 const archive = useArchiveStore();
@@ -37,18 +33,12 @@ const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
 const fileSets = useFileSetStore();
 const settings = useSettingsStore();
-const explorer = useExplorerStore();
 const version = useVersionStore();
 const message = useMessage();
 const dialog = useDialog();
-const revealingFile = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
-const canCreateSplit = computed(() => editor.activeTab !== null);
-const canRevealActiveFile = computed(
-  () => archive.open && editor.activeTab !== null && !revealingFile.value
-);
 watch(
   () => archive.unpackMessage,
   (msg) => {
@@ -126,23 +116,6 @@ function toggleFileSetSidebar() {
   fileSets.visible = !fileSets.visible;
 }
 
-async function onRevealActiveFile(): Promise<void> {
-  if (revealingFile.value) return;
-  const tab = editor.activeTab;
-  if (!archive.open || !tab) return;
-
-  revealingFile.value = true;
-  try {
-    if (explorer.mode === "search") explorer.clearSearch();
-    const found = await explorer.revealPath(tab.path);
-    if (!found) message.info("当前文件未在资源管理器中找到");
-  } catch (error: any) {
-    message.error(`定位文件失败: ${error?.message ?? error}`);
-  } finally {
-    revealingFile.value = false;
-  }
-}
-
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -205,50 +178,6 @@ function isCancel(e: any): boolean {
         在当前归档中搜索二进制或字符串池
       </NTooltip>
 
-      <NTooltip trigger="hover">
-        <template #trigger>
-          <NButton
-            quaternary
-            :loading="revealingFile"
-            :disabled="!canRevealActiveFile"
-            @click="onRevealActiveFile"
-          >
-            <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
-            在资源管理器中选中
-          </NButton>
-        </template>
-        定位当前焦点文件
-      </NTooltip>
-
-      <NTooltip trigger="hover">
-        <template #trigger>
-          <NButton
-            quaternary
-            :disabled="!canCreateSplit"
-            aria-label="左右分屏"
-            @click="editor.split('columns')"
-          >
-            <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
-            左右分屏
-          </NButton>
-        </template>
-        左右分屏 (Cmd/Ctrl+\\)
-      </NTooltip>
-
-      <NTooltip trigger="hover">
-        <template #trigger>
-          <NButton
-            quaternary
-            :disabled="!canCreateSplit"
-            aria-label="上下分屏"
-            @click="editor.split('rows')"
-          >
-            <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
-            上下分屏
-          </NButton>
-        </template>
-        上下分屏 (Cmd/Ctrl+Shift+\\)
-      </NTooltip>
     </div>
 
     <div class="tb-sep" />
