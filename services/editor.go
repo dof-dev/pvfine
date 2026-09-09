@@ -41,6 +41,8 @@ type FileMeta struct {
 	Text        string             `json:"text"`
 	Modified    bool               `json:"modified"`
 	Annotations []EditorAnnotation `json:"annotations,omitempty"`
+	Icon        *ImageReference    `json:"icon,omitempty"`
+	FieldImage  *ImageReference    `json:"fieldImage,omitempty"`
 }
 
 // GetFile 返回文件的反编译文本(内存编辑视图)。
@@ -63,6 +65,9 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 		Tags:     cloneTreeTags(s.c.treeTagsByFile[index]),
 		Editable: false,
 	}
+	visuals := s.c.fileVisualsLocked(index)
+	meta.Icon = cloneImageReference(visuals.icon)
+	meta.FieldImage = cloneImageReference(visuals.fieldImage)
 	switch f.DataType {
 	case pvf.TypeScript, pvf.TypeUnicode:
 		if f.DataSize > maxEditableBytes {

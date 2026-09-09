@@ -7,6 +7,7 @@ import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
+import * as ImageService from "./imageservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
 import * as VersionService from "./versionservice.js";
@@ -17,6 +18,7 @@ export {
     BookmarkService,
     EditorService,
     FileSetService,
+    ImageService,
     SettingsService,
     UpdateService,
     VersionService
@@ -44,6 +46,9 @@ export type {
     FileMeta,
     FileRegistration,
     FileSetDocument,
+    ImageData,
+    ImageIndexStatus,
+    ImageReference,
     ImportPreview,
     ImportPreviewEntry,
     ImportResult,

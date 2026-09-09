@@ -16,3 +16,11 @@ export function GetSettings(): $CancellablePromise<$models.AppSettings> {
 export function SaveSettings(settings: $models.AppSettings): $CancellablePromise<void> {
     return $Call.ByID(4275989344, settings);
 }
+
+/**
+ * UpdateNPKDirectory changes only the image resource directory while
+ * preserving settings added by newer versions of the application.
+ */
+export function UpdateNPKDirectory(directory: string): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(2463267103, directory);
+}

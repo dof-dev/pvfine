@@ -48,6 +48,8 @@ type TreeNode struct {
 	ChangeKind  string           `json:"changeKind,omitempty"`
 	Tags        []TreeTag        `json:"tags,omitempty"`
 	Annotations []TreeAnnotation `json:"annotations,omitempty"`
+	Icon        *ImageReference  `json:"icon,omitempty"`
+	FieldImage  *ImageReference  `json:"fieldImage,omitempty"`
 }
 
 // pathEntry feeds the search scanner.
@@ -77,6 +79,7 @@ type core struct {
 	searchRecords        []searchRecord
 	searchByFile         map[int32][]int
 	treeTagsByFile       map[int32][]TreeTag
+	visualsByFile        map[int32]fileVisuals
 	indexStatus          IndexStatus
 	indexCancel          context.CancelFunc
 	indexDirty           map[int32]struct{}
@@ -122,7 +125,7 @@ func NewCore() *core { return makeCore() }
 
 func makeCore() *core {
 	engine, err := annotationrules.LoadDefault()
-	return &core{annotationEngine: engine, annotationErr: err}
+	return &core{annotationEngine: engine, annotationErr: err, visualsByFile: make(map[int32]fileVisuals)}
 }
 
 func archiveChangeKind(a *pvf.Archive, index int32) string {
@@ -187,6 +190,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.searchRecords = nil
 	c.searchByFile = make(map[int32][]int)
 	c.treeTagsByFile = make(map[int32][]TreeTag)
+	c.visualsByFile = make(map[int32]fileVisuals)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = make(map[int32]struct{})
 	c.editorText = make(map[int32]string)
@@ -243,6 +247,7 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 	c.searchRecords = nil
 	c.searchByFile = make(map[int32][]int)
 	c.treeTagsByFile = make(map[int32][]TreeTag)
+	c.visualsByFile = make(map[int32]fileVisuals)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = make(map[int32]struct{})
 	c.advancedIndex = nil
@@ -277,6 +282,7 @@ func (c *core) closeArchive() {
 	c.searchRecords = nil
 	c.searchByFile = nil
 	c.treeTagsByFile = nil
+	c.visualsByFile = nil
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexDirty = nil
 	c.advancedIndex = nil

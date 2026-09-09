@@ -32,6 +32,7 @@ import { useExplorerStore } from "../stores/explorer";
 import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
+import ImageThumbnail from "./ImageThumbnail.vue";
 
 const props = defineProps<{
   paneId: EditorPaneId;
@@ -396,6 +397,7 @@ function onDrop(event: DragEvent): void {
             @dragend="onDragEnd"
             @contextmenu.stop="onTabContextMenu($event, tab.index)"
           >
+            <ImageThumbnail v-if="tab.icon" :reference="tab.icon" :size="16" />
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
             {{ tab.title }}
             <NTooltip>

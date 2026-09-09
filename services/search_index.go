@@ -51,6 +51,8 @@ type SearchHit struct {
 	ChangeKind      string                      `json:"changeKind,omitempty"`
 	Annotations     []TreeAnnotation            `json:"annotations,omitempty"`
 	PathAnnotations map[string][]TreeAnnotation `json:"pathAnnotations,omitempty"`
+	Icon            *ImageReference             `json:"icon,omitempty"`
+	FieldImage      *ImageReference             `json:"fieldImage,omitempty"`
 }
 
 // TreeTag is one list mapping displayed after a file name in the explorer.
@@ -68,14 +70,21 @@ type searchRecord struct {
 }
 
 type indexedMetadata struct {
-	name      string
-	id        string
-	category  string
-	listPath  string
-	path      string
-	fileIndex int32
-	size      int32
-	dataType  int32
+	name       string
+	id         string
+	category   string
+	listPath   string
+	path       string
+	fileIndex  int32
+	size       int32
+	dataType   int32
+	icon       *ImageReference
+	fieldImage *ImageReference
+}
+
+type fileVisuals struct {
+	icon       *ImageReference
+	fieldImage *ImageReference
 }
 
 type searchableListSpec struct {
@@ -238,6 +247,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 
 	metadata := make([]indexedMetadata, 0, len(refs))
 	byFile := make(map[int32][]int)
+	metadataByIndex := make(map[int32]pvf.ScriptMetadata)
 	lastProgress := time.Now()
 	for i, ref := range refs {
 		if !c.indexCurrent(a, gen, ctx) {
@@ -255,13 +265,22 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 		if !ok {
 			return
 		}
-		name, _, err := c.readIndexedName(a, gen, ctx, fileIndex, ref.listPath, npcNames)
-		if err != nil {
+		scriptMetadata, metadataCached := metadataByIndex[fileIndex]
+		var metadataErr error
+		if !metadataCached {
+			scriptMetadata, metadataErr = c.readIndexedMetadata(a, gen, ctx, fileIndex, ref.listPath, npcNames)
+			if metadataErr == nil {
+				metadataByIndex[fileIndex] = scriptMetadata
+			}
+		}
+		if metadataErr != nil {
 			// The id/path mapping remains useful even when the target is not
 			// a parseable script or has malformed content.
-			name = ""
+			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		ref.name = name
+		ref.name = scriptMetadata.Name
+		ref.icon = imageReferenceFromPVF(scriptMetadata.Icon)
+		ref.fieldImage = imageReferenceFromPVF(scriptMetadata.FieldImage)
 		ref.fileIndex = fileIndex
 		ref.path = canonicalPath
 		ref.size = f.DataSize
@@ -273,6 +292,13 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 
 	records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
 	treeTagsByFile := buildTreeTags(records, recordsByFile)
+	visualsByFile := make(map[int32]fileVisuals, len(metadataByIndex))
+	for fileIndex, scriptMetadata := range metadataByIndex {
+		visualsByFile[fileIndex] = fileVisuals{
+			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
+			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
+		}
+	}
 
 	c.mu.Lock()
 	locked = true
@@ -290,9 +316,14 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 		}
 	}
 	for fileIndex := range c.indexDirty {
-		name, _, err := readIndexedNameFromArchive(a, fileIndex, a.Path(fileIndex), npcNames)
+		scriptMetadata, err := readIndexedMetadataFromArchive(a, fileIndex, a.Path(fileIndex), npcNames)
 		if err != nil {
-			name = ""
+			scriptMetadata = pvf.ScriptMetadata{}
+		}
+		name := scriptMetadata.Name
+		visualsByFile[fileIndex] = fileVisuals{
+			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
+			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
 		}
 		for _, recordIndex := range recordsByFile[fileIndex] {
 			if records[recordIndex].hit.Category == SearchCategoryFile {
@@ -300,11 +331,14 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 			}
 			records[recordIndex].hit.Name = name
 			records[recordIndex].lowerName = strings.ToLower(name)
+			records[recordIndex].hit.Icon = cloneImageReference(visualsByFile[fileIndex].icon)
+			records[recordIndex].hit.FieldImage = cloneImageReference(visualsByFile[fileIndex].fieldImage)
 		}
 	}
 	c.searchRecords = records
 	c.searchByFile = recordsByFile
 	c.treeTagsByFile = treeTagsByFile
+	c.visualsByFile = visualsByFile
 	c.indexStatus = IndexStatus{
 		State:   IndexStateReady,
 		Stage:   "ready",
@@ -393,6 +427,8 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
+	previousVisuals, hadPreviousVisuals := c.visualsByFile[index]
+	delete(c.visualsByFile, index)
 	if c.indexStatus.State != IndexStateReady {
 		if c.indexDirty == nil {
 			c.indexDirty = make(map[int32]struct{})
@@ -407,28 +443,35 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	}
 
 	recordIndexes := c.searchByFile[index]
-	if len(recordIndexes) == 0 {
-		c.mu.Unlock()
-		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
-		if versioned {
-			emitVersionState(c, "edited")
-		}
-		return false, "", nil
-	}
-	name, _, err := readIndexedNameFromArchive(c.archive, index, c.archive.Path(index), nil)
+	metadata, err := readIndexedMetadataFromArchive(c.archive, index, c.archive.Path(index), nil)
 	if err != nil {
-		name = ""
+		metadata = pvf.ScriptMetadata{}
 	}
+	name := metadata.Name
+	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	c.visualsByFile[index] = visuals
 	updated := false
 	for _, recordIndex := range recordIndexes {
-		if c.searchRecords[recordIndex].hit.Category == SearchCategoryFile {
-			continue
+		record := &c.searchRecords[recordIndex]
+		if record.hit.Category != SearchCategoryFile {
+			record.hit.Name = name
+			record.lowerName = strings.ToLower(name)
 		}
-		c.searchRecords[recordIndex].hit.Name = name
-		c.searchRecords[recordIndex].lowerName = strings.ToLower(name)
-		updated = true
+		if !imageReferencesEqual(record.hit.Icon, visuals.icon) || !imageReferencesEqual(record.hit.FieldImage, visuals.fieldImage) {
+			updated = true
+		}
+		record.hit.Icon = cloneImageReference(visuals.icon)
+		record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
+		if record.hit.Category != SearchCategoryFile {
+			updated = true
+		}
 	}
 	c.treeTagsByFile[index] = treeTagsForRecords(c.searchRecords, recordIndexes)
+	if !hadPreviousVisuals || !imageReferencesEqual(previousVisuals.icon, visuals.icon) || !imageReferencesEqual(previousVisuals.fieldImage, visuals.fieldImage) {
+		if visuals.icon != nil || visuals.fieldImage != nil || hadPreviousVisuals {
+			updated = true
+		}
+	}
 	if isNPCEntryPath(path) && c.refreshItemShopNamesLocked() {
 		updated = true
 	}
@@ -439,8 +482,10 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	}
 	if updated {
 		emitEvent("archive:index-updated", map[string]any{
-			"fileIndex": index,
-			"name":      name,
+			"fileIndex":  index,
+			"name":       name,
+			"icon":       cloneImageReference(visuals.icon),
+			"fieldImage": cloneImageReference(visuals.fieldImage),
 		})
 	}
 	return updated, name, nil
@@ -524,13 +569,18 @@ func (c *core) readFileMetadata(a *pvf.Archive, gen uint64, ctx context.Context,
 	return a.File(index), a.Path(index), true
 }
 
-func (c *core) readIndexedName(a *pvf.Archive, gen uint64, ctx context.Context, index int32, listPath string, npcNames map[string]string) (string, bool, error) {
+func (c *core) readIndexedMetadata(a *pvf.Archive, gen uint64, ctx context.Context, index int32, listPath string, npcNames map[string]string) (pvf.ScriptMetadata, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
-		return "", false, context.Canceled
+		return pvf.ScriptMetadata{}, context.Canceled
 	}
-	return readIndexedNameFromArchive(a, index, listPath, npcNames)
+	return readIndexedMetadataFromArchive(a, index, listPath, npcNames)
+}
+
+func (c *core) readIndexedName(a *pvf.Archive, gen uint64, ctx context.Context, index int32, listPath string, npcNames map[string]string) (string, bool, error) {
+	metadata, err := c.readIndexedMetadata(a, gen, ctx, index, listPath, npcNames)
+	return metadata.Name, metadata.HasName, err
 }
 
 func (c *core) buildNPCNameIndex(a *pvf.Archive, gen uint64, ctx context.Context) (map[string]string, bool) {
@@ -543,29 +593,79 @@ func (c *core) buildNPCNameIndex(a *pvf.Archive, gen uint64, ctx context.Context
 }
 
 func readIndexedNameFromArchive(a *pvf.Archive, index int32, listPath string, npcNames map[string]string) (string, bool, error) {
-	name, ok, err := a.ScriptName(index)
+	metadata, err := readIndexedMetadataFromArchive(a, index, listPath, npcNames)
+	return metadata.Name, metadata.HasName, err
+}
+
+func readIndexedMetadataFromArchive(a *pvf.Archive, index int32, listPath string, npcNames map[string]string) (pvf.ScriptMetadata, error) {
+	metadata, err := a.ScriptMetadata(index)
 	if err != nil {
-		return "", false, err
+		return pvf.ScriptMetadata{}, err
 	}
-	if ok && strings.TrimSpace(name) != "" {
-		return name, true, nil
+	if metadata.HasName && strings.TrimSpace(metadata.Name) != "" {
+		return metadata, nil
 	}
 	if !isItemShopEntry(listPath, a.Path(index)) {
-		return name, ok, nil
+		return metadata, nil
 	}
 	if npcNames == nil {
 		npcNames = buildNPCNameIndexFromArchive(a)
 	}
 	text, err := a.Text(index)
 	if err != nil {
-		return "", false, err
+		return metadata, err
 	}
 	npcID := firstSectionValue(text, "npc")
 	if npcID == "" {
-		return "", false, nil
+		return metadata, nil
 	}
-	name, ok = npcNames[npcID]
-	return name, ok && strings.TrimSpace(name) != "", nil
+	name, ok := npcNames[npcID]
+	if ok && strings.TrimSpace(name) != "" {
+		metadata.Name = name
+		metadata.HasName = true
+	}
+	return metadata, nil
+}
+
+func imageReferenceFromPVF(reference *pvf.ScriptImageReference) *ImageReference {
+	if reference == nil || strings.TrimSpace(reference.Path) == "" || reference.Index < 0 {
+		return nil
+	}
+	return &ImageReference{Path: reference.Path, Index: reference.Index}
+}
+
+func cloneImageReference(reference *ImageReference) *ImageReference {
+	if reference == nil {
+		return nil
+	}
+	copy := *reference
+	return &copy
+}
+
+func imageReferencesEqual(left, right *ImageReference) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return left.Path == right.Path && left.Index == right.Index
+}
+
+func (c *core) fileVisualsLocked(index int32) fileVisuals {
+	if c.visualsByFile == nil {
+		c.visualsByFile = make(map[int32]fileVisuals)
+	}
+	if visuals, ok := c.visualsByFile[index]; ok {
+		return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
+	}
+	if c.archive == nil || index < 0 || index >= c.archive.FileCount() || c.archive.File(index).DataType != pvf.TypeScript {
+		return fileVisuals{}
+	}
+	metadata, err := c.archive.ScriptMetadata(index)
+	if err != nil {
+		return fileVisuals{}
+	}
+	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	c.visualsByFile[index] = visuals
+	return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
 }
 
 func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
@@ -700,6 +800,8 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 				DataType:   entry.dataType,
 				FileIndex:  entry.fileIndex,
 				ChangeKind: p.changeKind,
+				Icon:       cloneImageReference(entry.icon),
+				FieldImage: cloneImageReference(entry.fieldImage),
 			})
 		}
 	}

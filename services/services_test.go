@@ -87,7 +87,7 @@ func writeSearchFixture(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = a.AddFileText("equipment/character/common/amulet/1008.equ", "[name]\n`烈火之心项链`\n[grade]\n1", pvf.TypeScript)
+	_, err = a.AddFileText("equipment/character/common/amulet/1008.equ", "[name]\n`烈火之心项链`\n[icon]\n`Item/test.img`\n3\n[field image]\n`Item/field.img`\n4\n[grade]\n1", pvf.TypeScript)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +143,9 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	if byName.Hits[0].ID == "" || byName.Hits[0].Path != "equipment/character/common/amulet/1008.equ" {
 		t.Fatalf("name hit = %#v", byName.Hits[0])
 	}
+	if byName.Hits[0].Icon == nil || byName.Hits[0].Icon.Path != "Item/test.img" || byName.Hits[0].Icon.Index != 3 || byName.Hits[0].FieldImage == nil || byName.Hits[0].FieldImage.Index != 4 {
+		t.Fatalf("name hit images = %#v", byName.Hits[0])
+	}
 
 	byPath, err := svc.Search("misc/readme.txt", 0, 20)
 	if err != nil || len(byPath.Hits) != 1 {
@@ -178,6 +181,9 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	if amuletFile.Tags[0].ID != "1008" || amuletFile.Tags[0].Name != "烈火之心项链" ||
 		amuletFile.Tags[1].ID != "1010" || amuletFile.Tags[1].Name != "烈火之心项链" {
 		t.Fatalf("tree tags = %#v", amuletFile.Tags)
+	}
+	if amuletFile.Icon == nil || amuletFile.Icon.Index != 3 || amuletFile.FieldImage == nil || amuletFile.FieldImage.Index != 4 {
+		t.Fatalf("tree images = %#v", amuletFile)
 	}
 }
 

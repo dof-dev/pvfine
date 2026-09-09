@@ -56,6 +56,7 @@ func parseDocument(data []byte) (Document, error) {
 		}
 		return Document{}, fmt.Errorf("解析标注规则失败: %w", err)
 	}
+	normalizeImageTargets(&document)
 	return document, nil
 }
 
@@ -80,6 +81,7 @@ func ParseLists(data []byte) (ListDocument, error) {
 }
 
 func Marshal(document Document) ([]byte, error) {
+	normalizeImageTargets(&document)
 	if err := Validate(document); err != nil {
 		return nil, err
 	}
@@ -91,6 +93,7 @@ func Marshal(document Document) ([]byte, error) {
 }
 
 func MarshalRules(document Document) ([]byte, error) {
+	normalizeImageTargets(&document)
 	if err := Validate(document); err != nil {
 		return nil, err
 	}
@@ -115,6 +118,7 @@ func MarshalLists(lists ListDocument) ([]byte, error) {
 }
 
 func Validate(document Document) error {
+	normalizeImageTargets(&document)
 	problems := make([]string, 0)
 	if document.Version != 1 {
 		problems = append(problems, fmt.Sprintf("version 必须为 1，当前为 %d", document.Version))
@@ -245,6 +249,9 @@ func Validate(document Document) error {
 				problems = append(problems, prefix+" 的 section 标注只支持 text 类型")
 			}
 		case "token":
+			if rule.Annotation.Type != "image" && rule.Target.ImagePathToken != nil {
+				problems = append(problems, prefix+".target.imagePathToken 只允许用于 image 标注")
+			}
 			if strings.TrimSpace(rule.Target.Section) == "" {
 				problems = append(problems, prefix+".target.section 不能为空")
 			}
@@ -278,6 +285,25 @@ func Validate(document Document) error {
 					problems = append(problems, prefix+" 的 token 范围只支持 text 类型")
 				}
 			}
+			if rule.Annotation.Type == "image" {
+				if rule.Target.Index == nil || rule.Target.Range != nil {
+					problems = append(problems, prefix+" 的 image 标注必须使用单个路径 token")
+				}
+				if rule.Target.RecordTokens <= 0 {
+					problems = append(problems, prefix+" 的 image 标注必须配置正数 target.recordTokens")
+				}
+				if rule.Target.ImagePathToken == nil {
+					problems = append(problems, prefix+" 的 image 标注必须配置 target.imagePathToken")
+				} else if rule.Target.RecordTokens > 0 && (*rule.Target.ImagePathToken < 0 || *rule.Target.ImagePathToken >= rule.Target.RecordTokens) {
+					problems = append(problems, prefix+".target.imagePathToken 必须位于 recordTokens 范围内")
+				}
+				if rule.Target.Index != nil && rule.Target.ImagePathToken != nil && *rule.Target.Index == *rule.Target.ImagePathToken {
+					problems = append(problems, prefix+" 的 imagePathToken 不能与图片索引 token 相同")
+				}
+				if rule.Target.ContextIndex != nil {
+					problems = append(problems, prefix+" 的 image 标注不支持 contextIndex")
+				}
+			}
 		default:
 			problems = append(problems, prefix+".target.kind 必须是 path、section 或 token")
 		}
@@ -287,6 +313,7 @@ func Validate(document Document) error {
 		}
 		switch rule.Annotation.Type {
 		case "text":
+		case "image":
 		case "enum":
 			if len(rule.Annotation.Values) == 0 {
 				problems = append(problems, prefix+".annotation.values 不能为空")
@@ -308,7 +335,10 @@ func Validate(document Document) error {
 				}
 			}
 		default:
-			problems = append(problems, prefix+".annotation.type 必须是 text、enum 或 reference")
+			problems = append(problems, prefix+".annotation.type 必须是 text、image、enum 或 reference")
+		}
+		if rule.Annotation.InlineImage && rule.Annotation.Type != "image" {
+			problems = append(problems, prefix+".annotation.inlineImage 只允许用于 image 标注")
 		}
 	}
 
@@ -316,6 +346,29 @@ func Validate(document Document) error {
 		return fmt.Errorf("标注规则校验失败:\n- %s", strings.Join(problems, "\n- "))
 	}
 	return nil
+}
+
+// normalizeImageTargets migrates the original image rule shape. Originally
+// target.index was the IMG path token and target.imageIndexToken was the
+// numeric image index token. Image annotations now anchor on the numeric
+// index and use imagePathToken for the associated IMG path token.
+func normalizeImageTargets(document *Document) {
+	if document == nil || len(document.Rules) == 0 {
+		return
+	}
+	document.Rules = append([]Rule(nil), document.Rules...)
+	for i := range document.Rules {
+		target := &document.Rules[i].Target
+		if document.Rules[i].Annotation.Type != "image" || target.ImageIndexToken == nil {
+			continue
+		}
+		if target.ImagePathToken == nil {
+			pathToken := target.Index
+			target.Index = target.ImageIndexToken
+			target.ImagePathToken = pathToken
+		}
+		target.ImageIndexToken = nil
+	}
 }
 
 func validateGlob(pattern string) error {

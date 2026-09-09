@@ -21,6 +21,7 @@ type AppSettings struct {
 	ExplorerOpenMode       string `json:"explorerOpenMode"`
 	VimMode                bool   `json:"vimMode"`
 	BackupSourceOnSave     bool   `json:"backupSourceOnSave"`
+	NPKDirectory           string `json:"npkDirectory"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -29,6 +30,7 @@ func DefaultAppSettings() AppSettings {
 		ExplorerOpenMode:       ExplorerOpenSingleClick,
 		VimMode:                false,
 		BackupSourceOnSave:     true,
+		NPKDirectory:           "",
 	}
 }
 
@@ -53,6 +55,10 @@ func newSettingsService(path string) *SettingsService {
 func (s *SettingsService) GetSettings() (AppSettings, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.getSettingsLocked()
+}
+
+func (s *SettingsService) getSettingsLocked() (AppSettings, error) {
 	if s.initErr != nil {
 		return AppSettings{}, s.initErr
 	}
@@ -76,6 +82,10 @@ func (s *SettingsService) GetSettings() (AppSettings, error) {
 func (s *SettingsService) SaveSettings(settings AppSettings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.saveSettingsLocked(settings)
+}
+
+func (s *SettingsService) saveSettingsLocked(settings AppSettings) error {
 	if s.initErr != nil {
 		return s.initErr
 	}
@@ -115,6 +125,22 @@ func (s *SettingsService) SaveSettings(settings AppSettings) error {
 		return fmt.Errorf("替换设置文件失败: %w", err)
 	}
 	return nil
+}
+
+// UpdateNPKDirectory changes only the image resource directory while
+// preserving settings added by newer versions of the application.
+func (s *SettingsService) UpdateNPKDirectory(directory string) (AppSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	settings, err := s.getSettingsLocked()
+	if err != nil {
+		return AppSettings{}, err
+	}
+	settings.NPKDirectory = directory
+	if err := s.saveSettingsLocked(settings); err != nil {
+		return AppSettings{}, err
+	}
+	return settings, nil
 }
 
 func validateSettings(settings AppSettings) error {

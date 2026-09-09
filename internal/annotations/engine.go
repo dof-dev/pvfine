@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"pvfine/internal/pvf"
@@ -35,9 +36,12 @@ type matchedItem struct {
 	content         string
 	typ             string
 	targetFileIndex int32
+	image           *ImageReference
+	inlineImage     bool
 }
 
 func Compile(document Document) (*Engine, error) {
+	normalizeImageTargets(&document)
 	if document.Relations == nil {
 		document.Relations = make(map[string]RelationSpec)
 	}
@@ -92,6 +96,12 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 			if result.TargetFileIndex < 0 && item.targetFileIndex >= 0 {
 				result.TargetFileIndex = item.targetFileIndex
 			}
+			if result.Image == nil && item.image != nil {
+				result.Image = item.image
+			}
+			if item.image != nil && item.inlineImage {
+				result.InlineImage = true
+			}
 			return
 		}
 		resultByAnchor[key] = len(results)
@@ -103,6 +113,8 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 			Type:            item.typ,
 			TargetFileIndex: item.targetFileIndex,
 			RuleIDs:         []string{item.ruleID},
+			Image:           item.image,
+			InlineImage:     item.image != nil && item.inlineImage,
 		})
 	}
 	for _, compiled := range e.rules {
@@ -112,7 +124,11 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 		}
 		anchors := e.editorAnchors(rule, view)
 		for _, anchor := range anchors {
-			item := annotationItem(rule, anchor.value, anchor.context, resolver)
+			value := anchor.value
+			if rule.Annotation.Type == "image" {
+				value = anchor.imagePathValue
+			}
+			item := annotationItem(rule, value, anchor.imageIndexValue, anchor.context, resolver)
 			appendResult(anchor, item)
 		}
 	}
@@ -270,7 +286,7 @@ func (e *Engine) AnnotatePath(filePath string, isDir bool) []Result {
 		if compiled.rule.Target.Kind != "path" || !compiled.matches(filePath, isDir) {
 			continue
 		}
-		items = append(items, annotationItem(compiled.rule, "", "", nil))
+		items = append(items, annotationItem(compiled.rule, "", "", "", nil))
 	}
 	if len(items) == 0 {
 		return nil
@@ -310,10 +326,12 @@ func (e *Engine) RelationNames() []string {
 }
 
 type editorAnchor struct {
-	start   int
-	end     int
-	value   string
-	context string
+	start           int
+	end             int
+	value           string
+	imagePathValue  string
+	imageIndexValue string
+	context         string
 }
 
 func (e *Engine) editorAnchors(rule Rule, view pvf.ScriptView) []editorAnchor {
@@ -398,6 +416,10 @@ func repeatedTokenAnchors(rule Rule, view pvf.ScriptView, contextIndex *int) []e
 		for start := 0; start+rule.Target.RecordTokens <= len(tokens); start += rule.Target.RecordTokens {
 			target := tokens[start+*rule.Target.Index]
 			anchor := editorAnchor{start: target.Start, end: target.End, value: target.Value}
+			if rule.Annotation.Type == "image" && rule.Target.ImagePathToken != nil {
+				anchor.imagePathValue = tokens[start+*rule.Target.ImagePathToken].Value
+				anchor.imageIndexValue = target.Value
+			}
 			if contextIndex != nil {
 				anchor.context = tokens[start+*contextIndex].Value
 			}
@@ -407,15 +429,22 @@ func repeatedTokenAnchors(rule Rule, view pvf.ScriptView, contextIndex *int) []e
 	return anchors
 }
 
-func annotationItem(rule Rule, value, context string, resolver ContextResolver) matchedItem {
+func annotationItem(rule Rule, value, imageIndexValue, context string, resolver ContextResolver) matchedItem {
 	item := matchedItem{
 		ruleID:          rule.ID,
 		title:           rule.Annotation.Title,
 		content:         strings.TrimSpace(rule.Annotation.Content),
 		typ:             rule.Annotation.Type,
 		targetFileIndex: -1,
+		inlineImage:     rule.Annotation.InlineImage,
 	}
 	switch rule.Annotation.Type {
+	case "image":
+		imageIndex, err := strconv.ParseInt(strings.TrimSpace(imageIndexValue), 10, 32)
+		item.content = joinContent(item.content, fmt.Sprintf("图片: %s[%s]", value, strings.TrimSpace(imageIndexValue)))
+		if strings.TrimSpace(value) != "" && err == nil && imageIndex >= 0 {
+			item.image = &ImageReference{Path: strings.TrimSpace(value), Index: int32(imageIndex)}
+		}
 	case "enum":
 		label, ok := rule.Annotation.Values[value]
 		detail := "当前值: " + value

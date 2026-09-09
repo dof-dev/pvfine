@@ -210,6 +210,8 @@ function serviceEntry(node: TreeNode): FileSetEntry {
     ids: [...new Set((node.tags ?? []).map((tag) => tag.id).filter(Boolean))],
     size: node.size,
     dataType: node.dataType,
+    icon: node.icon ?? null,
+    fieldImage: node.fieldImage ?? null,
   };
 }
 

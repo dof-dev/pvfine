@@ -11,6 +11,7 @@ const defaultSettings: AppSettings = {
   explorerOpenMode: "single-click",
   vimMode: false,
   backupSourceOnSave: true,
+  npkDirectory: "",
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -21,6 +22,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const explorerOpenMode = ref<ExplorerOpenMode>("single-click");
   const vimMode = ref(false);
   const backupSourceOnSave = ref(true);
+  const npkDirectory = ref("");
 
   async function load() {
     if (loaded.value) return;
@@ -30,12 +32,14 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode.value = normalizeExplorerOpenMode(settings.explorerOpenMode);
       vimMode.value = normalizeVimMode(settings.vimMode);
       backupSourceOnSave.value = normalizeBackupSourceOnSave(settings.backupSourceOnSave);
+      npkDirectory.value = normalizeNPKDirectory(settings.npkDirectory);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
       explorerOpenMode.value = "single-click";
       vimMode.value = false;
       backupSourceOnSave.value = true;
+      npkDirectory.value = "";
     } finally {
       loaded.value = true;
     }
@@ -47,6 +51,7 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode: explorerOpenMode.value,
       vimMode: vimMode.value,
       backupSourceOnSave: backupSourceOnSave.value,
+      npkDirectory: npkDirectory.value,
     });
   }
 
@@ -56,6 +61,7 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode: value,
       vimMode: vimMode.value,
       backupSourceOnSave: backupSourceOnSave.value,
+      npkDirectory: npkDirectory.value,
     });
   }
 
@@ -65,6 +71,7 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode: explorerOpenMode.value,
       vimMode: value,
       backupSourceOnSave: backupSourceOnSave.value,
+      npkDirectory: npkDirectory.value,
     });
   }
 
@@ -74,6 +81,7 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode: explorerOpenMode.value,
       vimMode: vimMode.value,
       backupSourceOnSave: value,
+      npkDirectory: npkDirectory.value,
     });
   }
 
@@ -82,10 +90,12 @@ export const useSettingsStore = defineStore("settings", () => {
     const previousExplorerOpenMode = explorerOpenMode.value;
     const previousVimMode = vimMode.value;
     const previousBackupSourceOnSave = backupSourceOnSave.value;
+    const previousNPKDirectory = npkDirectory.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
     vimMode.value = normalizeVimMode(next.vimMode);
     backupSourceOnSave.value = normalizeBackupSourceOnSave(next.backupSourceOnSave);
+    npkDirectory.value = normalizeNPKDirectory(next.npkDirectory);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -97,6 +107,7 @@ export const useSettingsStore = defineStore("settings", () => {
       explorerOpenMode.value = previousExplorerOpenMode;
       vimMode.value = previousVimMode;
       backupSourceOnSave.value = previousBackupSourceOnSave;
+      npkDirectory.value = previousNPKDirectory;
       throw error;
     } finally {
       saving.value = false;
@@ -116,6 +127,7 @@ export const useSettingsStore = defineStore("settings", () => {
     explorerOpenMode,
     vimMode,
     backupSourceOnSave,
+    npkDirectory,
     load,
     savePlacement,
     saveExplorerOpenMode,
@@ -140,4 +152,8 @@ function normalizeVimMode(value: boolean): boolean {
 
 function normalizeBackupSourceOnSave(value: boolean): boolean {
   return value !== false;
+}
+
+function normalizeNPKDirectory(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim() : "";
 }

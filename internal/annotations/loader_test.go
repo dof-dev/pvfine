@@ -82,6 +82,37 @@ func TestRuleGroupRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateInlineImageRequiresImageAnnotation(t *testing.T) {
+	document := Document{Version: 1, Rules: []Rule{{
+		ID:         "text",
+		Target:     TargetSpec{Kind: "section", Section: "name"},
+		Annotation: AnnotationSpec{Title: "名称", Type: "text", InlineImage: true},
+	}}}
+	err := Validate(document)
+	if err == nil || !strings.Contains(err.Error(), "inlineImage 只允许用于 image 标注") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestParseMigratesLegacyImageTokenOrder(t *testing.T) {
+	data := []byte(`{"version":1,"rules":[{"id":"icon","target":{"kind":"token","section":"icon","index":0,"recordTokens":2,"imageIndexToken":1},"annotation":{"title":"图标","type":"image"}}]}`)
+	document, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := document.Rules[0].Target
+	if target.Index == nil || *target.Index != 1 || target.ImagePathToken == nil || *target.ImagePathToken != 0 || target.ImageIndexToken != nil {
+		t.Fatalf("migrated target = %#v", target)
+	}
+	formatted, err := MarshalRules(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(formatted), "imagePathToken") || strings.Contains(string(formatted), "imageIndexToken") {
+		t.Fatalf("formatted target = %s", formatted)
+	}
+}
+
 func TestLoadDefaultIncludesContextualSkillRelation(t *testing.T) {
 	engine, err := LoadDefault()
 	if err != nil {

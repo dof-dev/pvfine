@@ -104,6 +104,44 @@ func TestAnnotateMissingReferenceDegradesGracefully(t *testing.T) {
 	}
 }
 
+func TestValidateImageAnnotationTarget(t *testing.T) {
+	valid := Rule{
+		ID: "icon", Target: TargetSpec{Kind: "token", Section: "icon", Index: intPtr(1), RecordTokens: 2, ImagePathToken: intPtr(0)},
+		Annotation: AnnotationSpec{Title: "图标", Type: "image"},
+	}
+	if err := Validate(Document{Version: 1, Rules: []Rule{valid}}); err != nil {
+		t.Fatal(err)
+	}
+	invalid := valid
+	invalid.ID = "invalid"
+	invalid.Target.ImagePathToken = intPtr(1)
+	if err := Validate(Document{Version: 1, Rules: []Rule{invalid}}); err == nil || !strings.Contains(err.Error(), "不能与图片索引 token 相同") {
+		t.Fatalf("invalid image target error = %v", err)
+	}
+}
+
+func TestAnnotateImageAnnotation(t *testing.T) {
+	engine := testEngine(t, Rule{
+		ID: "icon", Target: TargetSpec{Kind: "token", Section: "icon", Index: intPtr(1), RecordTokens: 2, ImagePathToken: intPtr(0)},
+		Annotation: AnnotationSpec{Title: "图标", Type: "image", Content: "装备图标", InlineImage: true},
+	})
+	text := "[icon]\n`Item/test.img` 3"
+	results := engine.Annotate("a.equ", pvf.ParseScriptView(text), nil)
+	if len(results) != 1 || results[0].Image == nil {
+		t.Fatalf("image annotation = %#v", results)
+	}
+	if !results[0].InlineImage {
+		t.Fatalf("inline image flag was not propagated: %#v", results[0])
+	}
+	indexStart := strings.Index(text, "3")
+	if results[0].Start != indexStart || results[0].End != indexStart+1 {
+		t.Fatalf("image annotation anchor = [%d, %d), want numeric token", results[0].Start, results[0].End)
+	}
+	if results[0].Image.Path != "Item/test.img" || results[0].Image.Index != 3 || !strings.Contains(results[0].Content, "图片: Item/test.img[3]") {
+		t.Fatalf("image annotation result = %#v", results[0])
+	}
+}
+
 func TestAnnotateContextualReferenceByRepeatedRecord(t *testing.T) {
 	engine, err := Compile(Document{
 		Version: 1,

@@ -40,12 +40,17 @@ type MatchSpec struct {
 }
 
 type TargetSpec struct {
-	Kind         string      `json:"kind"`
-	Section      string      `json:"section,omitempty"`
-	Index        *int        `json:"index,omitempty"`
-	Range        *TokenRange `json:"range,omitempty"`
-	RecordTokens int         `json:"recordTokens,omitempty"`
-	ContextIndex *int        `json:"contextIndex,omitempty"`
+	Kind           string      `json:"kind"`
+	Section        string      `json:"section,omitempty"`
+	Index          *int        `json:"index,omitempty"`
+	Range          *TokenRange `json:"range,omitempty"`
+	RecordTokens   int         `json:"recordTokens,omitempty"`
+	ContextIndex   *int        `json:"contextIndex,omitempty"`
+	ImagePathToken *int        `json:"imagePathToken,omitempty"`
+	// ImageIndexToken is kept only to migrate rules written by the previous
+	// schema, where target.index pointed to the IMG path and this field pointed
+	// to the numeric image index.
+	ImageIndexToken *int `json:"imageIndexToken,omitempty"`
 }
 
 type TokenRange struct {
@@ -54,11 +59,12 @@ type TokenRange struct {
 }
 
 type AnnotationSpec struct {
-	Title    string            `json:"title"`
-	Content  string            `json:"content,omitempty"`
-	Type     string            `json:"type"`
-	Values   map[string]string `json:"values,omitempty"`
-	Relation string            `json:"relation,omitempty"`
+	Title       string            `json:"title"`
+	Content     string            `json:"content,omitempty"`
+	Type        string            `json:"type"`
+	Values      map[string]string `json:"values,omitempty"`
+	Relation    string            `json:"relation,omitempty"`
+	InlineImage bool              `json:"inlineImage,omitempty"`
 }
 
 type Reference struct {
@@ -71,11 +77,18 @@ type Reference struct {
 type Resolver func(relation, id string) (Reference, bool)
 
 type Result struct {
-	Start           int      `json:"start"`
-	End             int      `json:"end"`
-	Title           string   `json:"title"`
-	Content         string   `json:"content"`
-	Type            string   `json:"type"`
-	TargetFileIndex int32    `json:"targetFileIndex"`
-	RuleIDs         []string `json:"ruleIds,omitempty"`
+	Start           int             `json:"start"`
+	End             int             `json:"end"`
+	Title           string          `json:"title"`
+	Content         string          `json:"content"`
+	Type            string          `json:"type"`
+	TargetFileIndex int32           `json:"targetFileIndex"`
+	RuleIDs         []string        `json:"ruleIds,omitempty"`
+	Image           *ImageReference `json:"image,omitempty"`
+	InlineImage     bool            `json:"inlineImage,omitempty"`
+}
+
+type ImageReference struct {
+	Path  string `json:"path"`
+	Index int32  `json:"index"`
 }

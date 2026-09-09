@@ -14,6 +14,22 @@ type ListPair struct {
 	Path string `json:"path"`
 }
 
+// ScriptImageReference is the raw PVF representation used by [icon] and
+// [field image]. Services map it to their public ImageReference type.
+type ScriptImageReference struct {
+	Path  string `json:"path"`
+	Index int32  `json:"index"`
+}
+
+// ScriptMetadata is the small metadata projection shared by name/search and
+// image rendering. It intentionally does not decompile the full script.
+type ScriptMetadata struct {
+	Name       string                `json:"name,omitempty"`
+	HasName    bool                  `json:"-"`
+	Icon       *ScriptImageReference `json:"icon,omitempty"`
+	FieldImage *ScriptImageReference `json:"fieldImage,omitempty"`
+}
+
 // ScriptListPairs parses a TypeScript .lst payload as consecutive id/path
 // token pairs. The .lst line layout is presentation-only, so token pairs are
 // used instead of trying to recover source lines from the binary payload.
@@ -123,71 +139,143 @@ func (a *Archive) RemoveListPairs(i int32, entries []ListPair) (int, error) {
 	return removed, nil
 }
 
-// ScriptName extracts the first direct string value from the [name] section
-// without formatting or materializing the full decompiled script.
-func (a *Archive) ScriptName(i int32) (string, bool, error) {
+// ScriptMetadata extracts [name], [icon] and [field image] in one raw token
+// scan without formatting or materializing the full decompiled script.
+func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 	if i < 0 || i >= int32(len(a.items)) {
-		return "", false, ErrBadIndex
+		return ScriptMetadata{}, ErrBadIndex
 	}
 	if a.items[i].typ != TypeScript {
-		return "", false, fmt.Errorf("pvf: file %d is not a script", i)
+		return ScriptMetadata{}, fmt.Errorf("pvf: file %d is not a script", i)
 	}
 	raw, err := a.RawBytes(i)
 	if err != nil {
-		return "", false, err
+		return ScriptMetadata{}, err
 	}
 	if len(raw)%5 != 0 {
-		return "", false, fmt.Errorf("pvf: malformed script payload for file %d", i)
+		return ScriptMetadata{}, fmt.Errorf("pvf: malformed script payload for file %d", i)
 	}
 
-	inName := false
-	nestedDepth := 0
+	type metadataToken struct {
+		typ   byte
+		value int32
+		text  string
+	}
+	type metadataSection struct {
+		name   string
+		paired bool
+		values []metadataToken
+	}
+
+	// PVF scripts contain both paired sections and legacy, unpaired sections.
+	// First collect closing names so the stack follows the same semantic rule
+	// as decodeScript and ParseScriptView.
+	pairedNames := make(map[string]bool)
+	for pos := 0; pos < len(raw); pos += 5 {
+		if raw[pos] != 3 {
+			continue
+		}
+		if name, closing, ok := parseSectionTag(a.ResolveString(int32(binary.LittleEndian.Uint32(raw[pos+1:])))); ok && closing {
+			pairedNames[name] = true
+		}
+	}
+
+	sections := make([]metadataSection, 0)
+	stack := make([]int, 0)
+	activeUnpaired := make(map[int]int)
+	closeUnpaired := func(depth int) {
+		delete(activeUnpaired, depth)
+	}
 	for pos := 0; pos < len(raw); pos += 5 {
 		typ := raw[pos]
 		value := int32(binary.LittleEndian.Uint32(raw[pos+1:]))
 		if typ == 3 {
-			tag := a.ResolveString(value)
-			section, closing, ok := parseSectionTag(tag)
+			name, closing, ok := parseSectionTag(a.ResolveString(value))
 			if ok {
-				if !inName {
-					if !closing && section == "name" {
-						inName = true
+				depth := len(stack)
+				closeUnpaired(depth)
+				if closing {
+					for position := len(stack) - 1; position >= 0; position-- {
+						if sections[stack[position]].name == name {
+							stack = stack[:position]
+							break
+						}
 					}
 					continue
 				}
-
-				if closing {
-					if nestedDepth > 0 {
-						nestedDepth--
-						continue
-					}
-					return "", false, nil
+				sectionIndex := len(sections)
+				sections = append(sections, metadataSection{name: name, paired: pairedNames[name]})
+				if pairedNames[name] {
+					stack = append(stack, sectionIndex)
+				} else {
+					activeUnpaired[depth] = sectionIndex
 				}
-				if nestedDepth == 0 {
-					// [name] is a flat section in normal PVFs. A new section
-					// therefore ends an unterminated [name] section.
-					return "", false, nil
-				}
-				nestedDepth++
 				continue
 			}
 		}
 
-		if !inName {
+		sectionIndex, ok := activeUnpaired[len(stack)]
+		if !ok && len(stack) > 0 {
+			sectionIndex = stack[len(stack)-1]
+			ok = true
+		}
+		if !ok {
 			continue
 		}
-		if typ == 3 {
-			// A bare string token is also valid as a name value.
-			if valueText := a.ResolveString(value); valueText != "" {
-				return valueText, true, nil
+		text := ""
+		if typ == 3 || typ == 5 || typ == 6 || typ == 7 {
+			text = a.ResolveString(value)
+		}
+		sections[sectionIndex].values = append(sections[sectionIndex].values, metadataToken{typ: typ, value: value, text: text})
+	}
+
+	metadata := ScriptMetadata{}
+	for _, section := range sections {
+		name := strings.ToLower(strings.TrimSpace(section.name))
+		switch name {
+		case "name":
+			if metadata.HasName {
+				continue
 			}
-			continue
-		}
-		if typ == 5 || typ == 6 || typ == 7 {
-			return a.ResolveString(value), true, nil
+			for _, token := range section.values {
+				if (token.typ == 5 || token.typ == 6 || token.typ == 7 || token.typ == 3) && strings.TrimSpace(token.text) != "" {
+					metadata.Name = token.text
+					metadata.HasName = true
+					break
+				}
+			}
+		case "icon", "field image":
+			if len(section.values) < 2 {
+				continue
+			}
+			for index := 0; index+1 < len(section.values); index++ {
+				pathToken := section.values[index]
+				imageIndexToken := section.values[index+1]
+				if (pathToken.typ != 3 && pathToken.typ != 5 && pathToken.typ != 6 && pathToken.typ != 7) || strings.TrimSpace(pathToken.text) == "" || imageIndexToken.typ != 0 || imageIndexToken.value < 0 {
+					continue
+				}
+				reference := &ScriptImageReference{Path: strings.TrimSpace(pathToken.text), Index: imageIndexToken.value}
+				if name == "icon" && metadata.Icon == nil {
+					metadata.Icon = reference
+				}
+				if name == "field image" && metadata.FieldImage == nil {
+					metadata.FieldImage = reference
+				}
+				break
+			}
 		}
 	}
-	return "", false, nil
+	return metadata, nil
+}
+
+// ScriptName extracts the first direct string value from the [name] section
+// without formatting or materializing the full decompiled script.
+func (a *Archive) ScriptName(i int32) (string, bool, error) {
+	metadata, err := a.ScriptMetadata(i)
+	if err != nil {
+		return "", false, err
+	}
+	return metadata.Name, metadata.HasName, nil
 }
 
 type scriptMetadataValue struct {

@@ -219,7 +219,58 @@
       "annotation": {
         "title": "未知ID",
         "type": "reference",
-        "relation": "装备"
+        "relation": "物品"
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.icon",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "icon",
+        "index": 0,
+        "recordTokens": 2,
+        "imageIndexToken": 1
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.field image",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "field image",
+        "index": 0,
+        "recordTokens": 2,
+        "imageIndexToken": 1
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.icon mark",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "icon mark",
+        "index": 0,
+        "recordTokens": 2,
+        "imageIndexToken": 1
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
       },
       "group": "global"
     }

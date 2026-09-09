@@ -4,6 +4,7 @@ import { NTag, NTree, type TreeInst, type TreeOption } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import type { TreeItem } from "../stores/explorer";
 import type { ExplorerOpenMode } from "../stores/settings";
+import ImageThumbnail from "./ImageThumbnail.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -227,9 +228,13 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
       : item.changeKind === "modified"
         ? "#f2c97d"
         : undefined;
-  const children: VNodeChild[] = [
+  const children: VNodeChild[] = [];
+  if (!item.isDir && item.icon) {
+    children.push(h(ImageThumbnail, { reference: item.icon, size: 16 }));
+  }
+  children.push(
     h("span", { class: "tree-item-name", style: { color: changeColor } }, item.label),
-  ];
+  );
   for (const annotation of item.annotations) {
     children.push(
       h(

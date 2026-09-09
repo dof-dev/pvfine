@@ -114,6 +114,9 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 		if !copyNode.IsDir {
 			copyNode.ChangeKind = archiveChangeKind(s.c.archive, copyNode.FileIndex)
 			copyNode.Tags = cloneTreeTags(s.c.treeTagsByFile[copyNode.FileIndex])
+			visuals := s.c.visualsByFile[copyNode.FileIndex]
+			copyNode.Icon = cloneImageReference(visuals.icon)
+			copyNode.FieldImage = cloneImageReference(visuals.fieldImage)
 		}
 		result[i] = &copyNode
 	}
@@ -145,6 +148,7 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 		if scopePath != "" && !strings.HasPrefix(entry.path, prefix) {
 			break
 		}
+		visuals := s.c.visualsByFile[entry.idx]
 		result = append(result, &TreeNode{
 			Name:        pathBase(entry.path),
 			Path:        entry.path,
@@ -154,6 +158,8 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 			ChangeKind:  archiveChangeKind(s.c.archive, entry.idx),
 			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
 			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
+			Icon:        cloneImageReference(visuals.icon),
+			FieldImage:  cloneImageReference(visuals.fieldImage),
 		})
 	}
 	return result, nil
@@ -187,6 +193,7 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 			continue
 		}
 		entry := s.c.sortedPaths[index]
+		visuals := s.c.visualsByFile[entry.idx]
 		result = append(result, &TreeNode{
 			Name:        pathBase(entry.path),
 			Path:        entry.path,
@@ -196,6 +203,8 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 			ChangeKind:  archiveChangeKind(s.c.archive, entry.idx),
 			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
 			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
+			Icon:        cloneImageReference(visuals.icon),
+			FieldImage:  cloneImageReference(visuals.fieldImage),
 		})
 	}
 	return result, nil
@@ -271,6 +280,8 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		FileIndex:   index,
 		ChangeKind:  ChangeKindAdded,
 		Annotations: cloneTreeAnnotations(s.c.pathAnnotations[a.Path(index)]),
+		Icon:        cloneImageReference(s.c.visualsByFile[index].icon),
+		FieldImage:  cloneImageReference(s.c.visualsByFile[index].fieldImage),
 	}
 	info := a.Info()
 	versioned := s.c.versionRepo != nil

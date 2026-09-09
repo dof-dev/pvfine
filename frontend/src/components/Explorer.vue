@@ -310,6 +310,8 @@ function serviceEntry(node: TreeNode): FileSetEntry {
     ids: [...new Set((node.tags ?? []).map((tag) => tag.id).filter(Boolean))],
     size: node.size,
     dataType: node.dataType,
+    icon: node.icon ?? null,
+    fieldImage: node.fieldImage ?? null,
   };
 }
 
@@ -712,6 +714,8 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
           changeKind: "",
           tags: [],
           annotations: item.pathAnnotations[path] ?? [],
+          icon: null,
+          fieldImage: null,
         };
         nodesByPath.set(path, directory);
         children.push(directory);
@@ -736,6 +740,8 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
         changeKind: item.changeKind,
         tags: [],
         annotations: item.annotations,
+        icon: item.icon,
+        fieldImage: item.fieldImage,
       };
       nodesByPath.set(filePath, file);
       children.push(file);
@@ -744,6 +750,8 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
     if (file.annotations.length === 0 && item.annotations.length > 0) {
       file.annotations = item.annotations;
     }
+    if (!file.icon && item.icon) file.icon = item.icon;
+    if (!file.fieldImage && item.fieldImage) file.fieldImage = item.fieldImage;
 
     if (item.category !== "file") {
       file.tags.push({

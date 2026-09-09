@@ -222,6 +222,57 @@
         "relation": "物品"
       },
       "group": "global"
+    },
+    {
+      "id": "global.icon",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "icon",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.field image",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "field image",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.icon mark",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "icon mark",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "global"
     }
   ]
 }

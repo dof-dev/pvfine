@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"os"
 	"testing"
 )
 
@@ -81,10 +82,60 @@ func TestScriptName(t *testing.T) {
 	}
 }
 
+func TestScriptMetadata(t *testing.T) {
+	a := New()
+	index, err := a.AddFileText(
+		"equipment/character/amulet/1008.equ",
+		"[name]\n`烈火之心项链`\n[icon]\n`Item/new_equipment/08_necklace/necklace.img`\n69\n[field image]\n`Item/FieldImage.img`\n6",
+		TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := a.ScriptMetadata(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.HasName || metadata.Name != "烈火之心项链" {
+		t.Fatalf("metadata name = %#v", metadata)
+	}
+	if metadata.Icon == nil || metadata.Icon.Path != "Item/new_equipment/08_necklace/necklace.img" || metadata.Icon.Index != 69 {
+		t.Fatalf("metadata icon = %#v", metadata.Icon)
+	}
+	if metadata.FieldImage == nil || metadata.FieldImage.Path != "Item/FieldImage.img" || metadata.FieldImage.Index != 6 {
+		t.Fatalf("metadata field image = %#v", metadata.FieldImage)
+	}
+}
+
 func TestScriptListPairsMalformedPayload(t *testing.T) {
 	a := New()
 	index := a.AddFile("equipment/equipment.lst", []byte{6, 1, 2}, TypeScript)
 	if _, err := a.ScriptListPairs(index); err == nil {
 		t.Fatal("expected malformed payload error")
+	}
+}
+
+func TestRealScriptMetadata(t *testing.T) {
+	path := os.Getenv("PVF_TESTFILE")
+	if path == "" {
+		t.Skip("PVF_TESTFILE 未设置")
+	}
+	a, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, ok := a.Find("equipment/character/common/amulet/100300001.equ")
+	if !ok {
+		t.Skip("真实 PVF 中没有样本装备")
+	}
+	metadata, err := a.ScriptMetadata(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Icon == nil || metadata.Icon.Path == "" || metadata.Icon.Index < 0 {
+		t.Fatalf("real icon = %#v", metadata.Icon)
+	}
+	if metadata.FieldImage == nil || metadata.FieldImage.Path == "" || metadata.FieldImage.Index < 0 {
+		t.Fatalf("real field image = %#v", metadata.FieldImage)
 	}
 }

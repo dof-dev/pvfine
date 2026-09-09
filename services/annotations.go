@@ -10,13 +10,15 @@ import (
 )
 
 type EditorAnnotation struct {
-	Start           int32    `json:"start"`
-	End             int32    `json:"end"`
-	Title           string   `json:"title"`
-	Content         string   `json:"content"`
-	Type            string   `json:"type"`
-	TargetFileIndex int32    `json:"targetFileIndex"`
-	RuleIDs         []string `json:"ruleIds,omitempty"`
+	Start           int32           `json:"start"`
+	End             int32           `json:"end"`
+	Title           string          `json:"title"`
+	Content         string          `json:"content"`
+	Type            string          `json:"type"`
+	TargetFileIndex int32           `json:"targetFileIndex"`
+	RuleIDs         []string        `json:"ruleIds,omitempty"`
+	Image           *ImageReference `json:"image,omitempty"`
+	InlineImage     bool            `json:"inlineImage,omitempty"`
 }
 
 type TreeAnnotation struct {
@@ -79,6 +81,8 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 			Title: result.Title, Content: result.Content, Type: result.Type,
 			TargetFileIndex: result.TargetFileIndex,
 			RuleIDs:         append([]string(nil), result.RuleIDs...),
+			Image:           imageReferenceFromAnnotation(result.Image),
+			InlineImage:     result.InlineImage,
 		})
 	}
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
@@ -372,8 +376,16 @@ func cloneEditorAnnotations(values []EditorAnnotation) []EditorAnnotation {
 	for i, value := range values {
 		cloned[i] = value
 		cloned[i].RuleIDs = append([]string(nil), value.RuleIDs...)
+		cloned[i].Image = cloneImageReference(value.Image)
 	}
 	return cloned
+}
+
+func imageReferenceFromAnnotation(reference *annotationrules.ImageReference) *ImageReference {
+	if reference == nil || strings.TrimSpace(reference.Path) == "" || reference.Index < 0 {
+		return nil
+	}
+	return &ImageReference{Path: reference.Path, Index: reference.Index}
 }
 
 func validateAnnotationIndex(a *pvf.Archive, index int32) error {

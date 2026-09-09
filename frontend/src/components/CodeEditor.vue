@@ -33,6 +33,7 @@ import { vim } from "@replit/codemirror-vim";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
+import { useImageStore } from "../stores/images";
 
 const props = defineProps<{
   doc: string;
@@ -51,6 +52,7 @@ const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
 const readOnlyComp = new Compartment();
 const vimComp = new Compartment();
+const images = useImageStore();
 
 interface AnnotationDisplay {
   annotations: EditorAnnotation[];
@@ -62,7 +64,9 @@ const setAnnotations = StateEffect.define<AnnotationDisplay>();
 class AnnotationWidget extends WidgetType {
   constructor(
     readonly annotation: EditorAnnotation,
-    readonly openReference: (fileIndex: number) => void
+    readonly openReference: (fileIndex: number) => void,
+    readonly showTooltip: (annotation: EditorAnnotation, element: HTMLElement) => void,
+    readonly hideTooltip: () => void
   ) {
     super();
   }
@@ -72,20 +76,47 @@ class AnnotationWidget extends WidgetType {
       other.annotation.title === this.annotation.title &&
       other.annotation.content === this.annotation.content &&
       other.annotation.type === this.annotation.type &&
-      other.annotation.targetFileIndex === this.annotation.targetFileIndex
+      other.annotation.targetFileIndex === this.annotation.targetFileIndex &&
+      other.annotation.image?.path === this.annotation.image?.path &&
+      other.annotation.image?.index === this.annotation.image?.index &&
+      other.annotation.inlineImage === this.annotation.inlineImage
     );
   }
 
   toDOM(): HTMLElement {
     const tag = document.createElement("span");
-    tag.className = `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
-    tag.textContent = this.annotation.title;
+    const imageReference = this.annotation.image;
+    const inlineImage = !!(imageReference && this.annotation.inlineImage);
+    tag.className = inlineImage
+      ? "cm-annotation-inline-image"
+      : `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
+    if (!inlineImage) tag.textContent = this.annotation.title;
     const tooltip = this.annotation.targetFileIndex >= 0
       ? `${this.annotation.content || this.annotation.title}\n\nCmd/Ctrl+单击可以跳转`
       : this.annotation.content;
-    tag.title = tooltip;
+    if (!this.annotation.image) tag.title = tooltip;
     tag.setAttribute("aria-label", tooltip || this.annotation.title);
     tag.contentEditable = "false";
+    if (imageReference && inlineImage) {
+      const imageSlot = document.createElement("span");
+      imageSlot.className = "cm-annotation-inline-image-slot";
+      imageSlot.setAttribute("aria-hidden", "true");
+      tag.prepend(imageSlot);
+      const entry: InlineImageSlot = {
+        reference: imageReference,
+        slot: imageSlot,
+        request: 0,
+        pending: false,
+        loaded: false,
+        loadedGeneration: -1,
+      };
+      inlineImageSlots.set(imageSlot, entry);
+      queueMicrotask(() => loadInlineImage(entry));
+    }
+    if (this.annotation.image) {
+      tag.addEventListener("mouseenter", () => this.showTooltip(this.annotation, tag));
+      tag.addEventListener("mouseleave", this.hideTooltip);
+    }
     if (this.annotation.targetFileIndex >= 0) {
       tag.classList.add("cm-annotation-tag--link");
       tag.setAttribute("role", "button");
@@ -99,10 +130,125 @@ class AnnotationWidget extends WidgetType {
     return tag;
   }
 
+  destroy(dom: HTMLElement): void {
+    const imageSlot = dom.querySelector<HTMLElement>(".cm-annotation-inline-image-slot");
+    if (imageSlot) inlineImageSlots.delete(imageSlot);
+  }
+
   ignoreEvent(): boolean {
     return true;
   }
 }
+
+interface InlineImageSlot {
+  reference: NonNullable<EditorAnnotation["image"]>;
+  slot: HTMLElement;
+  request: number;
+  pending: boolean;
+  loaded: boolean;
+  loadedGeneration: number;
+}
+
+const inlineImageSlots = new Map<HTMLElement, InlineImageSlot>();
+
+function loadInlineImage(entry: InlineImageSlot): void {
+  if (!entry.slot.isConnected || entry.pending) return;
+  const generation = images.status.generation;
+  if (entry.loaded && entry.loadedGeneration === generation) return;
+
+  const request = ++entry.request;
+  const revision = images.revision;
+  entry.pending = true;
+  entry.loaded = false;
+  entry.slot.replaceChildren();
+  void images.loadImage(entry.reference).then((data) => {
+    if (request !== entry.request || !entry.slot.isConnected || images.status.generation !== generation) return;
+    if (!data?.dataUrl) return;
+    const image = document.createElement("img");
+    image.src = data.dataUrl;
+    image.alt = "";
+    image.width = 16;
+    image.height = 16;
+    entry.slot.replaceChildren(image);
+    entry.loaded = true;
+    entry.loadedGeneration = generation;
+  }).finally(() => {
+    if (request !== entry.request) return;
+    entry.pending = false;
+    // 如果请求在索引切换/完成前返回空结果，补一次请求，避免正文图片
+    // 因为首次加载早于索引完成而永久缺失。
+    if (!entry.loaded && entry.slot.isConnected && images.revision !== revision) {
+      loadInlineImage(entry);
+    }
+  });
+}
+
+const imageTooltip = ref<{
+  visible: boolean;
+  left: number;
+  top: number;
+  content: string;
+  dataUrl: string;
+  loading: boolean;
+}>({ visible: false, left: 0, top: 0, content: "", dataUrl: "", loading: false });
+let imageTooltipRequest = 0;
+let activeImageReference: EditorAnnotation["image"] = null;
+
+function showImageTooltip(annotation: EditorAnnotation, element: HTMLElement): void {
+  if (!annotation.image) return;
+  const rect = element.getBoundingClientRect();
+  const width = 280;
+  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+  const top = rect.bottom + 8 < window.innerHeight - 80 ? rect.bottom + 8 : Math.max(8, rect.top - 8);
+  const request = ++imageTooltipRequest;
+  activeImageReference = annotation.image;
+  imageTooltip.value = {
+    visible: true,
+    left,
+    top,
+    content: [
+      annotation.content || `${annotation.image.path}[${annotation.image.index}]`,
+      annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击可以跳转" : "",
+    ].filter(Boolean).join("\n\n"),
+    dataUrl: "",
+    loading: true,
+  };
+  void images.loadImage(annotation.image).then((data) => {
+    if (request !== imageTooltipRequest) return;
+    imageTooltip.value.dataUrl = data?.dataUrl ?? "";
+    imageTooltip.value.loading = false;
+  });
+}
+
+function hideImageTooltip(): void {
+  imageTooltipRequest++;
+  activeImageReference = null;
+  imageTooltip.value.visible = false;
+}
+
+watch(
+  () => images.revision,
+  () => {
+    for (const [slot, entry] of inlineImageSlots) {
+      if (!slot.isConnected) {
+        inlineImageSlots.delete(slot);
+        continue;
+      }
+      loadInlineImage(entry);
+    }
+
+    const reference = activeImageReference;
+    if (!reference || !imageTooltip.value.visible) return;
+    const request = ++imageTooltipRequest;
+    imageTooltip.value.dataUrl = "";
+    imageTooltip.value.loading = true;
+    void images.loadImage(reference).then((data) => {
+      if (request !== imageTooltipRequest) return;
+      imageTooltip.value.dataUrl = data?.dataUrl ?? "";
+      imageTooltip.value.loading = false;
+    });
+  }
+);
 
 function annotationDecorations(
   state: EditorState,
@@ -124,8 +270,11 @@ function annotationDecorations(
         display.placement === "line-end" ? state.doc.lineAt(targetEnd).to : targetEnd;
       result.push(
         Decoration.widget({
-          widget: new AnnotationWidget(annotation, (fileIndex) =>
-            emit("open-reference", fileIndex)
+          widget: new AnnotationWidget(
+            annotation,
+            (fileIndex) => emit("open-reference", fileIndex),
+            showImageTooltip,
+            hideImageTooltip
           ),
           side: 1,
         }).range(position)
@@ -311,6 +460,18 @@ watch(
 
 <template>
   <div ref="host" class="code-editor" />
+  <Teleport to="body">
+    <div
+      v-if="imageTooltip.visible"
+      class="annotation-image-tooltip"
+      :style="{ left: `${imageTooltip.left}px`, top: `${imageTooltip.top}px` }"
+      role="tooltip"
+    >
+      <div v-if="imageTooltip.loading" class="annotation-image-tooltip-loading">正在加载图片…</div>
+      <img v-if="imageTooltip.dataUrl" :src="imageTooltip.dataUrl" alt="标注图片" />
+      <div class="annotation-image-tooltip-text">{{ imageTooltip.content }}</div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -356,6 +517,31 @@ watch(
   background: #213f34;
   border-color: #438a69;
 }
+.code-editor :deep(.cm-annotation-inline-image) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 7px;
+  vertical-align: middle;
+  line-height: 1;
+  user-select: none;
+}
+.code-editor :deep(.cm-annotation-inline-image-slot) {
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.code-editor :deep(.cm-annotation-inline-image-slot img) {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
 .code-editor :deep(.cm-annotation-tag--link) {
   cursor: pointer;
 }
@@ -371,5 +557,33 @@ watch(
   flex: 1 1 auto;
   max-height: 100%;
   overflow: auto;
+}
+.annotation-image-tooltip {
+  position: fixed;
+  z-index: 2000;
+  width: 280px;
+  padding: 9px;
+  color: rgba(255, 255, 255, 0.88);
+  pointer-events: none;
+  background: #242832;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+}
+.annotation-image-tooltip img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0 auto 7px;
+  object-fit: contain;
+}
+.annotation-image-tooltip-loading,
+.annotation-image-tooltip-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.annotation-image-tooltip-loading {
+  margin-bottom: 7px;
+  color: rgba(255, 255, 255, 0.52);
 }
 </style>

@@ -7,6 +7,7 @@ import type {
   StoredFileSet,
   StoredFileSetEntry,
   TreeNode,
+  ImageReference,
 } from "../../bindings/pvfine/services/models";
 
 export interface FileSetEntry {
@@ -16,6 +17,8 @@ export interface FileSetEntry {
   ids: string[];
   size: number;
   dataType: number;
+  icon: ImageReference | null;
+  fieldImage: ImageReference | null;
 }
 
 export interface FileSet {
@@ -138,6 +141,8 @@ export const useFileSetStore = defineStore("fileSets", () => {
         existingEntry.size = entry.size;
         existingEntry.dataType = entry.dataType;
         existingEntry.ids = [...new Set(entry.ids ?? [])];
+        existingEntry.icon = entry.icon ?? null;
+        existingEntry.fieldImage = entry.fieldImage ?? null;
         skipped++;
         changed = true;
         continue;
@@ -270,6 +275,8 @@ export const useFileSetStore = defineStore("fileSets", () => {
           path: normalizePath(entry.path),
           name: entry.name,
           ids: [...new Set(entry.ids ?? [])],
+          icon: entry.icon ?? null,
+          fieldImage: entry.fieldImage ?? null,
           size: entry.size,
           dataType: entry.dataType,
         })),
@@ -292,6 +299,8 @@ export const useFileSetStore = defineStore("fileSets", () => {
           ids: [...new Set(entry.ids ?? [])],
           size: Number(entry.size ?? 0),
           dataType: Number(entry.dataType ?? 0),
+          icon: null,
+          fieldImage: null,
         };
       })
       .filter((entry) => !!entry.path);
@@ -341,6 +350,13 @@ export const useFileSetStore = defineStore("fileSets", () => {
     archivePath = path;
     sessionId.value++;
     const request = ++resolveRequest;
+    for (const fileSet of fileSets.value) {
+      for (const entry of fileSet.entries) {
+        entry.fileIndex = -1;
+        entry.icon = null;
+        entry.fieldImage = null;
+      }
+    }
     await load();
     if (request !== resolveRequest || archivePath !== path) return;
     await resolveEntries(path, request);
@@ -352,7 +368,11 @@ export const useFileSetStore = defineStore("fileSets", () => {
     resolving.value = false;
     sessionId.value++;
     for (const fileSet of fileSets.value) {
-      for (const entry of fileSet.entries) entry.fileIndex = -1;
+      for (const entry of fileSet.entries) {
+        entry.fileIndex = -1;
+        entry.icon = null;
+        entry.fieldImage = null;
+      }
     }
   }
 
@@ -388,6 +408,11 @@ export const useFileSetStore = defineStore("fileSets", () => {
         ];
         entry.ids = ids;
         entry.name = names.join(" / ") || node.name || entry.path.split("/").pop() || entry.path;
+        entry.icon = node.icon ?? null;
+        entry.fieldImage = node.fieldImage ?? null;
+      } else {
+        entry.icon = null;
+        entry.fieldImage = null;
       }
     }
     if (request === resolveRequest) resolving.value = false;
@@ -399,6 +424,12 @@ export const useFileSetStore = defineStore("fileSets", () => {
   Events.On("archive:changed", (event: any) => {
     const path = String(event?.data?.path ?? event?.path ?? "");
     if (path && path === archivePath) void resolveEntries(path);
+  });
+  Events.On("archive:index-ready", () => {
+    if (archivePath) void resolveEntries(archivePath);
+  });
+  Events.On("archive:index-updated", () => {
+    if (archivePath) void resolveEntries(archivePath);
   });
   Events.On("archive:closed", onArchiveClosed);
 

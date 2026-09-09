@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { computed, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
-import type { EditorAnnotation, FileMeta, TreeTag } from "../../bindings/pvfine/services/models";
+import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
 
@@ -21,6 +21,8 @@ export interface EditorTab {
   text: string; // 当前编辑器内容
   modified: boolean; // 后端 overlay 状态
   annotations: EditorAnnotation[];
+  icon: ImageReference | null;
+  fieldImage: ImageReference | null;
 }
 
 export interface EditorPaneState {
@@ -182,6 +184,8 @@ export const useEditorStore = defineStore("editor", () => {
         annotations: (meta.annotations ?? []).filter(
           (annotation): annotation is EditorAnnotation => !!annotation
         ),
+        icon: meta.icon ?? null,
+        fieldImage: meta.fieldImage ?? null,
       });
       addTabToPane(targetPaneId, index);
     } finally {
@@ -571,6 +575,8 @@ export const useEditorStore = defineStore("editor", () => {
         current.annotations = (meta.annotations ?? []).filter(
           (annotation): annotation is EditorAnnotation => !!annotation
         );
+        current.icon = meta.icon ?? null;
+        current.fieldImage = meta.fieldImage ?? null;
       })
     );
   }
@@ -608,6 +614,8 @@ export const useEditorStore = defineStore("editor", () => {
       tab.size = node.size;
       tab.dataType = node.dataType;
       tab.tags = cleanTreeTags(node.tags);
+      tab.icon = node.icon ?? null;
+      tab.fieldImage = node.fieldImage ?? null;
       remainingTabs.push(tab);
     }
 
@@ -636,6 +644,8 @@ export const useEditorStore = defineStore("editor", () => {
           tab.dataType = meta.dataType;
           tab.size = meta.size;
           tab.tags = cleanTreeTags(meta.tags);
+          tab.icon = meta.icon ?? null;
+          tab.fieldImage = meta.fieldImage ?? null;
           tab.text = meta.text;
           if (resetOriginal) {
             tab.original = meta.text;
@@ -663,6 +673,8 @@ export const useEditorStore = defineStore("editor", () => {
         const current = tabs.value.find((item) => item.index === tab.index);
         if (!current || !meta) return;
         current.tags = cleanTreeTags(meta.tags);
+        current.icon = meta.icon ?? null;
+        current.fieldImage = meta.fieldImage ?? null;
         current.annotations = (meta.annotations ?? []).filter(
           (annotation): annotation is EditorAnnotation => !!annotation
         );

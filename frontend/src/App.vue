@@ -27,6 +27,7 @@ import { useSidebarStore } from "./stores/sidebar";
 import { useBookmarkStore } from "./stores/bookmarks";
 import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
+import { useImageStore } from "./stores/images";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -35,6 +36,7 @@ const sidebar = useSidebarStore();
 const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
 const version = useVersionStore();
+const images = useImageStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -68,8 +70,11 @@ function onResizeEnd() {
 }
 
 onMounted(() => {
-	void settings.load();
-	void fileSets.load();
+  void (async () => {
+    await settings.load();
+    await images.initialize();
+  })();
+  void fileSets.load();
   void bookmarks.load();
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);

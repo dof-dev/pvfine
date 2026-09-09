@@ -64,6 +64,7 @@ export interface AppSettings {
     "explorerOpenMode": string;
     "vimMode": boolean;
     "backupSourceOnSave": boolean;
+    "npkDirectory": string;
 }
 
 /**
@@ -173,6 +174,8 @@ export interface EditorAnnotation {
     "type": string;
     "targetFileIndex": number;
     "ruleIds"?: string[] | null;
+    "image"?: ImageReference | null;
+    "inlineImage"?: boolean;
 }
 
 /**
@@ -188,6 +191,8 @@ export interface FileMeta {
     "text": string;
     "modified": boolean;
     "annotations"?: EditorAnnotation[] | null;
+    "icon"?: ImageReference | null;
+    "fieldImage"?: ImageReference | null;
 }
 
 /**
@@ -210,6 +215,43 @@ export interface FileSetDocument {
     "version": number;
     "fileSets": StoredFileSet[] | null;
     "activeSetId": string;
+}
+
+/**
+ * ImageData is always a PNG data URL. The source NPK path is intentionally
+ * never exposed to the frontend.
+ */
+export interface ImageData {
+    "dataUrl": string;
+    "width": number;
+    "height": number;
+}
+
+/**
+ * ImageIndexStatus is emitted while the NPK directory is being scanned.
+ */
+export interface ImageIndexStatus {
+    "state": string;
+    "stage": string;
+    "directory": string;
+    "done": number;
+    "total": number;
+    "npkFiles": number;
+    "imgFiles": number;
+    "imageCount": number;
+    "skipped": number;
+    "duplicates": number;
+    "error": string;
+    "generation": number;
+}
+
+/**
+ * ImageReference is the PVF path plus zero-based frame index stored in an
+ * [icon] or [field image] section.
+ */
+export interface ImageReference {
+    "path": string;
+    "index": number;
 }
 
 /**
@@ -275,6 +317,8 @@ export interface SearchHit {
     "changeKind"?: string;
     "annotations"?: TreeAnnotation[] | null;
     "pathAnnotations"?: { [_ in string]?: TreeAnnotation[] | null } | null;
+    "icon"?: ImageReference | null;
+    "fieldImage"?: ImageReference | null;
 }
 
 /**
@@ -347,6 +391,8 @@ export interface TreeNode {
     "changeKind"?: string;
     "tags"?: TreeTag[] | null;
     "annotations"?: TreeAnnotation[] | null;
+    "icon"?: ImageReference | null;
+    "fieldImage"?: ImageReference | null;
 }
 
 /**

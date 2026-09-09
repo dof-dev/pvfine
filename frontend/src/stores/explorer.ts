@@ -7,6 +7,7 @@ import type {
   TreeAnnotation,
   TreeNode,
   TreeTag,
+  ImageReference,
 } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
@@ -23,6 +24,8 @@ export interface TreeItem {
   changeKind: string;
   tags: TreeTag[];
   annotations: TreeAnnotation[];
+  icon: ImageReference | null;
+  fieldImage: ImageReference | null;
 }
 
 export interface SearchItem {
@@ -37,6 +40,8 @@ export interface SearchItem {
   changeKind: string;
   annotations: TreeAnnotation[];
   pathAnnotations: Record<string, TreeAnnotation[]>;
+  icon: ImageReference | null;
+  fieldImage: ImageReference | null;
 }
 
 /** 资源管理器状态:懒加载树 + 搜索 */
@@ -73,6 +78,8 @@ export const useExplorerStore = defineStore("explorer", () => {
       changeKind: n.changeKind ?? "",
       tags: (n.tags ?? []).filter((tag): tag is TreeTag => !!tag),
       annotations: cleanAnnotations(n.annotations),
+      icon: n.icon ?? null,
+      fieldImage: n.fieldImage ?? null,
     };
   }
 
@@ -99,6 +106,8 @@ export const useExplorerStore = defineStore("explorer", () => {
           cleanAnnotations(annotations),
         ])
       ),
+      icon: n.icon ?? null,
+      fieldImage: n.fieldImage ?? null,
     };
   }
 
@@ -208,9 +217,11 @@ export const useExplorerStore = defineStore("explorer", () => {
     const tagsByFile = new Map<number, TreeTag[]>();
     const annotationsByPath = new Map<string, TreeAnnotation[]>();
     const changeKindsByPath = new Map<string, string>();
+    const nodesByPath = new Map<string, TreeNode>();
     for (const nodes of nodeLists) {
       for (const node of nodes) {
         if (!node) continue;
+        nodesByPath.set(node.path, node);
         annotationsByPath.set(node.path, cleanAnnotations(node.annotations));
         if (!node.isDir) changeKindsByPath.set(node.path, node.changeKind ?? "");
         if (archive.indexReady && !node.isDir && node.fileIndex >= 0) {
@@ -227,6 +238,11 @@ export const useExplorerStore = defineStore("explorer", () => {
         item.changeKind = changeKindsByPath.get(item.key) ?? item.changeKind;
         const tags = tagsByFile.get(item.fileIndex);
         if (tags) item.tags = tags;
+        const node = nodesByPath.get(item.key);
+        if (node) {
+          item.icon = node.icon ?? null;
+          item.fieldImage = node.fieldImage ?? null;
+        }
       }
     }
   }

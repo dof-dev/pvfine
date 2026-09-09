@@ -6,7 +6,6 @@ import {
   Delete24Regular,
   DeleteDismiss24Regular,
   Dismiss24Regular,
-  Document24Regular,
   DocumentSync24Regular,
   Edit24Regular,
   ArrowExportLtr24Regular,
@@ -34,6 +33,7 @@ import { useBatchStore } from "../stores/batch";
 import { useSidebarStore } from "../stores/sidebar";
 import { useSettingsStore } from "../stores/settings";
 import BookmarkSidebar from "./BookmarkSidebar.vue";
+import ImageThumbnail from "./ImageThumbnail.vue";
 
 const fileSets = useFileSetStore();
 const archive = useArchiveStore();
@@ -421,7 +421,12 @@ watch(
         @click="onEntryClick($event, entry)"
         @dblclick="onEntryDblclick($event, entry)"
       >
-        <NIcon class="fileset-entry-icon" :size="16"><Document24Regular /></NIcon>
+        <ImageThumbnail
+          class="fileset-entry-icon"
+          :reference="entry.icon"
+          :size="16"
+          :show-fallback="true"
+        />
         <div class="fileset-entry-main">
           <div class="fileset-entry-name-line">
             <span class="fileset-entry-name">{{ entry.name }}</span>
