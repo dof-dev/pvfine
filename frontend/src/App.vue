@@ -80,9 +80,7 @@ async function onKeydown(e: KeyboardEvent) {
   if (!mod) return;
   if (e.code === "Backslash") {
     e.preventDefault();
-    if (e.altKey) {
-      editor.closeSplit();
-    } else if (e.shiftKey) {
+    if (e.shiftKey) {
       editor.split("rows");
     } else {
       editor.split("columns");

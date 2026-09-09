@@ -11,14 +11,13 @@ import {
   DocumentSearch24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
-  ArrowSync24Regular,
   DocumentSync24Regular,
   Settings24Regular,
   SplitHorizontal24Regular,
+  SplitVertical24Regular,
 } from "@vicons/fluent";
 import {
   NButton,
-  NDropdown,
   NIcon,
   NTooltip,
   NProgress,
@@ -29,7 +28,6 @@ import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useFileSetStore } from "../stores/fileSets";
-import { AnnotationService, UpdateService } from "../../bindings/pvfine/services";
 import { useSettingsStore } from "../stores/settings";
 import { useExplorerStore } from "../stores/explorer";
 import { useVersionStore } from "../stores/version";
@@ -43,39 +41,14 @@ const explorer = useExplorerStore();
 const version = useVersionStore();
 const message = useMessage();
 const dialog = useDialog();
-const checkingUpdates = ref(false);
-const reloadingAnnotations = ref(false);
 const revealingFile = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
-const canOpenSplitMenu = computed(() => editor.activeTab !== null || editor.isSplit);
 const canCreateSplit = computed(() => editor.activeTab !== null);
 const canRevealActiveFile = computed(
   () => archive.open && editor.activeTab !== null && !revealingFile.value
 );
-const splitMenuOptions = computed(() => [
-  {
-    label: "左右分屏",
-    key: "columns",
-    disabled: !canCreateSplit.value,
-  },
-  {
-    label: "上下分屏",
-    key: "rows",
-    disabled: !canCreateSplit.value,
-  },
-  {
-    type: "divider" as const,
-    key: "split-divider",
-  },
-  {
-    label: "关闭当前分屏",
-    key: "close",
-    disabled: !editor.isSplit,
-  },
-]);
-
 watch(
   () => archive.unpackMessage,
   (msg) => {
@@ -153,43 +126,6 @@ function toggleFileSetSidebar() {
   fileSets.visible = !fileSets.visible;
 }
 
-function onSplitMenuSelect(key: string | number): void {
-  if (key === "columns" || key === "rows") {
-    editor.split(key);
-  } else if (key === "close") {
-    editor.closeSplit();
-  }
-}
-
-async function onCheckUpdates() {
-  if (checkingUpdates.value) return;
-  checkingUpdates.value = true;
-  try {
-    await UpdateService.CheckForUpdates();
-  } catch (e: any) {
-    message.error(`检查更新失败: ${e?.message ?? e}`);
-  } finally {
-    checkingUpdates.value = false;
-  }
-}
-
-async function onReloadAnnotations() {
-  if (reloadingAnnotations.value) return;
-  reloadingAnnotations.value = true;
-  try {
-    await editor.flushPending();
-    const result = await AnnotationService.ReloadRules();
-    await Promise.all([editor.refreshAnnotations(), explorer.refreshAnnotations()]);
-    message.success(
-      `已重载 ${result.ruleCount} 条标注规则、${result.relationCount} 个关联类型`
-    );
-  } catch (e: any) {
-    message.error(`重载标注规则失败: ${e?.message ?? e}`);
-  } finally {
-    reloadingAnnotations.value = false;
-  }
-}
-
 async function onRevealActiveFile(): Promise<void> {
   if (revealingFile.value) return;
   const tab = editor.activeTab;
@@ -213,8 +149,8 @@ function isCancel(e: any): boolean {
 </script>
 
 <template>
-  <div class="toolbar">
-    <div class="tb-group">
+  <div class="toolbar" role="toolbar" aria-label="主工具栏">
+    <div class="tb-group" role="group" aria-label="文件">
       <NTooltip trigger="hover">
         <template #trigger>
           <NButton quaternary :loading="archive.loading" @click="onOpen">
@@ -254,7 +190,11 @@ function isCancel(e: any): boolean {
         </template>
         另存为新 PVF (Cmd+Shift+S)
       </NTooltip>
+    </div>
 
+    <div class="tb-sep" />
+
+    <div class="tb-group" role="group" aria-label="编辑器">
       <NTooltip trigger="hover">
         <template #trigger>
           <NButton quaternary :disabled="!archive.open" @click="advancedSearch.open">
@@ -280,29 +220,40 @@ function isCancel(e: any): boolean {
         定位当前焦点文件
       </NTooltip>
 
-      <NDropdown
-        :options="splitMenuOptions"
-        placement="bottom-start"
-        @select="onSplitMenuSelect"
-      >
-        <NTooltip trigger="hover">
-          <template #trigger>
-            <NButton
-              quaternary
-              :disabled="!canOpenSplitMenu"
-              aria-label="编辑器分屏"
-            >
-              <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          编辑器分屏 (Cmd/Ctrl+\\，上下分屏 Cmd/Ctrl+Shift+\\)
-        </NTooltip>
-      </NDropdown>
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :disabled="!canCreateSplit"
+            aria-label="左右分屏"
+            @click="editor.split('columns')"
+          >
+            <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
+            左右分屏
+          </NButton>
+        </template>
+        左右分屏 (Cmd/Ctrl+\\)
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :disabled="!canCreateSplit"
+            aria-label="上下分屏"
+            @click="editor.split('rows')"
+          >
+            <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
+            上下分屏
+          </NButton>
+        </template>
+        上下分屏 (Cmd/Ctrl+Shift+\\)
+      </NTooltip>
     </div>
 
     <div class="tb-sep" />
 
-    <div class="tb-group">
+    <div class="tb-group" role="group" aria-label="归档">
       <NButton quaternary v-if="!archive.unpacking" :disabled="!archive.open" @click="onUnpack">
         <template #icon><NIcon><ArchiveMultiple24Regular /></NIcon></template>
         解包
@@ -311,38 +262,43 @@ function isCancel(e: any): boolean {
         <template #icon><NIcon><Stop24Regular /></NIcon></template>
         取消解包
       </NButton>
+      <div v-if="archive.unpacking" class="unpack-progress">
+        <NText depth="3">
+          解包中 {{ archive.unpackProgress.done.toLocaleString() }} /
+          {{ archive.unpackProgress.total.toLocaleString() }}
+        </NText>
+        <NProgress
+          type="line"
+          :show-indicator="false"
+          :percentage="
+            archive.unpackProgress.total
+              ? Math.round((archive.unpackProgress.done / archive.unpackProgress.total) * 100)
+              : 0
+          "
+          style="width: 160px"
+        />
+      </div>
     </div>
 
     <div class="tb-spacer" />
 
-    <NTooltip trigger="hover">
-      <template #trigger>
-        <NButton
-          quaternary
-          :loading="reloadingAnnotations"
-          aria-label="重载标注规则"
-          @click="onReloadAnnotations"
-        >
-          <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
-        </NButton>
-      </template>
-      从磁盘重新加载标注规则
-    </NTooltip>
+    <div class="tb-group" role="group" aria-label="视图">
+      <NTooltip>
+        <template #trigger>
+          <NButton quaternary aria-label="切换文件集侧栏" @click="toggleFileSetSidebar">
+            <template #icon>
+              <NIcon>
+                <PanelRightContract24Regular v-if="fileSets.visible" />
+                <PanelRight24Regular v-else />
+              </NIcon>
+            </template>
+          </NButton>
+        </template>
+        {{ fileSets.visible ? "收起文件集" : "显示文件集" }}
+      </NTooltip>
+    </div>
 
-    <NTooltip trigger="hover">
-      <template #trigger>
-        <NButton
-          quaternary
-          :loading="checkingUpdates"
-          aria-label="检查更新"
-          @click="onCheckUpdates"
-        >
-          <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
-          检查更新
-        </NButton>
-      </template>
-      检查 pvfine 更新
-    </NTooltip>
+    <div class="tb-sep" />
 
     <NTooltip trigger="hover">
       <template #trigger>
@@ -351,37 +307,6 @@ function isCancel(e: any): boolean {
         </NButton>
       </template>
       设置
-    </NTooltip>
-
-    <div v-if="archive.unpacking" class="unpack-progress">
-      <NText depth="3">
-        解包中 {{ archive.unpackProgress.done.toLocaleString() }} /
-        {{ archive.unpackProgress.total.toLocaleString() }}
-      </NText>
-      <NProgress
-        type="line"
-        :show-indicator="false"
-        :percentage="
-          archive.unpackProgress.total
-            ? Math.round((archive.unpackProgress.done / archive.unpackProgress.total) * 100)
-            : 0
-        "
-        style="width: 160px"
-      />
-    </div>
-
-    <NTooltip>
-      <template #trigger>
-        <NButton quaternary aria-label="切换文件集侧栏" @click="toggleFileSetSidebar">
-          <template #icon>
-            <NIcon>
-              <PanelRightContract24Regular v-if="fileSets.visible" />
-              <PanelRight24Regular v-else />
-            </NIcon>
-          </template>
-        </NButton>
-      </template>
-      {{ fileSets.visible ? "收起文件集" : "显示文件集" }}
     </NTooltip>
   </div>
 </template>

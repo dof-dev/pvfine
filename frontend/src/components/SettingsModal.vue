@@ -1,13 +1,31 @@
 <script setup lang="ts">
-import { NModal, NRadioButton, NRadioGroup, NSpin, NSwitch, useMessage } from "naive-ui";
+import { ref } from "vue";
+import { ArrowSync24Regular, DocumentSync24Regular } from "@vicons/fluent";
+import {
+  NButton,
+  NIcon,
+  NModal,
+  NRadioButton,
+  NRadioGroup,
+  NSpin,
+  NSwitch,
+  useMessage,
+} from "naive-ui";
+import { AnnotationService, UpdateService } from "../../bindings/pvfine/services";
 import {
   useSettingsStore,
   type AnnotationTagPlacement,
   type ExplorerOpenMode,
 } from "../stores/settings";
+import { useEditorStore } from "../stores/editor";
+import { useExplorerStore } from "../stores/explorer";
 
 const settings = useSettingsStore();
+const editor = useEditorStore();
+const explorer = useExplorerStore();
 const message = useMessage();
+const checkingUpdates = ref(false);
+const reloadingAnnotations = ref(false);
 
 async function onPlacementChange(value: string | number | boolean) {
   try {
@@ -38,6 +56,35 @@ async function onBackupSourceOnSaveChange(value: boolean) {
     await settings.saveBackupSourceOnSave(value);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onReloadAnnotations() {
+  if (reloadingAnnotations.value) return;
+  reloadingAnnotations.value = true;
+  try {
+    await editor.flushPending();
+    const result = await AnnotationService.ReloadRules();
+    await Promise.all([editor.refreshAnnotations(), explorer.refreshAnnotations()]);
+    message.success(
+      `已重载 ${result.ruleCount} 条标注规则、${result.relationCount} 个关联类型`
+    );
+  } catch (error: any) {
+    message.error(`重载标注规则失败: ${error?.message ?? error}`);
+  } finally {
+    reloadingAnnotations.value = false;
+  }
+}
+
+async function onCheckUpdates() {
+  if (checkingUpdates.value) return;
+  checkingUpdates.value = true;
+  try {
+    await UpdateService.CheckForUpdates();
+  } catch (error: any) {
+    message.error(`检查更新失败: ${error?.message ?? error}`);
+  } finally {
+    checkingUpdates.value = false;
   }
 }
 </script>
@@ -104,6 +151,41 @@ async function onBackupSourceOnSaveChange(value: boolean) {
             <NRadioButton value="single-click">单击打开</NRadioButton>
             <NRadioButton value="double-click">双击打开</NRadioButton>
           </NRadioGroup>
+        </div>
+      </section>
+      <section class="settings-section">
+        <div class="section-title">维护</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">重载标注规则</div>
+            <div class="setting-description">从磁盘重新加载标注规则，并刷新当前编辑器中的标注</div>
+          </div>
+          <NButton
+            size="small"
+            secondary
+            :loading="reloadingAnnotations"
+            aria-label="重载标注规则"
+            @click="onReloadAnnotations"
+          >
+            <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+            重载
+          </NButton>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">检查更新</div>
+            <div class="setting-description">检查 pvfine 是否有可用的新版本</div>
+          </div>
+          <NButton
+            size="small"
+            secondary
+            :loading="checkingUpdates"
+            aria-label="检查更新"
+            @click="onCheckUpdates"
+          >
+            <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
+            检查
+          </NButton>
         </div>
       </section>
     </NSpin>
