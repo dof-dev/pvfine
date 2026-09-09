@@ -129,6 +129,10 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, ErrNoArchive
 	}
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return ArchiveInfo{}, err
+	}
 	if a.SourcePath() == "" {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, fmt.Errorf("归档没有源文件,请使用另存为")
@@ -238,6 +242,10 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	if s.c.archive != a {
 		s.c.mu.Unlock()
 		return "", ErrNoArchive
+	}
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return "", err
 	}
 	if err := a.SaveAs(path); err != nil {
 		s.c.mu.Unlock()

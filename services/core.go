@@ -90,6 +90,9 @@ type core struct {
 	versionSavedCommit   string
 	versionViewCommit    string
 	versionBaseArchive   *pvf.Archive
+	versionLoadID        uint64
+	versionLoading       bool
+	versionLoadError     string
 	advancedIndex        *pvf.StringPoolIndex
 	advancedStatus       AdvancedSearchIndexStatus
 	advancedCancel       context.CancelFunc

@@ -133,17 +133,17 @@ async function discard(): Promise<void> {
 }
 
 function confirmDiscard(): void {
-  if (confirmRunning.value || version.loading || !version.status.changedFiles) return;
+  if (confirmRunning.value || version.busy || !version.status.changedFiles) return;
   confirmAction.value = { type: "discard" };
 }
 
 function confirmCheckout(commit: VersionCommit): void {
-  if (confirmRunning.value || version.loading || version.committing) return;
+  if (confirmRunning.value || version.busy) return;
   confirmAction.value = { type: "checkout", commit };
 }
 
 function confirmRemove(): void {
-  if (confirmRunning.value || version.loading || version.committing || version.exporting) return;
+  if (confirmRunning.value || version.busy) return;
   confirmAction.value = { type: "remove" };
 }
 
@@ -215,11 +215,20 @@ function changeTitle(change: VersionChange): string {
     preset="card"
     title="版本控制"
     style="width: min(860px, calc(100vw - 48px)); max-height: calc(100vh - 80px);"
-    :mask-closable="!version.loading && !version.committing && !version.exporting && !confirmRunning"
-    :close-on-esc="!version.loading && !version.committing && !version.exporting && !confirmRunning"
+    :mask-closable="!version.busy && !confirmRunning"
+    :close-on-esc="!version.busy && !confirmRunning"
   >
-    <NSpin :show="version.loading && !version.enabled">
-      <template v-if="!version.enabled">
+    <NSpin :show="version.busy && !version.enabled">
+      <template v-if="version.status.loading">
+        <NAlert type="info" :show-icon="false">
+          PVF 已打开，正在后台加载版本控制。加载完成前不会阻塞普通浏览和读取操作，版本操作暂不可用。
+        </NAlert>
+      </template>
+
+      <template v-else-if="!version.enabled">
+        <NAlert v-if="version.status.error" type="error" :show-icon="false" class="version-alert">
+          {{ version.status.error }}
+        </NAlert>
         <NAlert type="info" :show-icon="false">
           版本库使用当前 PVF 的逻辑文件作为基线，创建后会在旁边生成 .pvfine 目录。
           初始化需要扫描整个归档，可能耗时几分钟，并会占用不少额外磁盘空间；期间请勿关闭应用。
@@ -247,7 +256,7 @@ function changeTitle(change: VersionChange): string {
               size="small"
               secondary
               type="error"
-              :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
+              :disabled="version.busy || !!confirmAction"
               @click="confirmRemove"
             >
               取消版本控制
@@ -268,7 +277,7 @@ function changeTitle(change: VersionChange): string {
                 size="small"
                 :type="confirmButtonType"
                 :loading="confirmRunning"
-                :disabled="confirmRunning || version.loading || version.committing || version.exporting"
+                :disabled="confirmRunning || version.busy"
                 @click="executeConfirmation"
               >
                 {{ confirmPositiveText }}
@@ -283,13 +292,13 @@ function changeTitle(change: VersionChange): string {
             <NInput
               v-model:value="version.commitMessage"
               placeholder="提交说明，例如：调整装备价格"
-              :disabled="version.committing || version.loading || version.exporting || !!confirmAction"
+              :disabled="version.busy || !!confirmAction"
               @keyup.enter="commit"
             />
             <NButton
               type="primary"
               :loading="version.committing"
-              :disabled="!version.canCommit || version.loading || version.exporting || !!confirmAction"
+              :disabled="!version.canCommit || version.busy || !!confirmAction"
               @click="commit"
             >
               创建版本
@@ -299,14 +308,14 @@ function changeTitle(change: VersionChange): string {
             <NButton
               size="small"
               :loading="version.loading && !confirmAction"
-              :disabled="!version.status.pendingChangeSets || version.loading || version.exporting || !!confirmAction"
+              :disabled="!version.status.pendingChangeSets || version.busy || !!confirmAction"
               @click="undo"
             >
               撤销最近变更
             </NButton>
             <NButton
               size="small"
-              :disabled="!version.status.changedFiles || version.loading || version.exporting || !!confirmAction"
+              :disabled="!version.status.changedFiles || version.busy || !!confirmAction"
               @click="confirmDiscard"
             >
               放弃未提交变更
@@ -353,7 +362,7 @@ function changeTitle(change: VersionChange): string {
                   <NButton
                     size="small"
                     secondary
-                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
+                    :disabled="version.busy || !!confirmAction"
                     @click="version.toggleCommitChanges(commitItem)"
                   >
                     {{ version.expandedCommitID === commitItem.id ? "收起变更" : "查看变更" }}
@@ -361,7 +370,7 @@ function changeTitle(change: VersionChange): string {
                   <NButton
                     size="small"
                     secondary
-                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
+                    :disabled="version.busy || !!confirmAction"
                     @click="confirmCheckout(commitItem)"
                   >
                     加载到工作区
@@ -370,7 +379,7 @@ function changeTitle(change: VersionChange): string {
                     size="small"
                     secondary
                     :loading="version.exporting && version.exportingCommitID === commitItem.id"
-                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction || !commitItem.changeCount"
+                    :disabled="version.busy || !!confirmAction || !commitItem.changeCount"
                     @click="exportCommit(commitItem)"
                   >
                     导出修改文件

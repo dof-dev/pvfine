@@ -321,6 +321,10 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		c.mu.Unlock()
 		return false, "", ErrNoArchive
 	}
+	if err := c.ensureVersionReadyLocked(); err != nil {
+		c.mu.Unlock()
+		return false, "", err
+	}
 	if index < 0 || index >= c.archive.FileCount() {
 		err := fmt.Errorf("文件索引越界: %d", index)
 		c.mu.Unlock()

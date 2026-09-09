@@ -54,7 +54,11 @@ const indexStateLabel = computed(() => {
         <span class="sb-sep" />
         <span class="sb-item sb-modified">{{ archive.modifiedCount }} 个已修改</span>
       </template>
-      <template v-if="version.enabled">
+      <template v-if="version.status.loading">
+        <span class="sb-sep" />
+        <span class="sb-item sb-version">版本控制加载中</span>
+      </template>
+      <template v-else-if="version.enabled">
         <span class="sb-sep" />
         <span class="sb-item sb-version" :title="version.status.headMessage">
           {{ version.status.branch }} · {{ version.status.changedFiles }} 个版本变更

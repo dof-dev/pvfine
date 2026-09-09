@@ -318,6 +318,7 @@ export interface VersionHistoryPage {
  */
 export interface VersionStatus {
     "enabled": boolean;
+    "loading": boolean;
     "repositoryPath": string;
     "branch": string;
     "headId": string;

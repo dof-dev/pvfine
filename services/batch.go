@@ -184,6 +184,10 @@ func (s *BatchService) PreviewPage(planID string, cursor, limit int) (*BatchPrev
 // a no-op.
 func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResult, error) {
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return BatchApplyResult{}, err
+	}
 	plan, err := s.currentBatchPlanLocked(planID)
 	if err != nil {
 		s.c.mu.Unlock()

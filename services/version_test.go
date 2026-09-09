@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"pvfine/internal/pvf"
 )
@@ -25,6 +26,21 @@ func versionServiceFixture(t *testing.T) (*core, string, int32) {
 	}
 	t.Cleanup(c.closeArchive)
 	return c, path, index
+}
+
+func waitForVersionLoad(t *testing.T, c *core) VersionStatus {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	service := NewVersionService(c)
+	for time.Now().Before(deadline) {
+		status := service.Status()
+		if !status.Loading {
+			return status
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("version load did not finish: %#v", service.Status())
+	return VersionStatus{}
 }
 
 func TestVersionServiceCommitSaveHistoryCheckout(t *testing.T) {
@@ -191,7 +207,7 @@ func TestVersionServiceDiscoversRepositoryOnOpen(t *testing.T) {
 	if _, err := archiveService.Open(path); err != nil {
 		t.Fatal(err)
 	}
-	status := NewVersionService(c).Status()
+	status := waitForVersionLoad(t, c)
 	if !status.Enabled || status.HeadID != commit.ID || status.ChangedFiles != 0 || status.NeedsSave {
 		t.Fatalf("reopened status = %#v", status)
 	}
@@ -202,6 +218,12 @@ func TestVersionServiceDiscoversRepositoryOnOpen(t *testing.T) {
 	text, err := c.archive.Text(openedIndex)
 	if err != nil || !strings.Contains(text, "持久化版本") {
 		t.Fatalf("reopened text = %q err=%v", text, err)
+	}
+	if err := NewEditorService(c).SetText(openedIndex, "[name]\n`重新编辑`"); err != nil {
+		t.Fatal(err)
+	}
+	if status := versions.Status(); status.ChangedFiles != 1 || status.PendingChangeSets != 1 {
+		t.Fatalf("reopened edit status = %#v", status)
 	}
 }
 
@@ -224,7 +246,7 @@ func TestVersionServiceRecoversCommittedWorktreeOnOpen(t *testing.T) {
 	if _, err := NewArchiveService(c).Open(path); err != nil {
 		t.Fatal(err)
 	}
-	status := NewVersionService(c).Status()
+	status := waitForVersionLoad(t, c)
 	if status.HeadID != commit.ID || status.ChangedFiles != 0 || !status.NeedsSave {
 		t.Fatalf("recovered status = %#v", status)
 	}

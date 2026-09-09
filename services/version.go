@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrVersionNotEnabled      = errors.New("当前归档尚未初始化版本库")
+	ErrVersionLoading         = errors.New("版本控制正在后台加载,请稍候")
 	ErrVersionArtifactChanged = errors.New("版本库关联的 PVF 产物已被外部修改,请先处理后再继续")
 )
 
@@ -34,6 +35,7 @@ func NewVersionService(c *core) *VersionService { return &VersionService{c: c} }
 // VersionStatus is the UI-facing version session state.
 type VersionStatus struct {
 	Enabled           bool   `json:"enabled"`
+	Loading           bool   `json:"loading"`
 	RepositoryPath    string `json:"repositoryPath"`
 	Branch            string `json:"branch"`
 	HeadID            string `json:"headId"`
@@ -97,6 +99,9 @@ type versionUndoRecord struct {
 // detachVersionLocked closes the repository session. The caller must hold
 // c.mu; it is called when an archive is replaced or closed.
 func (c *core) detachVersionLocked() {
+	c.versionLoadID++
+	c.versionLoading = false
+	c.versionLoadError = ""
 	if c.versionRepo != nil {
 		_ = c.versionRepo.Close()
 	}
@@ -116,51 +121,46 @@ func (c *core) detachVersionLocked() {
 	c.versionBaseArchive = nil
 }
 
-func (c *core) attachVersionLocked(repo *pvfversion.Repository, working pvfversion.Snapshot) error {
-	if repo == nil {
+type preparedVersionSession struct {
+	archive       *pvf.Archive
+	repo          *pvfversion.Repository
+	head          pvfversion.Commit
+	headSnapshot  pvfversion.Snapshot
+	working       pvfversion.Snapshot
+	savedSnapshot pvfversion.Snapshot
+	meta          pvfversion.Meta
+	baseArchive   *pvf.Archive
+	changes       []pvfversion.FileChange
+	changeMap     map[string]pvfversion.FileChange
+	artifactDirty map[string]struct{}
+}
+
+// attachVersionSessionLocked installs a fully prepared version session. All
+// repository IO, PVF parsing and snapshot diffing must happen before entering
+// this method so opening an archive does not hold c.mu during the slow work.
+func (c *core) attachVersionSessionLocked(session *preparedVersionSession) error {
+	if session == nil || session.repo == nil {
 		return ErrVersionNotEnabled
 	}
-	head, err := repo.Head()
-	if err != nil {
-		return err
-	}
-	headSnapshot, err := repo.Snapshot(head.ID)
-	if err != nil {
-		return err
-	}
-	if working == nil {
+	if session.working == nil {
 		return errors.New("版本工作区快照为空")
 	}
-	meta := repo.Meta()
-	savedSnapshot := pvfversion.CloneSnapshot(working)
-	if meta.Artifact.CommitID != "" {
-		var err error
-		savedSnapshot, err = repo.Snapshot(meta.Artifact.CommitID)
-		if err != nil {
-			return err
-		}
-	}
-	baseArchive, err := pvf.Open(repo.BasePath())
-	if err != nil {
-		return fmt.Errorf("打开版本基线失败: %w", err)
-	}
-	c.versionRepo = repo
-	c.versionHead = head
-	// Both snapshots are detached values returned by the repository/open path;
-	// retaining them here avoids another full map copy during attachment.
-	c.versionHeadSnapshot = headSnapshot
-	c.versionWorking = working
-	c.versionSavedSnapshot = savedSnapshot
-	c.versionChangeMap = make(map[string]pvfversion.FileChange)
-	c.versionArtifactDirty = make(map[string]struct{})
+	c.versionRepo = session.repo
+	c.versionHead = session.head
+	// These snapshots and derived maps are detached values prepared by the
+	// background loader; attaching only swaps pointers under the short lock.
+	c.versionHeadSnapshot = session.headSnapshot
+	c.versionWorking = session.working
+	c.versionSavedSnapshot = session.savedSnapshot
+	c.versionChanges = session.changes
+	c.versionChangeMap = session.changeMap
+	c.versionArtifactDirty = session.artifactDirty
 	c.versionUndo = nil
-	c.versionSavedTree = meta.Artifact.TreeHash
-	c.versionSavedPVF = meta.Artifact.PVFHash
-	c.versionSavedCommit = meta.Artifact.CommitID
+	c.versionSavedTree = session.meta.Artifact.TreeHash
+	c.versionSavedPVF = session.meta.Artifact.PVFHash
+	c.versionSavedCommit = session.meta.Artifact.CommitID
 	c.versionViewCommit = ""
-	c.versionBaseArchive = baseArchive
-	c.rebuildVersionChangesLocked()
-	c.rebuildVersionArtifactDirtyLocked()
+	c.versionBaseArchive = session.baseArchive
 	return nil
 }
 
@@ -172,7 +172,7 @@ func (c *core) currentVersionChangesLocked() []pvfversion.FileChange {
 }
 
 func (c *core) versionStatusLocked() VersionStatus {
-	status := VersionStatus{Branch: "main"}
+	status := VersionStatus{Branch: "main", Loading: c.versionLoading, Error: c.versionLoadError}
 	if c.versionRepo == nil {
 		return status
 	}
@@ -184,7 +184,15 @@ func (c *core) versionStatusLocked() VersionStatus {
 	status.PendingChangeSets = len(c.versionUndo)
 	status.ViewCommitID = c.versionViewCommit
 	status.NeedsSave = len(c.versionArtifactDirty) > 0
+	status.Error = ""
 	return status
+}
+
+func (c *core) ensureVersionReadyLocked() error {
+	if c.versionLoading {
+		return ErrVersionLoading
+	}
+	return nil
 }
 
 func sameVersionEntry(left, right pvfversion.Entry) bool {
@@ -225,12 +233,16 @@ func (c *core) rebuildVersionChangesLocked() {
 		c.versionChangeMap = nil
 		return
 	}
-	changes := pvfversion.Diff(c.versionHeadSnapshot, c.versionWorking)
-	c.versionChangeMap = make(map[string]pvfversion.FileChange, len(changes))
+	c.versionChanges, c.versionChangeMap = versionChangesForSnapshots(c.versionHeadSnapshot, c.versionWorking)
+}
+
+func versionChangesForSnapshots(head, working pvfversion.Snapshot) ([]pvfversion.FileChange, map[string]pvfversion.FileChange) {
+	changes := pvfversion.Diff(head, working)
+	changeMap := make(map[string]pvfversion.FileChange, len(changes))
 	for _, change := range changes {
-		c.versionChangeMap[change.Path] = change
+		changeMap[change.Path] = change
 	}
-	c.versionChanges = changes
+	return changes, changeMap
 }
 
 func (c *core) refreshVersionChangeLocked(key string) {
@@ -259,22 +271,26 @@ func (c *core) rebuildVersionArtifactDirtyLocked() {
 		c.versionArtifactDirty = nil
 		return
 	}
+	c.versionArtifactDirty = versionArtifactDirtyForSnapshots(c.versionSavedSnapshot, c.versionWorking)
+}
+
+func versionArtifactDirtyForSnapshots(saved, working pvfversion.Snapshot) map[string]struct{} {
 	dirty := make(map[string]struct{})
-	keys := make(map[string]struct{}, len(c.versionSavedSnapshot)+len(c.versionWorking))
-	for key := range c.versionSavedSnapshot {
+	keys := make(map[string]struct{}, len(saved)+len(working))
+	for key := range saved {
 		keys[key] = struct{}{}
 	}
-	for key := range c.versionWorking {
+	for key := range working {
 		keys[key] = struct{}{}
 	}
 	for key := range keys {
-		saved, hasSaved := c.versionSavedSnapshot[key]
-		working, hasWorking := c.versionWorking[key]
-		if hasSaved != hasWorking || (hasSaved && !sameVersionEntry(saved, working)) {
+		savedEntry, hasSaved := saved[key]
+		workingEntry, hasWorking := working[key]
+		if hasSaved != hasWorking || (hasSaved && !sameVersionEntry(savedEntry, workingEntry)) {
 			dirty[key] = struct{}{}
 		}
 	}
-	c.versionArtifactDirty = dirty
+	return dirty
 }
 
 func (c *core) refreshVersionArtifactDirtyLocked(key string) {
@@ -441,6 +457,10 @@ func (s *VersionService) Initialize() (*VersionStatus, error) {
 		s.c.mu.RUnlock()
 		return nil, ErrNoArchive
 	}
+	if s.c.versionLoading {
+		s.c.mu.RUnlock()
+		return nil, ErrVersionLoading
+	}
 	if s.c.versionRepo != nil {
 		status := s.c.versionStatusLocked()
 		s.c.mu.RUnlock()
@@ -475,6 +495,21 @@ func (s *VersionService) Initialize() (*VersionStatus, error) {
 	if err != nil {
 		return nil, err
 	}
+	head, headSnapshot, meta, err := loadVersionRepositoryState(repo)
+	if err != nil {
+		_ = repo.Close()
+		return nil, err
+	}
+	baseArchive, err := pvf.Open(repo.BasePath())
+	if err != nil {
+		_ = repo.Close()
+		return nil, fmt.Errorf("打开版本基线失败: %w", err)
+	}
+	session, err := buildPreparedVersionSession(repo, a, head, headSnapshot, meta, working, baseArchive)
+	if err != nil {
+		_ = repo.Close()
+		return nil, err
+	}
 
 	s.c.mu.Lock()
 	if s.c.archive != a || s.c.batchRevision != revision || s.c.versionRepo != nil {
@@ -482,7 +517,7 @@ func (s *VersionService) Initialize() (*VersionStatus, error) {
 		_ = repo.Close()
 		return nil, errors.New("初始化版本库期间归档状态已变化,请重试")
 	}
-	if err := s.c.attachVersionLocked(repo, working); err != nil {
+	if err := s.c.attachVersionSessionLocked(session); err != nil {
 		s.c.mu.Unlock()
 		_ = repo.Close()
 		return nil, err
@@ -504,6 +539,9 @@ func (s *VersionService) Status() VersionStatus {
 func (s *VersionService) ListChanges(cursor, limit int) (*VersionChangePage, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		return nil, ErrVersionNotEnabled
 	}
@@ -535,6 +573,10 @@ func (s *VersionService) ListChanges(cursor, limit int) (*VersionChangePage, err
 // packed PVF artifact.
 func (s *VersionService) Commit(message string) (*VersionCommit, error) {
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		s.c.mu.Unlock()
 		return nil, ErrVersionNotEnabled
@@ -596,6 +638,9 @@ func (s *VersionService) Commit(message string) (*VersionCommit, error) {
 func (s *VersionService) History(cursor, limit int) (*VersionHistoryPage, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		return nil, ErrVersionNotEnabled
 	}
@@ -618,6 +663,9 @@ func (s *VersionService) ListCommitChanges(commitID string, cursor, limit int) (
 	}
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		return nil, ErrVersionNotEnabled
 	}
@@ -655,6 +703,10 @@ func (s *VersionService) ListCommitChanges(commitID string, cursor, limit int) (
 // its sidecar repository. The loaded PVF and its in-memory edits are kept.
 func (s *VersionService) Remove() (*VersionStatus, error) {
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		s.c.mu.Unlock()
 		return nil, ErrVersionNotEnabled
@@ -697,6 +749,10 @@ func (s *VersionService) ExportCommitFilesDialog(commitID string) (string, error
 		return "", errors.New("提交 ID 不能为空")
 	}
 	s.c.mu.RLock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.RUnlock()
+		return "", err
+	}
 	repo := s.c.versionRepo
 	if repo == nil {
 		s.c.mu.RUnlock()
@@ -790,6 +846,10 @@ func (s *VersionService) ExportCommitFilesDialog(commitID string) (string, error
 // Undo reverses the most recent uncommitted mutation as one atomic operation.
 func (s *VersionService) Undo() (*VersionStatus, error) {
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		s.c.mu.Unlock()
 		return nil, ErrVersionNotEnabled
@@ -845,6 +905,10 @@ func (s *VersionService) Undo() (*VersionStatus, error) {
 // Discard restores the current HEAD into the in-memory working archive.
 func (s *VersionService) Discard() (*VersionStatus, error) {
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		s.c.mu.Unlock()
 		return nil, ErrVersionNotEnabled
@@ -872,6 +936,10 @@ func (s *VersionService) Checkout(commitID string) (*VersionStatus, error) {
 		return nil, errors.New("提交 ID 不能为空")
 	}
 	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		s.c.mu.Unlock()
 		return nil, ErrVersionNotEnabled
@@ -904,6 +972,9 @@ func (s *VersionService) Diff(commitID, path string) (*VersionFileDiff, error) {
 	}
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		return nil, err
+	}
 	if s.c.versionRepo == nil {
 		return nil, ErrVersionNotEnabled
 	}
@@ -1033,16 +1104,168 @@ func emitVersionState(c *core, reason string) {
 	})
 }
 
-// prepareVersionedArchive discovers an existing sidecar before the archive is
-// installed into core. If a commit was created without saving the PVF, the
-// last known artifact is safely replaced in memory with HEAD on reopen.
-func prepareVersionedArchive(path string, archive *pvf.Archive) (*pvf.Archive, *pvfversion.Repository, pvfversion.Snapshot, error) {
+func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
+	if !versionSidecarExists(path) {
+		return
+	}
+
+	c.mu.Lock()
+	if c.archive != archive {
+		c.mu.Unlock()
+		return
+	}
+	c.versionLoadID++
+	loadID := c.versionLoadID
+	c.versionLoading = true
+	c.versionLoadError = ""
+	c.mu.Unlock()
+
+	go func() {
+		session, err := prepareVersionedSession(path, archive)
+		if err != nil {
+			c.finishVersionLoad(archive, loadID, err)
+			return
+		}
+		if session == nil {
+			c.finishVersionLoad(archive, loadID, nil)
+			return
+		}
+
+		var children map[string][]*TreeNode
+		var paths []pathEntry
+		if session.archive != archive {
+			children, paths, err = buildIndex(session.archive)
+			if err != nil {
+				_ = session.repo.Close()
+				c.finishVersionLoad(archive, loadID, err)
+				return
+			}
+		}
+
+		c.mu.Lock()
+		if !c.versionLoadCurrentLocked(archive, loadID) {
+			c.mu.Unlock()
+			_ = session.repo.Close()
+			return
+		}
+		if session.archive != archive {
+			c.installArchiveIndexesLocked(session.archive, children, paths)
+		}
+		if err := c.attachVersionSessionLocked(session); err != nil {
+			c.versionLoading = false
+			c.versionLoadError = err.Error()
+			c.mu.Unlock()
+			_ = session.repo.Close()
+			emitVersionState(c, "load-error")
+			return
+		}
+		c.versionLoading = false
+		c.versionLoadError = ""
+		info := c.archive.Info()
+		reloaded := session.archive != archive
+		c.mu.Unlock()
+
+		if reloaded {
+			c.startSearchIndex()
+			emitEvent("archive:reloaded", info)
+		}
+		emitVersionState(c, "loaded")
+	}()
+}
+
+func versionSidecarExists(path string) bool {
+	_, err := os.Stat(pvfversion.SidecarPath(path))
+	return err == nil
+}
+
+func (c *core) versionLoadCurrentLocked(archive *pvf.Archive, loadID uint64) bool {
+	return c.archive == archive && c.versionLoading && c.versionLoadID == loadID
+}
+
+func (c *core) finishVersionLoad(archive *pvf.Archive, loadID uint64, loadErr error) {
+	c.mu.Lock()
+	if !c.versionLoadCurrentLocked(archive, loadID) {
+		c.mu.Unlock()
+		return
+	}
+	c.versionLoading = false
+	if loadErr != nil {
+		c.versionLoadError = loadErr.Error()
+	} else {
+		c.versionLoadError = ""
+	}
+	c.mu.Unlock()
+	if loadErr != nil {
+		emitVersionState(c, "load-error")
+		return
+	}
+	emitVersionState(c, "loaded")
+}
+
+func loadVersionRepositoryState(repo *pvfversion.Repository) (pvfversion.Commit, pvfversion.Snapshot, pvfversion.Meta, error) {
+	if repo == nil {
+		return pvfversion.Commit{}, nil, pvfversion.Meta{}, ErrVersionNotEnabled
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return pvfversion.Commit{}, nil, pvfversion.Meta{}, err
+	}
+	headSnapshot, err := repo.Snapshot(head.ID)
+	if err != nil {
+		return pvfversion.Commit{}, nil, pvfversion.Meta{}, err
+	}
+	return head, headSnapshot, repo.Meta(), nil
+}
+
+func buildPreparedVersionSession(
+	repo *pvfversion.Repository,
+	archive *pvf.Archive,
+	head pvfversion.Commit,
+	headSnapshot pvfversion.Snapshot,
+	meta pvfversion.Meta,
+	working pvfversion.Snapshot,
+	baseArchive *pvf.Archive,
+) (*preparedVersionSession, error) {
+	if repo == nil {
+		return nil, ErrVersionNotEnabled
+	}
+	if working == nil {
+		return nil, errors.New("版本工作区快照为空")
+	}
+	savedSnapshot := pvfversion.CloneSnapshot(working)
+	if meta.Artifact.CommitID != "" {
+		var err error
+		savedSnapshot, err = repo.Snapshot(meta.Artifact.CommitID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	changes, changeMap := versionChangesForSnapshots(headSnapshot, working)
+	return &preparedVersionSession{
+		archive:       archive,
+		repo:          repo,
+		head:          head,
+		headSnapshot:  headSnapshot,
+		working:       working,
+		savedSnapshot: savedSnapshot,
+		meta:          meta,
+		baseArchive:   baseArchive,
+		changes:       changes,
+		changeMap:     changeMap,
+		artifactDirty: versionArtifactDirtyForSnapshots(savedSnapshot, working),
+	}, nil
+}
+
+// prepareVersionedSession discovers an existing sidecar and restores an
+// unsaved HEAD in memory. It is called only from the background loader; all
+// disk IO, snapshot reconstruction and the baseline PVF parse stay off c.mu.
+func prepareVersionedSession(path string, archive *pvf.Archive) (*preparedVersionSession, error) {
 	repo, err := pvfversion.Open(pvfversion.SidecarPath(path))
 	if errors.Is(err, pvfversion.ErrRepositoryNotFound) {
-		return archive, nil, nil, nil
+		return nil, nil
 	}
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	closeOnError := true
 	defer func() {
@@ -1050,55 +1273,65 @@ func prepareVersionedArchive(path string, archive *pvf.Archive) (*pvf.Archive, *
 			_ = repo.Close()
 		}
 	}()
-	head, err := repo.Head()
+	head, headSnapshot, meta, err := loadVersionRepositoryState(repo)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
-	headSnapshot, err := repo.Snapshot(head.ID)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	meta := repo.Meta()
 	sourceHash := archive.SourceHash()
 	if meta.Artifact.PVFHash != "" && sourceHash != meta.Artifact.PVFHash {
-		return nil, nil, nil, ErrVersionArtifactChanged
+		return nil, ErrVersionArtifactChanged
 	}
+	working := pvfversion.Snapshot(nil)
+	preparedArchive := archive
+	var baseArchive *pvf.Archive
 	if meta.Artifact.CommitID != "" && meta.Artifact.CommitID != head.ID {
 		artifactSnapshot, err := repo.Snapshot(meta.Artifact.CommitID)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 		changedPaths, err := repo.ChangedPathsBetween(meta.Artifact.CommitID, head.ID)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
-		materialized, err := materializeVersionArchive(
-			repo.BasePath(), nil, headSnapshot, archive, artifactSnapshot, repo,
+		baseArchive, err = pvf.Open(repo.BasePath())
+		if err != nil {
+			return nil, fmt.Errorf("打开版本基线失败: %w", err)
+		}
+		preparedArchive, err = materializeVersionArchive(
+			repo.BasePath(), baseArchive, headSnapshot, archive, artifactSnapshot, repo,
 			changedPaths, path,
 		)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
-		archive = materialized
-		closeOnError = false
-		return archive, repo, pvfversion.CloneSnapshot(headSnapshot), nil
+		working = pvfversion.CloneSnapshot(headSnapshot)
+	} else if meta.Artifact.CommitID == head.ID && sourceHash == meta.Artifact.PVFHash {
+		// The packed artifact already represents HEAD, so re-use the restored
+		// manifest instead of decoding every logical file again.
+		working = pvfversion.CloneSnapshot(headSnapshot)
+	} else {
+		working, err = pvfversion.SnapshotFromArchive(archive)
+		if err != nil {
+			return nil, err
+		}
+		if meta.Artifact.TreeHash != "" && pvfversion.TreeHash(working) != meta.Artifact.TreeHash {
+			return nil, ErrVersionArtifactChanged
+		}
 	}
-	// The packed-artifact hash is the stronger and cheaper fast-path check:
-	// when it is unchanged from the last save and that save pointed at HEAD,
-	// there is no need to sort and hash the complete logical tree again.
-	if meta.Artifact.CommitID == head.ID && sourceHash == meta.Artifact.PVFHash {
-		closeOnError = false
-		return archive, repo, pvfversion.CloneSnapshot(headSnapshot), nil
+	if baseArchive == nil {
+		baseArchive, err = pvf.Open(repo.BasePath())
+		if err != nil {
+			return nil, fmt.Errorf("打开版本基线失败: %w", err)
+		}
 	}
-	working, err := pvfversion.SnapshotFromArchive(archive)
+	session, err := buildPreparedVersionSession(
+		repo, preparedArchive, head, headSnapshot, meta, working, baseArchive,
+	)
 	if err != nil {
-		return nil, nil, nil, err
-	}
-	if meta.Artifact.TreeHash != "" && pvfversion.TreeHash(working) != meta.Artifact.TreeHash {
-		return nil, nil, nil, ErrVersionArtifactChanged
+		return nil, err
 	}
 	closeOnError = false
-	return archive, repo, working, nil
+	return session, nil
 }
 
 func materializeVersionArchive(

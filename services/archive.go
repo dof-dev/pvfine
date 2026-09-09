@@ -63,35 +63,15 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
-	var repo *pvfversion.Repository
-	var working pvfversion.Snapshot
-	a, repo, working, err = prepareVersionedArchive(path, a)
-	if err != nil {
-		return ArchiveInfo{}, err
-	}
 	if err := s.c.setArchive(a); err != nil {
-		if repo != nil {
-			_ = repo.Close()
-		}
 		return ArchiveInfo{}, err
-	}
-	if repo != nil {
-		s.c.mu.Lock()
-		var attachErr error
-		if working == nil {
-			working, attachErr = pvfversion.SnapshotFromArchive(a)
-		}
-		if attachErr == nil {
-			attachErr = s.c.attachVersionLocked(repo, working)
-		}
-		s.c.mu.Unlock()
-		if attachErr != nil {
-			_ = repo.Close()
-			s.c.closeArchive()
-			return ArchiveInfo{}, attachErr
-		}
 	}
 	info := a.Info()
+	// Version repository discovery/recovery is deliberately detached from the
+	// normal open path. The raw PVF and its tree are usable immediately; the
+	// background task will replace the in-memory archive only when recovery is
+	// actually needed.
+	s.c.startVersionLoad(path, a)
 	emitEvent("archive:opened", info)
 	s.c.startSearchIndex()
 	return info, nil
@@ -252,6 +232,10 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		s.c.mu.Unlock()
 		return nil, ErrNoArchive
 	}
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	if _, exists := a.Find(path); exists {
 		s.c.mu.Unlock()
 		return nil, fmt.Errorf("文件已存在: %s", path)
@@ -318,6 +302,10 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 	if a == nil {
 		s.c.mu.Unlock()
 		return nil, ErrNoArchive
+	}
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
 	}
 	if err := validateFileIndexes(a, fileIndexes); err != nil {
 		s.c.mu.Unlock()

@@ -10,6 +10,7 @@ import type {
 
 const emptyStatus = (): VersionStatus => ({
   enabled: false,
+  loading: false,
   repositoryPath: "",
   branch: "main",
   headId: "",
@@ -38,9 +39,26 @@ export const useVersionStore = defineStore("version", () => {
   let refreshToken = 0;
 
   const enabled = computed(() => status.value.enabled);
-  const canCommit = computed(
-    () => enabled.value && status.value.changedFiles > 0 && !!commitMessage.value.trim() && !committing.value
+  const busy = computed(
+    () => loading.value || committing.value || exporting.value || status.value.loading
   );
+  const canCommit = computed(
+    () =>
+      enabled.value &&
+      !status.value.loading &&
+      !loading.value &&
+      !committing.value &&
+      !exporting.value &&
+      status.value.changedFiles > 0 &&
+      !!commitMessage.value.trim()
+  );
+
+  function clearVersionData(): void {
+    changes.value = [];
+    history.value = [];
+    expandedCommitID.value = "";
+    commitChanges.value = [];
+  }
 
   function errorMessage(value: any): string {
     return String(value?.message ?? value ?? "版本操作失败");
@@ -91,11 +109,13 @@ export const useVersionStore = defineStore("version", () => {
       const next = await VersionService.Status();
       if (request !== refreshToken) return;
       applyStatus(next);
+      if (status.value.loading) {
+        clearVersionData();
+        commitMessage.value = "";
+        return;
+      }
       if (!status.value.enabled) {
-        changes.value = [];
-        history.value = [];
-        expandedCommitID.value = "";
-        commitChanges.value = [];
+        clearVersionData();
         return;
       }
       const [changePage, historyPage] = await Promise.all([
@@ -272,11 +292,17 @@ export const useVersionStore = defineStore("version", () => {
     const data = eventData(event);
     if (data?.status) applyStatus(data.status);
     if (data?.status && !data.status.enabled) {
-      changes.value = [];
-      history.value = [];
-      expandedCommitID.value = "";
-      commitChanges.value = [];
+      clearVersionData();
       commitMessage.value = "";
+      return;
+    }
+    if (data?.status?.loading) {
+      clearVersionData();
+      commitMessage.value = "";
+      return;
+    }
+    if (data?.reason === "loaded") {
+      void refresh();
       return;
     }
     if (Array.isArray(data?.changes)) {
@@ -291,10 +317,7 @@ export const useVersionStore = defineStore("version", () => {
   Events.On("archive:closed", () => {
     refreshToken++;
     status.value = emptyStatus();
-    changes.value = [];
-    history.value = [];
-    expandedCommitID.value = "";
-    commitChanges.value = [];
+    clearVersionData();
     error.value = "";
   });
   Events.On("archive:saved", () => void refreshStatusOnly());
@@ -313,6 +336,7 @@ export const useVersionStore = defineStore("version", () => {
     exportingCommitID,
     error,
     enabled,
+    busy,
     canCommit,
     open,
     close,
