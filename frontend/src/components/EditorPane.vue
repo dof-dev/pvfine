@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { Clipboard } from "@wailsio/runtime";
 import {
   NButton,
+  NDropdown,
   NEmpty,
   NIcon,
   NSpin,
@@ -50,6 +51,13 @@ const revealingFile = ref(false);
 const bookmarking = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
+const tabContextMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  paneId: null as EditorPaneId | null,
+  index: null as number | null,
+});
 
 type DropEdge = "left" | "right" | "top" | "bottom";
 const dragMime = "application/x-pvfine-editor-tab";
@@ -107,6 +115,57 @@ function onActive(key: string | number): void {
 
 function onClose(index: number): void {
   editor.closeTab(index, paneId);
+}
+
+const tabContextMenuOptions = computed(() => [
+  {
+    label: "关闭当前",
+    key: "close",
+    disabled: tabContextMenu.value.index === null,
+  },
+  {
+    label: "关闭所有",
+    key: "close-all",
+    disabled: editor.tabs.length === 0,
+  },
+  {
+    label: "关闭其它",
+    key: "close-others",
+    disabled: editor.tabs.length <= 1 || tabContextMenu.value.index === null,
+  },
+]);
+
+function hideTabContextMenu(): void {
+  tabContextMenu.value.show = false;
+  tabContextMenu.value.paneId = null;
+  tabContextMenu.value.index = null;
+}
+
+function onTabContextMenu(event: MouseEvent, index: number): void {
+  event.preventDefault();
+  editor.activateTab(paneId, index);
+  tabContextMenu.value = {
+    show: true,
+    x: event.clientX,
+    y: event.clientY,
+    paneId,
+    index,
+  };
+}
+
+function onTabContextMenuSelect(key: string | number): void {
+  const index = tabContextMenu.value.index;
+  const targetPaneId = tabContextMenu.value.paneId;
+  hideTabContextMenu();
+  if (index === null) return;
+
+  if (key === "close") {
+    editor.closeTab(index, targetPaneId ?? paneId);
+  } else if (key === "close-all") {
+    editor.closeAllTabs();
+  } else if (key === "close-others") {
+    editor.closeOtherTabs(index);
+  }
 }
 
 async function onRevealActiveFile(): Promise<void> {
@@ -335,6 +394,7 @@ function onDrop(event: DragEvent): void {
             draggable="true"
             @dragstart="onDragStart($event, tab.index)"
             @dragend="onDragEnd"
+            @contextmenu.stop="onTabContextMenu($event, tab.index)"
           >
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
             {{ tab.title }}
@@ -461,6 +521,16 @@ function onDrop(event: DragEvent): void {
         </div>
       </NTabPane>
     </NTabs>
+    <NDropdown
+      trigger="manual"
+      placement="bottom-start"
+      :show="tabContextMenu.show"
+      :x="tabContextMenu.x"
+      :y="tabContextMenu.y"
+      :options="tabContextMenuOptions"
+      @select="onTabContextMenuSelect"
+      @clickoutside="hideTabContextMenu"
+    />
   </div>
 </template>
 

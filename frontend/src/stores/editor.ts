@@ -213,6 +213,44 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  /** 关闭所有标签,并清理分屏中对这些标签的引用。 */
+  function closeAllTabs(): void {
+    closeTabsExcept(null);
+  }
+
+  /** 关闭除指定标签外的所有标签,保留该标签在已有窗格中的引用。 */
+  function closeOtherTabs(keepIndex: number): void {
+    closeTabsExcept(keepIndex);
+  }
+
+  function closeTabsExcept(keepIndex: number | null): void {
+    const removedIndexes = new Set(
+      tabs.value
+        .map((tab) => tab.index)
+        .filter((index) => keepIndex === null || index !== keepIndex)
+    );
+    if (removedIndexes.size === 0) return;
+
+    for (const pane of Object.values(paneStates)) {
+      const oldActive = pane.activeKey;
+      pane.tabIndexes = pane.tabIndexes.filter((index) => !removedIndexes.has(index));
+      if (oldActive !== null && !removedIndexes.has(oldActive)) {
+        pane.activeKey = oldActive;
+      } else {
+        pane.activeKey = pane.tabIndexes[pane.tabIndexes.length - 1] ?? null;
+      }
+    }
+
+    tabs.value = tabs.value.filter((tab) => !removedIndexes.has(tab.index));
+    for (const index of removedIndexes) pendingSync.delete(index);
+
+    while (isSplit.value) {
+      const emptyPane = panes.value.find((pane) => pane.tabIndexes.length === 0);
+      if (!emptyPane) break;
+      closeSplit(emptyPane.id);
+    }
+  }
+
   /** 把标签引用移动到另一个窗格,源窗格变空时默认自动收起。 */
   function moveTab(
     index: number,
@@ -661,6 +699,8 @@ export const useEditorStore = defineStore("editor", () => {
     endTabDrag,
     activateTab,
     closeTab,
+    closeAllTabs,
+    closeOtherTabs,
     moveTab,
     split,
     splitAndMoveTab,
