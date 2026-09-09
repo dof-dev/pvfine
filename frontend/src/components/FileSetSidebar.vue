@@ -515,8 +515,8 @@ watch(
   width: 300px;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid rgba(128, 128, 128, 0.2);
-  background: rgba(30, 33, 41, 0.55);
+  border-left: 1px solid var(--pvf-border-normal);
+  background: transparent;
 }
 .fileset-heading,
 .fileset-switcher,
@@ -534,7 +534,7 @@ watch(
   gap: 4px;
   padding: 6px 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  border-bottom: 1px solid var(--pvf-border-subtle);
 }
 .collection-switcher > .n-button {
   flex: 1;
@@ -548,11 +548,11 @@ watch(
 .fileset-title {
   min-width: 0;
   gap: 6px;
-  color: #fff;
+  color: var(--pvf-text-primary);
   font-weight: 600;
 }
 .fileset-title :deep(.n-icon) {
-  color: #fff;
+  color: var(--pvf-text-secondary);
 }
 .fileset-title > span {
   overflow: hidden;
@@ -567,7 +567,7 @@ watch(
   gap: 6px;
   padding: 0 8px 8px 12px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  border-bottom: 1px solid var(--pvf-border-subtle);
 }
 .fileset-switcher .n-select {
   min-width: 0;
@@ -591,14 +591,14 @@ watch(
   cursor: default;
 }
 .fileset-entry:hover {
-  background: rgba(79, 140, 255, 0.09);
+  background: var(--pvf-surface-hover);
 }
 .fileset-entry--missing {
   opacity: 0.72;
 }
 .fileset-entry-icon {
   flex: 0 0 auto;
-  color: #7fb1ff;
+  color: var(--pvf-primary-hover);
 }
 .fileset-entry-main {
   display: flex;
@@ -621,7 +621,7 @@ watch(
   overflow: hidden;
 }
 .fileset-entry-name {
-  color: rgba(235, 238, 245, 0.95);
+  color: var(--pvf-text-tertiary);
 }
 .fileset-entry-id {
   flex: 0 0 auto;
@@ -630,7 +630,7 @@ watch(
   flex: 0 0 auto;
 }
 .fileset-entry-path {
-  color: rgba(160, 168, 182, 0.72);
+  color: var(--pvf-text-muted);
   font-size: 11px;
 }
 .fileset-entry-meta {

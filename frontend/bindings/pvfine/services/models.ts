@@ -65,6 +65,7 @@ export interface AppSettings {
     "vimMode": boolean;
     "backupSourceOnSave": boolean;
     "npkDirectory": string;
+    "theme": string;
 }
 
 /**

@@ -2,9 +2,11 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { SettingsService } from "../../bindings/pvfine/services";
 import type { AppSettings } from "../../bindings/pvfine/services/models";
+import type { ThemeMode } from "../theme";
 
 export type AnnotationTagPlacement = "after-target" | "line-end" | "hidden";
 export type ExplorerOpenMode = "single-click" | "double-click";
+export type { ThemeMode } from "../theme";
 
 const defaultSettings: AppSettings = {
   annotationTagPlacement: "after-target",
@@ -12,6 +14,7 @@ const defaultSettings: AppSettings = {
   vimMode: false,
   backupSourceOnSave: true,
   npkDirectory: "",
+  theme: "dark",
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -23,6 +26,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const vimMode = ref(false);
   const backupSourceOnSave = ref(true);
   const npkDirectory = ref("");
+  const themeMode = ref<ThemeMode>("dark");
 
   async function load() {
     if (loaded.value) return;
@@ -33,6 +37,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode.value = normalizeVimMode(settings.vimMode);
       backupSourceOnSave.value = normalizeBackupSourceOnSave(settings.backupSourceOnSave);
       npkDirectory.value = normalizeNPKDirectory(settings.npkDirectory);
+      themeMode.value = normalizeThemeMode(settings.theme);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
@@ -40,6 +45,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode.value = false;
       backupSourceOnSave.value = true;
       npkDirectory.value = "";
+      themeMode.value = "dark";
     } finally {
       loaded.value = true;
     }
@@ -52,6 +58,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode: vimMode.value,
       backupSourceOnSave: backupSourceOnSave.value,
       npkDirectory: npkDirectory.value,
+      theme: themeMode.value,
     });
   }
 
@@ -62,6 +69,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode: vimMode.value,
       backupSourceOnSave: backupSourceOnSave.value,
       npkDirectory: npkDirectory.value,
+      theme: themeMode.value,
     });
   }
 
@@ -72,6 +80,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode: value,
       backupSourceOnSave: backupSourceOnSave.value,
       npkDirectory: npkDirectory.value,
+      theme: themeMode.value,
     });
   }
 
@@ -82,6 +91,18 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode: vimMode.value,
       backupSourceOnSave: value,
       npkDirectory: npkDirectory.value,
+      theme: themeMode.value,
+    });
+  }
+
+  async function saveThemeMode(value: ThemeMode) {
+    await saveSettings({
+      annotationTagPlacement: annotationTagPlacement.value,
+      explorerOpenMode: explorerOpenMode.value,
+      vimMode: vimMode.value,
+      backupSourceOnSave: backupSourceOnSave.value,
+      npkDirectory: npkDirectory.value,
+      theme: value,
     });
   }
 
@@ -91,11 +112,13 @@ export const useSettingsStore = defineStore("settings", () => {
     const previousVimMode = vimMode.value;
     const previousBackupSourceOnSave = backupSourceOnSave.value;
     const previousNPKDirectory = npkDirectory.value;
+    const previousThemeMode = themeMode.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
     vimMode.value = normalizeVimMode(next.vimMode);
     backupSourceOnSave.value = normalizeBackupSourceOnSave(next.backupSourceOnSave);
     npkDirectory.value = normalizeNPKDirectory(next.npkDirectory);
+    themeMode.value = normalizeThemeMode(next.theme);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -108,6 +131,7 @@ export const useSettingsStore = defineStore("settings", () => {
       vimMode.value = previousVimMode;
       backupSourceOnSave.value = previousBackupSourceOnSave;
       npkDirectory.value = previousNPKDirectory;
+      themeMode.value = previousThemeMode;
       throw error;
     } finally {
       saving.value = false;
@@ -128,11 +152,13 @@ export const useSettingsStore = defineStore("settings", () => {
     vimMode,
     backupSourceOnSave,
     npkDirectory,
+    themeMode,
     load,
     savePlacement,
     saveExplorerOpenMode,
     saveVimMode,
     saveBackupSourceOnSave,
+    saveThemeMode,
     open,
   };
 });
@@ -156,4 +182,9 @@ function normalizeBackupSourceOnSave(value: boolean): boolean {
 
 function normalizeNPKDirectory(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeThemeMode(value: string | null | undefined): ThemeMode {
+  if (value === "light" || value === "system") return value;
+  return "dark";
 }

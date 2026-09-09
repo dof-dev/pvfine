@@ -384,7 +384,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 .advanced-search-results {
   min-height: 180px;
-  border: 1px solid rgba(128, 128, 128, 0.18);
+  border: 1px solid var(--pvf-border-normal);
 }
 .advanced-search-results :deep(.n-empty) {
   padding: 64px 0;
@@ -393,17 +393,17 @@ function onKeydown(event: KeyboardEvent): void {
   cursor: pointer;
 }
 .advanced-search-results :deep(.advanced-search-row:hover) {
-  background: rgba(79, 140, 255, 0.09);
+  background: var(--pvf-surface-hover);
 }
 :deep(.advanced-search-details) {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px 16px 10px 48px;
-  background: rgba(128, 128, 128, 0.06);
+  background: var(--pvf-surface-inset);
 }
 :deep(.advanced-search-details-title) {
-  color: rgba(220, 225, 235, 0.86);
+  color: var(--pvf-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -416,11 +416,11 @@ function onKeydown(event: KeyboardEvent): void {
   font-size: 12px;
 }
 :deep(.advanced-search-detail-label) {
-  color: rgba(128, 128, 128, 0.9);
+  color: var(--pvf-text-muted);
   flex: 0 0 auto;
 }
 :deep(.advanced-search-detail-value) {
-  color: #63e2b7;
+  color: var(--pvf-success);
   max-width: 360px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -428,21 +428,21 @@ function onKeydown(event: KeyboardEvent): void {
 }
 :deep(.advanced-search-detail-hit) {
   font-weight: 650;
-  text-shadow: 0 0 12px rgba(99, 226, 183, 0.18);
+  text-shadow: 0 0 12px var(--pvf-effect-success-glow);
 }
 :deep(.advanced-search-detail-muted) {
-  color: rgba(160, 168, 182, 0.72);
+  color: var(--pvf-text-muted);
 }
 :deep(.advanced-search-detail-code) {
   padding: 2px 5px;
-  color: #f2c97d;
-  background: rgba(242, 201, 125, 0.08);
+  color: var(--pvf-warning);
+  background: var(--pvf-surface-warning);
   border-radius: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
 }
 :deep(.advanced-search-detail-code.advanced-search-detail-hit) {
-  box-shadow: inset 0 0 0 1px rgba(242, 201, 125, 0.16);
+  box-shadow: inset 0 0 0 1px var(--pvf-border-subtle);
 }
 .advanced-search-alert {
   margin-top: -4px;

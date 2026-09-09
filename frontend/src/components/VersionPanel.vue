@@ -435,7 +435,7 @@ function changeTitle(change: VersionChange): string {
 }
 .version-head-message {
   margin-top: 5px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--pvf-text-secondary);
 }
 .version-alert {
   margin-top: 14px;
@@ -498,7 +498,7 @@ function changeTitle(change: VersionChange): string {
 }
 .version-commit-meta {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--pvf-text-muted);
   font-size: 12px;
 }
 .commit-change-list {
@@ -507,7 +507,7 @@ function changeTitle(change: VersionChange): string {
   gap: 6px 16px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  border-top: 1px solid var(--pvf-border-normal);
 }
 @media (max-width: 720px) {
   .version-summary,

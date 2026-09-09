@@ -5,11 +5,15 @@ import { FolderOpen24Regular } from "@vicons/fluent";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import EditorLayout from "./EditorLayout.vue";
+import type { ResolvedThemeId } from "../theme";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const message = useMessage();
 const openingRecent = ref("");
+const props = defineProps<{
+  themeId: ResolvedThemeId;
+}>();
 
 function archiveName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -82,7 +86,7 @@ function isCancel(e: any): boolean {
     </div>
 
     <div v-else class="editor-workspace">
-      <EditorLayout :node="editor.layout" />
+      <EditorLayout :node="editor.layout" :theme-id="props.themeId" />
     </div>
   </div>
 </template>
@@ -111,12 +115,12 @@ function isCancel(e: any): boolean {
   gap: 10px;
 }
 .start-page-title {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--pvf-text-primary);
   font-size: 22px;
   font-weight: 600;
 }
 .start-page-subtitle {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--pvf-text-muted);
   font-size: 13px;
   margin-bottom: 14px;
 }
@@ -129,7 +133,7 @@ function isCancel(e: any): boolean {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--pvf-text-secondary);
   font-size: 12px;
   margin-bottom: 6px;
 }
@@ -146,24 +150,24 @@ function isCancel(e: any): boolean {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(128, 128, 128, 0.22);
+  border: 1px solid var(--pvf-border-strong);
   border-radius: 6px;
   color: inherit;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--pvf-surface-list);
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
 }
 .recent-item:hover:not(:disabled) {
-  border-color: rgba(79, 140, 255, 0.6);
-  background: rgba(79, 140, 255, 0.1);
+  border-color: var(--pvf-primary);
+  background: var(--pvf-primary-soft);
 }
 .recent-item:disabled {
   cursor: wait;
   opacity: 0.65;
 }
 .recent-icon {
-  color: #6ba0ff;
+  color: var(--pvf-primary-hover);
   flex-shrink: 0;
 }
 .recent-item-text {
@@ -177,14 +181,14 @@ function isCancel(e: any): boolean {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--pvf-text-primary);
   font-size: 13px;
 }
 .recent-path {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--pvf-text-faint);
   font-size: 11px;
 }
 .editor-workspace {

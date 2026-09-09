@@ -930,18 +930,18 @@ function sortTree(items: TreeItem[]): void {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  border-right: 1px solid rgba(128, 128, 128, 0.2);
+  border-right: 1px solid var(--pvf-border-normal);
 }
 .exp-search {
   padding: 8px;
   flex-shrink: 0;
 }
 .exact-toggle {
-  color: rgba(128, 128, 128, 0.85);
+  color: var(--pvf-text-muted);
 }
 .exact-toggle--active {
-  color: #6ba0ff;
-  background: rgba(79, 140, 255, 0.15);
+  color: var(--pvf-primary-hover);
+  background: var(--pvf-primary-selected);
 }
 .index-status {
   display: flex;
@@ -949,7 +949,7 @@ function sortTree(items: TreeItem[]): void {
   gap: 6px;
   min-height: 18px;
   margin-top: 4px;
-  color: rgba(128, 128, 128, 0.9);
+  color: var(--pvf-text-muted);
   font-size: 11px;
   line-height: 18px;
   overflow: hidden;
@@ -957,7 +957,7 @@ function sortTree(items: TreeItem[]): void {
   text-overflow: ellipsis;
 }
 .index-status--error {
-  color: #e88080;
+  color: var(--pvf-error);
 }
 .exp-body {
   flex: 1;

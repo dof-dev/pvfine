@@ -442,12 +442,12 @@ function close(): void {
   gap: 5px;
 }
 .batch-field label {
-  color: rgba(190, 198, 212, 0.8);
+  color: var(--pvf-text-secondary);
   font-size: 12px;
 }
 .batch-switch-row {
   gap: 8px;
-  color: rgba(190, 198, 212, 0.8);
+  color: var(--pvf-text-secondary);
   font-size: 12px;
 }
 .batch-text-form > .batch-switch-row {
@@ -470,9 +470,9 @@ function close(): void {
   flex-direction: column;
   gap: 7px;
   padding: 8px;
-  border: 1px solid rgba(128, 128, 128, 0.18);
+  border: 1px solid var(--pvf-border-normal);
   border-radius: 5px;
-  background: rgba(128, 128, 128, 0.035);
+  background: var(--pvf-surface-inset);
 }
 .batch-operation-topline,
 .batch-operation-fields {
@@ -510,7 +510,7 @@ function close(): void {
   max-height: 420px;
   min-height: 150px;
   overflow: auto;
-  border: 1px solid rgba(128, 128, 128, 0.18);
+  border: 1px solid var(--pvf-border-normal);
   border-radius: 4px;
 }
 .batch-empty {
@@ -520,7 +520,7 @@ function close(): void {
   min-height: 150px;
 }
 .batch-result-row + .batch-result-row {
-  border-top: 1px solid rgba(128, 128, 128, 0.12);
+  border-top: 1px solid var(--pvf-border-faint);
 }
 .batch-result-header {
   display: flex;
@@ -533,7 +533,7 @@ function close(): void {
   flex: 0 1 380px;
   min-width: 100px;
   overflow: hidden;
-  color: #c9d7ed;
+  color: var(--pvf-text-code);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -542,19 +542,19 @@ function close(): void {
   border: 0;
 }
 .batch-result-path:hover {
-  color: #79a9ff;
+  color: var(--pvf-primary-hover);
 }
 .batch-result-reason {
   min-width: 0;
   overflow: hidden;
-  color: rgba(190, 198, 212, 0.72);
+  color: var(--pvf-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .batch-result-warning {
   min-width: 0;
   overflow: hidden;
-  color: #e8c27e;
+  color: var(--pvf-warning);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -564,7 +564,7 @@ function close(): void {
 .batch-diff {
   overflow: auto;
   padding: 6px 8px;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--pvf-surface-code);
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
@@ -577,23 +577,23 @@ function close(): void {
 }
 .batch-diff-prefix {
   flex: 0 0 18px;
-  color: rgba(180, 190, 205, 0.65);
+  color: var(--pvf-text-muted);
   text-align: center;
 }
 .batch-diff-text {
   min-width: 0;
 }
 .batch-diff-line--remove {
-  color: #ff9b9b;
-  background: rgba(210, 70, 70, 0.12);
+  color: var(--pvf-error-hover);
+  background: var(--pvf-surface-error);
 }
 .batch-diff-line--add {
-  color: #a8e7c7;
-  background: rgba(50, 160, 100, 0.12);
+  color: var(--pvf-success-hover);
+  background: var(--pvf-surface-success);
 }
 .batch-diff-truncated {
   padding-top: 5px;
-  color: rgba(190, 198, 212, 0.62);
+  color: var(--pvf-text-faint);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 11px;
 }

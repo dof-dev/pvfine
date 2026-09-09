@@ -6,11 +6,13 @@ import {
   type EditorLayoutSplit,
 } from "../stores/editor";
 import EditorPane from "./EditorPane.vue";
+import type { ResolvedThemeId } from "../theme";
 
 defineOptions({ name: "EditorLayout" });
 
 const props = defineProps<{
   node: EditorLayoutNode;
+  themeId: ResolvedThemeId;
 }>();
 
 const editor = useEditorStore();
@@ -68,7 +70,7 @@ onUnmounted(onResizeEnd);
 
 <template>
   <div v-if="node.kind === 'pane'" class="editor-layout-node editor-layout-pane">
-    <EditorPane :pane-id="node.paneId" />
+    <EditorPane :pane-id="node.paneId" :theme-id="props.themeId" />
   </div>
 
   <div
@@ -78,7 +80,7 @@ onUnmounted(onResizeEnd);
     :class="`editor-layout-split--${node.orientation}`"
   >
     <div class="editor-layout-child" :style="childStyle(node, true)">
-      <EditorLayout :node="node.first" />
+      <EditorLayout :node="node.first" :theme-id="props.themeId" />
     </div>
 
     <div
@@ -93,7 +95,7 @@ onUnmounted(onResizeEnd);
     />
 
     <div class="editor-layout-child" :style="childStyle(node, false)">
-      <EditorLayout :node="node.second" />
+      <EditorLayout :node="node.second" :theme-id="props.themeId" />
     </div>
   </div>
 </template>
@@ -129,7 +131,7 @@ onUnmounted(onResizeEnd);
 .editor-layout-resizer {
   flex: 0 0 4px;
   z-index: 10;
-  background: rgba(128, 128, 128, 0.08);
+  background: var(--pvf-surface-inset);
 }
 .editor-layout-split--columns > .editor-layout-resizer {
   cursor: col-resize;
@@ -139,7 +141,7 @@ onUnmounted(onResizeEnd);
 }
 .editor-layout-resizer:hover,
 .editor-layout-resizer:focus-visible {
-  background: rgba(79, 140, 255, 0.45);
+  background: var(--pvf-effect-split-hover);
   outline: none;
 }
 </style>

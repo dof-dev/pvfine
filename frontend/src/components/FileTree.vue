@@ -224,9 +224,9 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
 
   const changeColor =
     item.changeKind === "added"
-      ? "#63e2b7"
+      ? "var(--pvf-success)"
       : item.changeKind === "modified"
-        ? "#f2c97d"
+        ? "var(--pvf-warning)"
         : undefined;
   const children: VNodeChild[] = [];
   if (!item.isDir && item.icon) {

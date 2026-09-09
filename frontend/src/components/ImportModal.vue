@@ -126,7 +126,7 @@ function renderTreeLabel({ option }: { option: TreeOption }): VNodeChild {
   const entry = node.entry;
   const status = entry.overwrite ? "覆盖" : "新增";
   const icon = entry.overwrite ? DocumentEdit24Regular : DocumentAdd24Regular;
-  const color = entry.overwrite ? "#f2c97d" : "#63e2b7";
+  const color = entry.overwrite ? "var(--pvf-warning)" : "var(--pvf-success)";
   const title = `${status}\n来源：${entry.sourcePath}\n目标：${entry.targetPath}\n类型：${dataTypeLabel(entry.dataType)}\n大小：${sizeLabel(entry.size)}`;
   return h("span", {
     class: ["import-tree-file", entry.overwrite ? "import-tree-file--overwrite" : "import-tree-file--new"],
@@ -379,7 +379,7 @@ function close(): void {
   max-height: min(48vh, 480px);
   overflow: auto;
   padding: 4px;
-  border: 1px solid rgba(128, 128, 128, 0.2);
+  border: 1px solid var(--pvf-border-normal);
   border-radius: 4px;
 }
 .import-tree-file {
@@ -394,10 +394,10 @@ function close(): void {
   max-width: none;
 }
 .import-tree-file--new {
-  color: #63e2b7;
+  color: var(--pvf-success);
 }
 .import-tree-file--overwrite {
-  color: #f2c97d;
+  color: var(--pvf-warning);
 }
 .import-tree-icon {
   display: inline-flex;

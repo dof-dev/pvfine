@@ -14,17 +14,11 @@ body,
   background: transparent;
 }
 
-/* 浅色系统主题下保留深色基调，同时让 macOS 液态玻璃透出一部分。 */
-@media (prefers-color-scheme: light) {
-  #app {
-    background: rgba(24, 26, 32, 0.78);
-  }
-}
-
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 13px;
+  color: var(--pvf-text-primary);
 }
 
 /* 只允许输入框和编辑器选中文字。 */
@@ -44,11 +38,11 @@ textarea,
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.35);
+  background: var(--pvf-effect-scrollbar);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.55);
+  background: var(--pvf-effect-scrollbar-hover);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;

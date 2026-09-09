@@ -894,7 +894,7 @@ watch(
 .bookmark-title {
   min-width: 0;
   gap: 6px;
-  color: #fff;
+  color: var(--pvf-text-primary);
   font-weight: 600;
 }
 .bookmark-title > span {
@@ -910,7 +910,7 @@ watch(
   gap: 6px;
   padding: 0 8px 8px 12px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  border-bottom: 1px solid var(--pvf-border-subtle);
 }
 .bookmark-switcher .n-select {
   min-width: 0;
@@ -964,7 +964,7 @@ watch(
 .bookmark-sidebar :deep(.bookmark-group-icon),
 .bookmark-sidebar :deep(.bookmark-entry-icon) {
   flex: 0 0 auto;
-  color: #7fb1ff;
+  color: var(--pvf-primary-hover);
 }
 .bookmark-sidebar :deep(.bookmark-group-name),
 .bookmark-sidebar :deep(.bookmark-entry-name) {
@@ -981,7 +981,7 @@ watch(
 .bookmark-sidebar :deep(.bookmark-entry-name) {
   min-width: 0;
   flex: 1;
-  color: rgba(235, 238, 245, 0.95);
+  color: var(--pvf-text-tertiary);
 }
 .bookmark-sidebar :deep(.bookmark-row-actions) {
   flex: 0 0 auto;

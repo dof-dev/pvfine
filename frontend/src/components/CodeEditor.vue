@@ -34,6 +34,7 @@ import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
 import { useImageStore } from "../stores/images";
+import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
   doc: string;
@@ -41,6 +42,7 @@ const props = defineProps<{
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
   vimMode?: boolean;
+  themeId: ResolvedThemeId;
 }>();
 
 const emit = defineEmits<{
@@ -52,6 +54,7 @@ const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
 const readOnlyComp = new Compartment();
 const vimComp = new Compartment();
+const editorThemeComp = new Compartment();
 const images = useImageStore();
 
 interface AnnotationDisplay {
@@ -327,10 +330,15 @@ const annotationField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-// 与暗色界面匹配的极简主题
-const darkTheme = EditorView.theme(
-  {
-    "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent" },
+function createEditorTheme(themeId: ResolvedThemeId) {
+  return EditorView.theme(
+    {
+      "&": {
+        height: "100%",
+        fontSize: "13px",
+        color: "var(--pvf-text-primary)",
+        backgroundColor: "transparent",
+      },
     ".cm-scroller": {
       fontFamily: "'SF Mono', Menlo, Consolas, 'Courier New', monospace",
       lineHeight: "1.55",
@@ -339,17 +347,18 @@ const darkTheme = EditorView.theme(
     ".cm-gutters": {
       backgroundColor: "transparent",
       border: "none",
-      color: "rgba(128,128,128,0.5)",
+      color: "var(--pvf-editor-gutter-text)",
     },
     ".cm-content": { padding: "8px 0" },
-    ".cm-activeLine": { backgroundColor: "rgba(128,128,128,0.08)" },
-    ".cm-activeLineGutter": { backgroundColor: "rgba(128,128,128,0.08)" },
-    ".cm-selectionMatch": { backgroundColor: "rgba(80,140,255,0.25)" },
+    ".cm-activeLine": { backgroundColor: "var(--pvf-editor-active-line)" },
+    ".cm-activeLineGutter": { backgroundColor: "var(--pvf-editor-active-line)" },
+    ".cm-selectionMatch": { backgroundColor: "var(--pvf-editor-selection-match)" },
   },
-  { dark: true }
-);
+  { dark: themeId === "dark" }
+  );
+}
 
-function makeExtensions() {
+function makeExtensions(themeId: ResolvedThemeId) {
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -394,7 +403,7 @@ function makeExtensions() {
     pvfLanguage.extension,
     indentUnit.of("\t"),
     pvfHighlighting,
-    darkTheme,
+    editorThemeComp.of(createEditorTheme(themeId)),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
       if (u.docChanged) emit("change", u.state.doc.toString());
@@ -404,7 +413,7 @@ function makeExtensions() {
 
 onMounted(() => {
   view = new EditorView({
-    state: EditorState.create({ doc: props.doc, extensions: makeExtensions() }),
+    state: EditorState.create({ doc: props.doc, extensions: makeExtensions(props.themeId) }),
     parent: host.value!,
   });
 });
@@ -456,6 +465,15 @@ watch(
     });
   }
 );
+
+watch(
+  () => props.themeId,
+  (themeId) => {
+    view?.dispatch({
+      effects: editorThemeComp.reconfigure(createEditorTheme(themeId)),
+    });
+  }
+);
 </script>
 
 <template>
@@ -495,7 +513,7 @@ watch(
   margin-left: 7px;
   padding: 0 6px;
   overflow: hidden;
-  color: #b9d8ff;
+  color: var(--pvf-editor-annotation-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 11px;
   line-height: 16px;
@@ -503,19 +521,19 @@ watch(
   vertical-align: 1px;
   white-space: nowrap;
   user-select: none;
-  background: #263c57;
-  border: 1px solid #477db9;
+  background: var(--pvf-editor-annotation-surface);
+  border: 1px solid var(--pvf-editor-annotation-border);
   border-radius: 4px;
 }
 .code-editor :deep(.cm-annotation-tag--enum) {
-  color: #ffdc9e;
-  background: #4b3920;
-  border-color: #a47a35;
+  color: var(--pvf-editor-annotation-enum-text);
+  background: var(--pvf-editor-annotation-enum-surface);
+  border-color: var(--pvf-editor-annotation-enum-border);
 }
 .code-editor :deep(.cm-annotation-tag--reference) {
-  color: #ace8cc;
-  background: #213f34;
-  border-color: #438a69;
+  color: var(--pvf-editor-annotation-reference-text);
+  background: var(--pvf-editor-annotation-reference-surface);
+  border-color: var(--pvf-editor-annotation-reference-border);
 }
 .code-editor :deep(.cm-annotation-inline-image) {
   display: inline-flex;
@@ -550,7 +568,7 @@ watch(
 }
 .code-editor :deep(.cm-annotation-link) {
   cursor: pointer;
-  text-decoration: underline dotted rgba(174, 220, 255, 0.8);
+  text-decoration: underline dotted var(--pvf-editor-annotation-link);
   text-underline-offset: 2px;
 }
 .code-editor :deep(.cm-scroller) {
@@ -563,12 +581,12 @@ watch(
   z-index: 2000;
   width: 280px;
   padding: 9px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--pvf-text-primary);
   pointer-events: none;
-  background: #242832;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--pvf-surface-elevated);
+  border: 1px solid var(--pvf-border-subtle);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 8px 24px var(--pvf-effect-tooltip-shadow);
 }
 .annotation-image-tooltip img {
   display: block;
@@ -584,6 +602,6 @@ watch(
 }
 .annotation-image-tooltip-loading {
   margin-bottom: 7px;
-  color: rgba(255, 255, 255, 0.52);
+  color: var(--pvf-text-muted);
 }
 </style>

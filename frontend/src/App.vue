@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
-  darkTheme,
   dateZhCN,
   NConfigProvider,
   NDialogProvider,
   NMessageProvider,
   zhCN,
-  type GlobalThemeOverrides,
 } from "naive-ui";
 import ToolBar from "./components/ToolBar.vue";
 import Explorer from "./components/Explorer.vue";
@@ -28,6 +26,12 @@ import { useBookmarkStore } from "./stores/bookmarks";
 import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
 import { useImageStore } from "./stores/images";
+import {
+  applyTheme,
+  getTheme,
+  makeThemeOverrides,
+  resolveThemeMode,
+} from "./theme";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -41,17 +45,20 @@ const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
 
-const themeOverrides: GlobalThemeOverrides = {
-  common: {
-    primaryColor: "#4f8cff",
-    primaryColorHover: "#6ba0ff",
-    primaryColorPressed: "#3a75e8",
-    bodyColor: "#181a20",
-    cardColor: "#1e2129",
-    modalColor: "#1e2129",
-    popoverColor: "#1e2129",
+const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const systemPrefersDark = ref(systemThemeQuery.matches);
+const activeTheme = computed(() =>
+  getTheme(resolveThemeMode(settings.themeMode, systemPrefersDark.value))
+);
+const themeOverrides = computed(() => makeThemeOverrides(activeTheme.value));
+
+watch(
+  activeTheme,
+  (theme) => {
+    applyTheme(theme);
   },
-};
+  { immediate: true }
+);
 
 const explorerWidth = ref(300);
 const resizing = ref(false);
@@ -76,6 +83,7 @@ onMounted(() => {
   })();
   void fileSets.load();
   void bookmarks.load();
+  systemThemeQuery.addEventListener("change", onSystemThemeChange);
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
   window.addEventListener("keydown", onKeydown);
@@ -84,7 +92,12 @@ onUnmounted(() => {
   window.removeEventListener("mousemove", onResizeMove);
   window.removeEventListener("mouseup", onResizeEnd);
   window.removeEventListener("keydown", onKeydown);
+  systemThemeQuery.removeEventListener("change", onSystemThemeChange);
 });
+
+function onSystemThemeChange(event: MediaQueryListEvent): void {
+  systemPrefersDark.value = event.matches;
+}
 
 async function onKeydown(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey;
@@ -117,7 +130,7 @@ async function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
+  <NConfigProvider :theme="activeTheme.naiveTheme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <NMessageProvider placement="bottom-right">
       <NDialogProvider>
         <CloseGuard />
@@ -134,7 +147,7 @@ async function onKeydown(e: KeyboardEvent) {
             </div>
             <div class="resize-handle" @mousedown.prevent="onResizeStart" />
             <div class="editor-pane">
-              <EditorTabs />
+              <EditorTabs :theme-id="activeTheme.id" />
             </div>
             <FileSetSidebar v-if="sidebar.visible" />
           </div>
@@ -151,6 +164,10 @@ async function onKeydown(e: KeyboardEvent) {
   flex-direction: column;
   height: 100vh;
   min-height: 0;
+  background: var(--pvf-window-background-solid);
+}
+.app-root--mac {
+  background: var(--pvf-window-background-glass);
 }
 .app-body {
   flex: 1;
@@ -172,7 +189,7 @@ async function onKeydown(e: KeyboardEvent) {
   flex-shrink: 0;
 }
 .resize-handle:hover {
-  background: rgba(79, 140, 255, 0.35);
+  background: var(--pvf-effect-split-hover);
 }
 .editor-pane {
   flex: 1;

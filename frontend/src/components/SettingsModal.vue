@@ -16,6 +16,7 @@ import {
   useSettingsStore,
   type AnnotationTagPlacement,
   type ExplorerOpenMode,
+  type ThemeMode,
 } from "../stores/settings";
 import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
@@ -58,6 +59,14 @@ async function onVimModeChange(value: boolean) {
 async function onBackupSourceOnSaveChange(value: boolean) {
   try {
     await settings.saveBackupSourceOnSave(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onThemeModeChange(value: string | number | boolean) {
+  try {
+    await settings.saveThemeMode(value as ThemeMode);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
@@ -267,6 +276,24 @@ async function onRebuildNPKIndex(): Promise<void> {
           </NButton>
         </div>
       </section>
+      <section class="settings-section">
+        <div class="section-title">外观</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">主题</div>
+            <div class="setting-description">选择应用的颜色主题，跟随系统会响应系统外观变化</div>
+          </div>
+          <NRadioGroup
+            :value="settings.themeMode"
+            size="small"
+            @update:value="onThemeModeChange"
+          >
+            <NRadioButton value="dark">深色</NRadioButton>
+            <NRadioButton value="light">浅色</NRadioButton>
+            <NRadioButton value="system">跟随系统</NRadioButton>
+          </NRadioGroup>
+        </div>
+      </section>
     </NSpin>
   </NModal>
 </template>
@@ -277,7 +304,7 @@ async function onRebuildNPKIndex(): Promise<void> {
 }
 .section-title {
   margin-bottom: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--pvf-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -291,12 +318,12 @@ async function onRebuildNPKIndex(): Promise<void> {
   margin-top: 16px;
 }
 .setting-label {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--pvf-text-primary);
   font-weight: 500;
 }
 .setting-description {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--pvf-text-faint);
   font-size: 12px;
 }
 .setting-row--stacked {
@@ -312,7 +339,7 @@ async function onRebuildNPKIndex(): Promise<void> {
   white-space: nowrap;
 }
 .image-index-status--error {
-  color: #e88b8b;
+  color: var(--pvf-error);
 }
 .image-index-actions {
   display: flex;
@@ -323,13 +350,13 @@ async function onRebuildNPKIndex(): Promise<void> {
   height: 4px;
   margin-top: 8px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--pvf-surface-inset);
   border-radius: 2px;
 }
 .image-progress span {
   display: block;
   height: 100%;
-  background: #4f8cff;
+  background: var(--pvf-primary);
   transition: width 0.2s ease;
 }
 </style>

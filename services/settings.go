@@ -14,6 +14,9 @@ const (
 	AnnotationTagHidden      = "hidden"
 	ExplorerOpenSingleClick  = "single-click"
 	ExplorerOpenDoubleClick  = "double-click"
+	ThemeDark                = "dark"
+	ThemeLight               = "light"
+	ThemeSystem              = "system"
 )
 
 type AppSettings struct {
@@ -22,6 +25,7 @@ type AppSettings struct {
 	VimMode                bool   `json:"vimMode"`
 	BackupSourceOnSave     bool   `json:"backupSourceOnSave"`
 	NPKDirectory           string `json:"npkDirectory"`
+	Theme                  string `json:"theme"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -31,6 +35,7 @@ func DefaultAppSettings() AppSettings {
 		VimMode:                false,
 		BackupSourceOnSave:     true,
 		NPKDirectory:           "",
+		Theme:                  ThemeDark,
 	}
 }
 
@@ -151,8 +156,15 @@ func validateSettings(settings AppSettings) error {
 	}
 	switch settings.ExplorerOpenMode {
 	case ExplorerOpenSingleClick, ExplorerOpenDoubleClick:
-		return nil
+		// Keep theme validation beside the other persisted enum settings so
+		// invalid values cannot be written to the user configuration.
 	default:
 		return fmt.Errorf("无效的资源管理器打开方式: %q", settings.ExplorerOpenMode)
+	}
+	switch settings.Theme {
+	case ThemeDark, ThemeLight, ThemeSystem:
+		return nil
+	default:
+		return fmt.Errorf("无效的主题: %q", settings.Theme)
 	}
 }

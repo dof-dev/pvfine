@@ -130,8 +130,8 @@ function formatDuration(milliseconds: number): string {
   padding: 0 10px;
   gap: 10px;
   font-size: 11px;
-  color: rgba(128, 128, 128, 0.9);
-  border-top: 1px solid rgba(128, 128, 128, 0.2);
+  color: var(--pvf-text-muted);
+  border-top: 1px solid var(--pvf-border-normal);
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -150,17 +150,17 @@ function formatDuration(milliseconds: number): string {
 .sb-sep {
   width: 1px;
   height: 12px;
-  background: rgba(128, 128, 128, 0.3);
+  background: var(--pvf-border-strong);
   flex-shrink: 0;
 }
 .sb-spacer {
   flex: 1;
 }
 .sb-modified {
-  color: #63e2b7;
+  color: var(--pvf-success);
 }
 .sb-version {
-  color: #8ab4ff;
+  color: var(--pvf-info);
 }
 .unpack {
   display: inline-flex;
@@ -174,6 +174,6 @@ function formatDuration(milliseconds: number): string {
   cursor: help;
 }
 .sb-error {
-  color: #e88080;
+  color: var(--pvf-error);
 }
 </style>

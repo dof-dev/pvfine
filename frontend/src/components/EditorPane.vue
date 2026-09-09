@@ -33,9 +33,11 @@ import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 import ImageThumbnail from "./ImageThumbnail.vue";
+import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
   paneId: EditorPaneId;
+  themeId: ResolvedThemeId;
 }>();
 
 const paneId = props.paneId;
@@ -517,6 +519,7 @@ function onDrop(event: DragEvent): void {
             :annotations="tab.annotations"
             :tag-placement="settings.annotationTagPlacement"
             :vim-mode="settings.vimMode"
+            :theme-id="props.themeId"
             @change="(text: string) => editor.updateContent(tab.index, text)"
             @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
           />
@@ -547,26 +550,26 @@ function onDrop(event: DragEvent): void {
   overflow: hidden;
 }
 .editor-pane-view--active {
-  box-shadow: inset 0 0 0 1px rgba(79, 140, 255, 0.25);
+  box-shadow: inset 0 0 0 1px var(--pvf-effect-active-pane-ring);
 }
 .editor-pane-view--drop-target {
-  box-shadow: inset 0 0 0 1px rgba(99, 226, 183, 0.55);
+  box-shadow: inset 0 0 0 1px var(--pvf-effect-success-ring);
 }
 .drop-preview {
   position: absolute;
   z-index: 20;
   pointer-events: none;
   inset: 0;
-  border: 1px solid rgba(99, 226, 183, 0.85);
+  border: 1px solid var(--pvf-effect-success-edge);
 }
 .drop-preview-pane {
   position: absolute;
-  background: rgba(79, 140, 255, 0.22);
+  background: var(--pvf-surface-drag-preview);
 }
 .drop-preview-divider {
   position: absolute;
-  background: rgba(99, 226, 183, 0.9);
-  box-shadow: 0 0 8px rgba(99, 226, 183, 0.35);
+  background: var(--pvf-success);
+  box-shadow: 0 0 8px var(--pvf-effect-success-glow);
 }
 .drop-preview--left .drop-preview-pane {
   top: 0;
@@ -663,12 +666,12 @@ function onDrop(event: DragEvent): void {
   height: 7px;
   border-radius: 50%;
   background: transparent;
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  border: 1px solid var(--pvf-border-strong);
   flex-shrink: 0;
 }
 .tab-dot.dirty {
-  background: #63e2b7;
-  border-color: #63e2b7;
+  background: var(--pvf-success);
+  border-color: var(--pvf-success);
 }
 .tab-close {
   padding: 0 2px;
@@ -682,8 +685,8 @@ function onDrop(event: DragEvent): void {
   align-items: center;
   gap: 8px;
   padding: 2px 8px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
-  background: rgba(255, 255, 255, 0.018);
+  border-bottom: 1px solid var(--pvf-border-subtle);
+  background: var(--pvf-surface-subtle);
 }
 .editor-file-tags {
   min-width: 0;
@@ -725,8 +728,8 @@ function onDrop(event: DragEvent): void {
 }
 .readonly-hint {
   padding: 6px 12px;
-  color: rgba(230, 180, 100, 0.9);
-  background: rgba(230, 180, 100, 0.08);
+  color: var(--pvf-warning);
+  background: var(--pvf-surface-warning);
   font-size: 12px;
   flex-shrink: 0;
 }

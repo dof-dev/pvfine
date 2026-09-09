@@ -82,9 +82,13 @@ export const pvfLanguage = StreamLanguage.define<PvfState>({
 });
 
 const pvfHighlightStyle = HighlightStyle.define([
-  { tag: tags.number, color: "#d19a66" },
-  { tag: tags.string, color: "#98c379" },
-  { tag: tags.heading, color: "#61afef", fontWeight: "600" },
+  { tag: tags.number, color: "var(--pvf-editor-syntax-number)" },
+  { tag: tags.string, color: "var(--pvf-editor-syntax-string)" },
+  {
+    tag: tags.heading,
+    color: "var(--pvf-editor-syntax-heading)",
+    fontWeight: "600",
+  },
 ]);
 
 export const pvfHighlighting = syntaxHighlighting(pvfHighlightStyle);

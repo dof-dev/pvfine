@@ -268,7 +268,7 @@ function isCancel(e: any): boolean {
   gap: 4px;
   height: 46px;
   padding: 0 10px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  border-bottom: 1px solid var(--pvf-border-normal);
   flex-shrink: 0;
 }
 .tb-group {
@@ -280,7 +280,7 @@ function isCancel(e: any): boolean {
   width: 1px;
   height: 22px;
   margin: 0 8px;
-  background: rgba(128, 128, 128, 0.25);
+  background: var(--pvf-border-strong);
 }
 .tb-spacer {
   flex: 1;
