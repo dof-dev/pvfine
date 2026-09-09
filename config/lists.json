@@ -131,7 +131,7 @@
         "[at priest]": "skill/atpriestskill.lst",
         "[thief]": "skill/thiefskill.lst",
         "[creator mage]": "skill/creatormageskill.lst",
-        "[knight]": "skill/creatormageskill.lst",
+        "[knight]": "skill/knight.lst",
         "[demonic swordman]": "skill/dsswordmanskill.lst",
         "[demonic lancer]": "skill/demoniclancerskill.lst"
       }

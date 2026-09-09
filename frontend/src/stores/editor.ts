@@ -625,6 +625,9 @@ export const useEditorStore = defineStore("editor", () => {
         const current = tabs.value.find((item) => item.index === tab.index);
         if (!current || !meta) return;
         current.tags = cleanTreeTags(meta.tags);
+        current.annotations = (meta.annotations ?? []).filter(
+          (annotation): annotation is EditorAnnotation => !!annotation
+        );
       })
     );
   }

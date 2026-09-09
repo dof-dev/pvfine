@@ -24,6 +24,11 @@ const (
 	SearchCategorySkill     = "skill"
 )
 
+const (
+	itemShopListPath = "itemshop/itemshop.lst"
+	npcListPath      = "npc/npc.lst"
+)
+
 // IndexStatus is the current state of the semantic search index.
 type IndexStatus struct {
 	State   string `json:"state"`
@@ -66,6 +71,7 @@ type indexedMetadata struct {
 	name      string
 	id        string
 	category  string
+	listPath  string
 	path      string
 	fileIndex int32
 	size      int32
@@ -178,7 +184,8 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 		return
 	}
 
-	for _, spec := range c.searchableListSpecs() {
+	specs := c.searchableListSpecs()
+	for _, spec := range specs {
 		if !c.indexCurrent(a, gen, ctx) {
 			return
 		}
@@ -193,7 +200,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 			continue
 		}
 		for _, pair := range pairs {
-			target, ok := resolveListPath(spec.listPath, pair.Path)
+			target, ok := c.findListTarget(a, gen, ctx, spec.listPath, pair.Path)
 			if !ok {
 				skipped++
 				continue
@@ -201,9 +208,23 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 			refs = append(refs, indexedMetadata{
 				id:       pair.ID,
 				category: spec.category,
+				listPath: spec.listPath,
 				path:     target,
 			})
 		}
+	}
+
+	npcNames := make(map[string]string)
+	for _, spec := range specs {
+		if !sameSearchPath(spec.listPath, itemShopListPath) {
+			continue
+		}
+		var ok bool
+		npcNames, ok = c.buildNPCNameIndex(a, gen, ctx)
+		if !ok {
+			return
+		}
+		break
 	}
 
 	if !c.publishIndexStatus(a, gen, ctx, IndexStatus{
@@ -234,7 +255,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 		if !ok {
 			return
 		}
-		name, _, err := c.readScriptName(a, gen, ctx, fileIndex)
+		name, _, err := c.readIndexedName(a, gen, ctx, fileIndex, ref.listPath, npcNames)
 		if err != nil {
 			// The id/path mapping remains useful even when the target is not
 			// a parseable script or has malformed content.
@@ -263,7 +284,13 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 	// A SetText may have landed after a file was scanned. Re-read only those
 	// files before publishing so the first ready snapshot cannot be stale.
 	for fileIndex := range c.indexDirty {
-		name, _, err := a.ScriptName(fileIndex)
+		if isNPCEntryPath(a.Path(fileIndex)) {
+			npcNames = buildNPCNameIndexFromArchive(a)
+			break
+		}
+	}
+	for fileIndex := range c.indexDirty {
+		name, _, err := readIndexedNameFromArchive(a, fileIndex, a.Path(fileIndex), npcNames)
 		if err != nil {
 			name = ""
 		}
@@ -388,7 +415,7 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		}
 		return false, "", nil
 	}
-	name, _, err := c.archive.ScriptName(index)
+	name, _, err := readIndexedNameFromArchive(c.archive, index, c.archive.Path(index), nil)
 	if err != nil {
 		name = ""
 	}
@@ -402,6 +429,9 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		updated = true
 	}
 	c.treeTagsByFile[index] = treeTagsForRecords(c.searchRecords, recordIndexes)
+	if isNPCEntryPath(path) && c.refreshItemShopNamesLocked() {
+		updated = true
+	}
 	c.mu.Unlock()
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if versioned {
@@ -475,6 +505,16 @@ func (c *core) findArchiveEntry(a *pvf.Archive, gen uint64, ctx context.Context,
 	return a.Find(name)
 }
 
+func (c *core) findListTarget(a *pvf.Archive, gen uint64, ctx context.Context, listPath, relativePath string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		return "", false
+	}
+	targetPath, _, ok := findListTargetInArchive(a, listPath, relativePath)
+	return targetPath, ok
+}
+
 func (c *core) readFileMetadata(a *pvf.Archive, gen uint64, ctx context.Context, index int32) (pvf.File, string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -484,13 +524,122 @@ func (c *core) readFileMetadata(a *pvf.Archive, gen uint64, ctx context.Context,
 	return a.File(index), a.Path(index), true
 }
 
-func (c *core) readScriptName(a *pvf.Archive, gen uint64, ctx context.Context, index int32) (string, bool, error) {
+func (c *core) readIndexedName(a *pvf.Archive, gen uint64, ctx context.Context, index int32, listPath string, npcNames map[string]string) (string, bool, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
 		return "", false, context.Canceled
 	}
-	return a.ScriptName(index)
+	return readIndexedNameFromArchive(a, index, listPath, npcNames)
+}
+
+func (c *core) buildNPCNameIndex(a *pvf.Archive, gen uint64, ctx context.Context) (map[string]string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		return nil, false
+	}
+	return buildNPCNameIndexFromArchive(a), true
+}
+
+func readIndexedNameFromArchive(a *pvf.Archive, index int32, listPath string, npcNames map[string]string) (string, bool, error) {
+	name, ok, err := a.ScriptName(index)
+	if err != nil {
+		return "", false, err
+	}
+	if ok && strings.TrimSpace(name) != "" {
+		return name, true, nil
+	}
+	if !isItemShopEntry(listPath, a.Path(index)) {
+		return name, ok, nil
+	}
+	if npcNames == nil {
+		npcNames = buildNPCNameIndexFromArchive(a)
+	}
+	text, err := a.Text(index)
+	if err != nil {
+		return "", false, err
+	}
+	npcID := firstSectionValue(text, "npc")
+	if npcID == "" {
+		return "", false, nil
+	}
+	name, ok = npcNames[npcID]
+	return name, ok && strings.TrimSpace(name) != "", nil
+}
+
+func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
+	result := make(map[string]string)
+	listIndex, ok := a.Find(npcListPath)
+	if !ok {
+		return result
+	}
+	pairs, err := a.ScriptListPairs(listIndex)
+	if err != nil {
+		return result
+	}
+	for _, pair := range pairs {
+		_, targetIndex, ok := findListTargetInArchive(a, npcListPath, pair.Path)
+		if !ok {
+			continue
+		}
+		name, ok, err := a.ScriptName(targetIndex)
+		if err != nil || !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		if _, exists := result[pair.ID]; !exists {
+			result[pair.ID] = name
+		}
+	}
+	return result
+}
+
+func isItemShopEntry(listPath, entryPath string) bool {
+	if sameSearchPath(listPath, itemShopListPath) {
+		return true
+	}
+	entryPath = normalizeSearchPath(entryPath)
+	return strings.HasPrefix(entryPath, "itemshop/") && strings.EqualFold(path.Ext(entryPath), ".shp")
+}
+
+func isNPCEntryPath(entryPath string) bool {
+	entryPath = normalizeSearchPath(entryPath)
+	return entryPath != npcListPath && strings.HasPrefix(entryPath, "npc/")
+}
+
+func (c *core) refreshItemShopNamesLocked() bool {
+	npcNames := buildNPCNameIndexFromArchive(c.archive)
+	changed := false
+	affectedFiles := make(map[int32]struct{})
+	for index := range c.searchRecords {
+		record := &c.searchRecords[index]
+		if record.hit.Category == SearchCategoryFile || !isItemShopEntry("", record.hit.Path) {
+			continue
+		}
+		name, _, err := readIndexedNameFromArchive(c.archive, record.hit.FileIndex, itemShopListPath, npcNames)
+		if err != nil {
+			name = ""
+		}
+		if record.hit.Name == name {
+			continue
+		}
+		record.hit.Name = name
+		record.lowerName = strings.ToLower(name)
+		affectedFiles[record.hit.FileIndex] = struct{}{}
+		changed = true
+	}
+	for fileIndex := range affectedFiles {
+		c.treeTagsByFile[fileIndex] = treeTagsForRecords(c.searchRecords, c.searchByFile[fileIndex])
+	}
+	return changed
+}
+
+func sameSearchPath(left, right string) bool {
+	return normalizeSearchPath(left) == normalizeSearchPath(right)
+}
+
+func normalizeSearchPath(value string) string {
+	return strings.ToLower(strings.Trim(strings.ReplaceAll(strings.TrimSpace(value), "\\", "/"), "/"))
 }
 
 func (c *core) snapshotPaths(a *pvf.Archive, gen uint64, ctx context.Context) ([]pathEntry, bool) {
@@ -618,6 +767,33 @@ func resolveListPath(listPath, relative string) (string, bool) {
 		return "", false
 	}
 	return resolved, true
+}
+
+func findListTargetInArchive(a *pvf.Archive, listPath, relative string) (string, int32, bool) {
+	candidates, ok := listPathCandidates(listPath, relative)
+	if !ok {
+		return "", 0, false
+	}
+	for _, candidate := range candidates {
+		index, ok := a.Find(candidate)
+		if ok {
+			return a.Path(index), index, true
+		}
+	}
+	return "", 0, false
+}
+
+func listPathCandidates(listPath, relative string) ([]string, bool) {
+	targetPath, ok := resolveListPath(listPath, relative)
+	if !ok {
+		return nil, false
+	}
+	candidates := []string{targetPath}
+	base := path.Base(targetPath)
+	if !strings.HasPrefix(strings.ToLower(base), "(r)") {
+		candidates = append(candidates, path.Join(path.Dir(targetPath), "(r)"+base))
+	}
+	return candidates, true
 }
 
 func pathBase(p string) string {

@@ -75,6 +75,7 @@ const moving = ref(false);
 const importing = ref(false);
 const exporting = ref(false);
 const filterText = ref("");
+const handledClickEvents = new WeakSet<MouseEvent>();
 
 interface BookmarkTreeNode extends TreeOption {
   kind: "group" | "root" | "entry";
@@ -192,6 +193,14 @@ function collectExpandedKeys(items: BookmarkTreeNode[], result: Array<string | n
   }
 }
 
+function toggleGroup(groupID: string): void {
+  const key = `g:${groupID}`;
+  const expanded = new Set(treeExpandedKeys.value.map(String));
+  if (expanded.has(key)) expanded.delete(key);
+  else expanded.add(key);
+  treeExpandedKeys.value = [...expanded];
+}
+
 function toGroupOption(group: BookmarkGroup, parentGroupID: string): BookmarkTreeNode {
   const children: BookmarkTreeNode[] = [
     ...group.groups.map((child) => toGroupOption(child, group.id)),
@@ -298,7 +307,7 @@ function deleteBook(): void {
   });
 }
 
-function openCreateGroup(parentID = bookmarks.selectedGroupId): void {
+function openCreateGroup(parentID = ""): void {
   if (!activeBook.value?.editable) return;
   groupMode.value = "create";
   groupID.value = "";
@@ -439,7 +448,15 @@ function nodeProps({ option }: { option: TreeOption }) {
   const node = option as BookmarkTreeNode;
   return {
     onClick: (event: MouseEvent) => {
-      if (isActionTarget(event) || node.kind !== "entry" || !node.entry) return;
+      if (isActionTarget(event) || isTreeControl(event)) return;
+      if (handledClickEvents.has(event)) return;
+      handledClickEvents.add(event);
+      if (node.kind === "group") {
+        if (event.detail > 1) return;
+        toggleGroup(node.groupID);
+        return;
+      }
+      if (node.kind !== "entry" || !node.entry) return;
       if (settings.explorerOpenMode !== "single-click") return;
       event.stopPropagation();
       openEntry(node.entry);
@@ -457,6 +474,11 @@ function nodeProps({ option }: { option: TreeOption }) {
       openEntry(node.entry);
     },
   };
+}
+
+function isTreeControl(event: MouseEvent): boolean {
+  const target = event.target;
+  return target instanceof Element && !!target.closest("[data-switcher], [data-checkbox]");
 }
 
 function isActionTarget(event: MouseEvent): boolean {

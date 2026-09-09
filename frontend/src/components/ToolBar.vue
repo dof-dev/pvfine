@@ -246,20 +246,6 @@ function isCancel(e: any): boolean {
         </template>
         {{ sidebar.visible ? "收起侧栏" : "显示侧栏" }}
       </NTooltip>
-
-      <NTooltip>
-        <template #trigger>
-          <NButton
-            quaternary
-            :type="sidebar.activePanel === 'bookmarks' && sidebar.visible ? 'primary' : 'default'"
-            aria-label="打开书签侧栏"
-            @click="openBookmarks"
-          >
-            <template #icon><NIcon><BookmarkMultiple24Regular /></NIcon></template>
-          </NButton>
-        </template>
-        打开书签侧栏
-      </NTooltip>
     </div>
 
     <div class="tb-sep" />

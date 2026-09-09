@@ -29,6 +29,7 @@ type TreeAnnotation struct {
 type relationTarget struct {
 	reference   annotationrules.Reference
 	nameSection string
+	listPath    string
 	nameLoaded  bool
 }
 
@@ -115,11 +116,7 @@ func (c *core) appendUnindexedListLinksLocked(filePath string, view pvf.ScriptVi
 	}
 	for offset := 0; offset+1 < len(tokens); offset += 2 {
 		pathToken := tokens[offset+1]
-		targetPath, ok := resolveListPath(filePath, pathToken.Value)
-		if !ok {
-			continue
-		}
-		targetIndex, ok := c.archive.Find(targetPath)
+		_, targetIndex, ok := findListTargetInArchive(c.archive, filePath, pathToken.Value)
 		if !ok {
 			continue
 		}
@@ -174,11 +171,7 @@ func (c *core) resolveListAnnotationReferenceLocked(relationName, id, context, l
 	if c.archive == nil || c.annotationEngine == nil {
 		return annotationrules.Reference{}, false
 	}
-	targetPath, ok := resolveListPath(listPath, relativePath)
-	if !ok {
-		return annotationrules.Reference{}, false
-	}
-	fileIndex, ok := c.archive.Find(targetPath)
+	_, fileIndex, ok := findListTargetInArchive(c.archive, listPath, relativePath)
 	if !ok {
 		return annotationrules.Reference{}, false
 	}
@@ -190,10 +183,44 @@ func (c *core) resolveListAnnotationReferenceLocked(relationName, id, context, l
 		ID: id, Path: c.archive.Path(fileIndex), FileIndex: fileIndex,
 	}
 	text, err := c.archive.Text(fileIndex)
-	if err == nil {
-		reference.Name = firstSectionValue(text, relation.NameSection)
+	if err != nil {
+		return reference, true
 	}
+	reference.Name = c.readRelationTargetNameFromTextLocked(listPath, relation.NameSection, text)
 	return reference, true
+}
+
+func (c *core) readRelationTargetNameLocked(fileIndex int32, listPath, nameSection string) string {
+	text, err := c.archive.Text(fileIndex)
+	if err != nil {
+		return ""
+	}
+	return c.readRelationTargetNameFromTextLocked(listPath, nameSection, text)
+}
+
+func (c *core) readRelationTargetNameFromTextLocked(listPath, nameSection, text string) string {
+	name := firstSectionValue(text, nameSection)
+	if name != "" || !sameSearchPath(listPath, itemShopListPath) {
+		return name
+	}
+	npcID := firstSectionValue(text, "npc")
+	if npcID == "" {
+		return ""
+	}
+	for relationName, relation := range c.annotationEngine.Document().Relations {
+		kind := relation.Kind
+		if kind == "" {
+			kind = "list"
+		}
+		if kind != "list" || !sameSearchPath(relation.ListPath, npcListPath) {
+			continue
+		}
+		reference, ok := c.resolveAnnotationReferenceContextLocked(relationName, npcID, "")
+		if ok {
+			return reference.Name
+		}
+	}
+	return ""
 }
 
 func (c *core) resolveAnnotationReferenceLocked(relationName, id string) (annotationrules.Reference, bool) {
@@ -232,10 +259,9 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 	}
 	if !target.nameLoaded {
 		target.nameLoaded = true
-		text, err := c.archive.Text(target.reference.FileIndex)
-		if err == nil {
-			target.reference.Name = firstSectionValue(text, target.nameSection)
-		}
+		target.reference.Name = c.readRelationTargetNameLocked(
+			target.reference.FileIndex, target.listPath, target.nameSection,
+		)
 	}
 	return target.reference, true
 }
@@ -285,11 +311,7 @@ func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.Re
 		if id == "" {
 			continue
 		}
-		targetPath, ok := resolveListPath(listPath, tokens[offset+relation.PathToken].Value)
-		if !ok {
-			continue
-		}
-		fileIndex, ok := c.archive.Find(targetPath)
+		_, fileIndex, ok := findListTargetInArchive(c.archive, listPath, tokens[offset+relation.PathToken].Value)
 		if !ok {
 			continue
 		}
@@ -301,6 +323,7 @@ func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.Re
 				ID: id, Path: c.archive.Path(fileIndex), FileIndex: fileIndex,
 			},
 			nameSection: relation.NameSection,
+			listPath:    listPath,
 		}
 	}
 	return result

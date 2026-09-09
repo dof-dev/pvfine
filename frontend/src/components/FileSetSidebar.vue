@@ -11,7 +11,6 @@ import {
   Edit24Regular,
   ArrowExportLtr24Regular,
   BookmarkMultiple24Regular,
-  PanelRightContract24Regular,
   Save24Regular,
 } from "@vicons/fluent";
 import {
@@ -288,14 +287,6 @@ watch(
         <template #icon><NIcon><BookmarkMultiple24Regular /></NIcon></template>
         书签
       </NButton>
-      <NTooltip>
-        <template #trigger>
-          <NButton quaternary circle size="small" aria-label="收起侧栏" @click="sidebar.close">
-            <template #icon><NIcon><PanelRightContract24Regular /></NIcon></template>
-          </NButton>
-        </template>
-        收起侧栏
-      </NTooltip>
     </div>
 
     <template v-if="sidebar.activePanel === 'filesets'">
@@ -542,9 +533,6 @@ watch(
 }
 .collection-switcher > .n-button {
   flex: 1;
-}
-.collection-switcher > .n-button:last-child {
-  flex: 0 0 auto;
 }
 .fileset-heading {
   justify-content: space-between;

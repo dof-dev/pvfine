@@ -68,7 +68,7 @@
             },
             {
               "path": "skill/knight.lst",
-              "name": "守护者"
+              "name": "knight.lst"
             }
           ]
         }

@@ -341,6 +341,78 @@ func TestSyntheticSkillSearchIndex(t *testing.T) {
 	}
 }
 
+func TestItemShopSearchAndListAnnotationsUseNPCName(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	listIndex := mustAddText(t, a, itemShopListPath, "500 `EquipmentShop7.shp`", pvf.TypeScript)
+	shopIndex := mustAddText(t, a, "itemshop/(r)equipmentshop7.shp", "[NPC]\n200", pvf.TypeScript)
+	mustAddText(t, a, npcListPath, "200 `merchant.npc`", pvf.TypeScript)
+	npcIndex := mustAddText(t, a, "npc/merchant.npc", "[name]\n`测试商人`", pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+
+	search, err := NewArchiveService(c).Search("测试商人", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shopHit *SearchHit
+	for _, hit := range search.Hits {
+		if hit != nil && hit.Path == "itemshop/(r)equipmentshop7.shp" {
+			shopHit = hit
+			break
+		}
+	}
+	if shopHit == nil || shopHit.Name != "测试商人" || shopHit.FileIndex != shopIndex {
+		t.Fatalf("itemshop search hits = %#v", search.Hits)
+	}
+
+	children, err := NewArchiveService(c).ListChildren("itemshop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shopNode := findTreeNode(children, "(r)equipmentshop7.shp")
+	if shopNode == nil || len(shopNode.Tags) != 1 || shopNode.Tags[0].Name != "测试商人" {
+		t.Fatalf("itemshop tree tags = %#v", shopNode)
+	}
+
+	meta, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Annotations) != 1 || meta.Annotations[0].Title != "测试商人" || meta.Annotations[0].TargetFileIndex != shopIndex {
+		t.Fatalf("itemshop list annotations = %#v", meta.Annotations)
+	}
+
+	if err := NewEditorService(c).SetText(npcIndex, "[name]\n`新商人名`"); err != nil {
+		t.Fatal(err)
+	}
+	updatedSearch, err := NewArchiveService(c).Search("新商人名", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updatedShopHit *SearchHit
+	for _, hit := range updatedSearch.Hits {
+		if hit != nil && hit.Path == "itemshop/(r)equipmentshop7.shp" {
+			updatedShopHit = hit
+			break
+		}
+	}
+	if updatedShopHit == nil || updatedShopHit.Name != "新商人名" {
+		t.Fatalf("updated itemshop search hits = %#v", updatedSearch.Hits)
+	}
+	updatedMeta, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updatedMeta.Annotations) != 1 || updatedMeta.Annotations[0].Title != "新商人名" {
+		t.Fatalf("updated itemshop list annotations = %#v", updatedMeta.Annotations)
+	}
+}
+
 func TestConfiguredListIndexesExposeTreeTags(t *testing.T) {
 	type listCase struct {
 		listPath  string

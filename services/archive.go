@@ -419,11 +419,7 @@ func findFileRegistrationsLocked(a *pvf.Archive, specs []searchableListSpec, fil
 		}
 		listPath := a.Path(listIndex)
 		for _, pair := range pairs {
-			targetPath, ok := resolveListPath(spec.listPath, pair.Path)
-			if !ok {
-				continue
-			}
-			targetIndex, ok := a.Find(targetPath)
+			_, targetIndex, ok := findListTargetInArchive(a, spec.listPath, pair.Path)
 			if !ok {
 				continue
 			}
