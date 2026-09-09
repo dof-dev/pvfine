@@ -651,7 +651,7 @@ function sortTree(items: TreeItem[]): void {
     <div class="exp-search">
       <NInput
         v-model:value="searchInput"
-        :placeholder="archive.indexReady ? '搜索路径、名称或 id…' : '索引完成后可搜索路径、名称或 id…'"
+        :placeholder="archive.indexReady ? '搜索路径、名称或 id（支持 *、?）…' : '索引完成后可搜索路径、名称或 id…'"
         clearable
         size="small"
         :disabled="!archive.open"

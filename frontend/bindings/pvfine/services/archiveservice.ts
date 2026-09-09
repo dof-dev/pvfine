@@ -122,6 +122,7 @@ export function ResolveFiles(paths: string[] | null): $CancellablePromise<($mode
 
 /**
  * Search 在路径、语义名称和 id 中做不区分大小写的子串匹配。
+ * 查询包含 * 或 ? 时，改用通配符匹配：* 匹配任意长度字符，? 匹配一个字符。
  * cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
  */
 export function Search(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
@@ -130,6 +131,7 @@ export function Search(query: string, cursor: number, limit: number): $Cancellab
 
 /**
  * SearchExact 在路径、语义名称和 id 中做不区分大小写的全量匹配。
+ * 查询包含 * 或 ? 时，通配符仍按完整字段匹配。
  * cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
  */
 export function SearchExact(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {

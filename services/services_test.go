@@ -181,6 +181,45 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	}
 }
 
+func TestSearchSupportsBasicWildcards(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "wildcard-search.pvf")
+	if _, err := svc.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	waitForSearchIndex(t, c)
+
+	byExtension, err := svc.Search("*.equ", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byExtension.Hits) != 2 {
+		t.Fatalf("extension wildcard hits = %d, want 2", len(byExtension.Hits))
+	}
+	for _, hit := range byExtension.Hits {
+		if !strings.HasSuffix(hit.Path, ".equ") {
+			t.Fatalf("extension wildcard escaped pattern: %q", hit.Path)
+		}
+	}
+
+	byQuestion, err := svc.Search("misc/readme.tx?", 0, 20)
+	if err != nil || len(byQuestion.Hits) != 1 || byQuestion.Hits[0].Path != "misc/readme.txt" {
+		t.Fatalf("question wildcard result = %#v, err = %v", byQuestion.Hits, err)
+	}
+
+	byExactGlob, err := svc.SearchExact("misc/*.txt", 0, 20)
+	if err != nil || len(byExactGlob.Hits) != 1 || byExactGlob.Hits[0].Path != "misc/readme.txt" {
+		t.Fatalf("exact wildcard result = %#v, err = %v", byExactGlob.Hits, err)
+	}
+
+	withoutWildcard, err := svc.Search("readme", 0, 20)
+	if err != nil || len(withoutWildcard.Hits) != 1 || withoutWildcard.Hits[0].Path != "misc/readme.txt" {
+		t.Fatalf("plain search result = %#v, err = %v", withoutWildcard.Hits, err)
+	}
+}
+
 func TestListDescendantFiles(t *testing.T) {
 	c := NewCore()
 	svc := NewArchiveService(c)

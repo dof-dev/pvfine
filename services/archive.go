@@ -501,12 +501,14 @@ type SearchResult struct {
 }
 
 // Search 在路径、语义名称和 id 中做不区分大小写的子串匹配。
+// 查询包含 * 或 ? 时，改用通配符匹配：* 匹配任意长度字符，? 匹配一个字符。
 // cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
 func (s *ArchiveService) Search(query string, cursor int, limit int) (*SearchResult, error) {
 	return s.search(query, cursor, limit, false)
 }
 
 // SearchExact 在路径、语义名称和 id 中做不区分大小写的全量匹配。
+// 查询包含 * 或 ? 时，通配符仍按完整字段匹配。
 // cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。
 func (s *ArchiveService) SearchExact(query string, cursor int, limit int) (*SearchResult, error) {
 	return s.search(query, cursor, limit, true)
@@ -535,18 +537,14 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 	if cursor < 0 {
 		cursor = 0
 	}
+	matcher := newSearchMatcher(q, exact)
 	records := s.c.searchRecords
 	i := cursor
 	for ; i < len(records) && len(res.Hits) < limit; i++ {
 		record := &records[i]
-		matched := false
-		if exact {
-			matched = record.lowerPath == q || record.lowerName == q || record.lowerID == q
-		} else {
-			matched = strings.Contains(record.lowerPath, q) ||
-				strings.Contains(record.lowerName, q) ||
-				strings.Contains(record.lowerID, q)
-		}
+		matched := matcher.match(record.lowerPath) ||
+			matcher.match(record.lowerName) ||
+			matcher.match(record.lowerID)
 		if matched {
 			hit := record.hit
 			hit.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[hit.Path])
