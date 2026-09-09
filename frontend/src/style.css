@@ -11,6 +11,14 @@ body,
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
+  background: transparent;
+}
+
+/* 浅色系统主题下保留深色基调，同时让 macOS 液态玻璃透出一部分。 */
+@media (prefers-color-scheme: light) {
+  #app {
+    background: rgba(24, 26, 32, 0.78);
+  }
 }
 
 body {

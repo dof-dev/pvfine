@@ -122,7 +122,7 @@ func main() {
 		Height: 900,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
-			Backdrop:                application.MacBackdropTranslucent,
+			Backdrop:                application.MacBackdropLiquidGlass,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
 		BackgroundColour: application.NewRGB(24, 26, 32),
