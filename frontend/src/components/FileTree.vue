@@ -288,6 +288,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
     class="file-tree-shell"
     @contextmenu="onShellContextMenu"
   >
+    <!-- 目录是逻辑选择，允许在子节点尚未加载时勾选目录本身。 -->
     <NTree
       ref="treeRef"
       block-line
@@ -298,6 +299,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
       virtual-scroll
       class="file-tree"
       :data="treeData"
+      allow-checking-not-loaded
       :expanded-keys="expandedKeys"
       :checked-keys="checkedKeys"
       :selected-keys="selectedKeys"
