@@ -22,6 +22,7 @@ import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
+import { useBookmarkStore, type BookmarkInput } from "../stores/bookmarks";
 import { useBatchStore } from "../stores/batch";
 import { useImportStore } from "../stores/import";
 import { useSettingsStore } from "../stores/settings";
@@ -31,6 +32,7 @@ const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const bookmarks = useBookmarkStore();
 const batch = useBatchStore();
 const importer = useImportStore();
 const settings = useSettingsStore();
@@ -39,6 +41,7 @@ const dialog = useDialog();
 
 const searchInput = ref("");
 const adding = ref(false);
+const bookmarking = ref(false);
 const exporting = ref(false);
 const copying = ref(false);
 const batching = ref(false);
@@ -148,6 +151,21 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
+  },
+  {
+    label: "加入当前书签簿",
+    key: "bookmark-add",
+    disabled:
+      creating.value ||
+      deleting.value ||
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      batching.value ||
+      bookmarking.value ||
       importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
@@ -482,6 +500,78 @@ async function onCopyPaths(items: TreeItem[]): Promise<void> {
   }
 }
 
+function bookmarkInputs(items: TreeItem[]): BookmarkInput[] {
+  const result: BookmarkInput[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item.isDir || item.fileIndex < 0) continue;
+    const path = bookmarks.normalizePath(item.key);
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    result.push({
+      path,
+      name: item.label || path.slice(path.lastIndexOf("/") + 1),
+      fileIndex: item.fileIndex,
+    });
+  }
+  return result;
+}
+
+function confirmBuiltinBookmarkCopy(): Promise<boolean> {
+  const active = bookmarks.activeBook;
+  if (!active || active.editable) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    dialog.warning({
+      title: "内置书签簿不可编辑",
+      content: `将复制“${active.name}”为新的可编辑书签簿，并把本次选择加入副本。继续吗？`,
+      positiveText: "复制并加入",
+      negativeText: "取消",
+      onPositiveClick: () => finish(!!bookmarks.copyBook(active.id)),
+      onNegativeClick: () => finish(false),
+      onClose: () => finish(false),
+    });
+  });
+}
+
+async function onBookmarkSelected(items: TreeItem[]): Promise<void> {
+  if (bookmarking.value) return;
+  const selectedItems = [...items];
+  const session = bookmarks.sessionId;
+  const archivePath = archive.info?.path ?? "";
+  hideContextMenu();
+  bookmarking.value = true;
+  try {
+    await bookmarks.load();
+    if (session !== bookmarks.sessionId || archive.info?.path !== archivePath) return;
+    const entries = bookmarkInputs(selectedItems);
+    if (entries.length === 0) {
+      message.info("请选择文件节点加入书签");
+      return;
+    }
+    if (!(await confirmBuiltinBookmarkCopy())) return;
+    if (session !== bookmarks.sessionId || archive.info?.path !== archivePath) return;
+    const result = bookmarks.addEntries(entries);
+    if (result.added === 0) {
+      message.info("选中的文件已在当前书签分组中");
+      return;
+    }
+    const duplicateText = result.skipped > 0 ? `，跳过 ${result.skipped} 个重复项` : "";
+    message.success(`已加入 ${result.added} 个书签${duplicateText}`);
+  } catch (error: any) {
+    if (session === bookmarks.sessionId && archive.info?.path === archivePath) {
+      message.error(`加入书签失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    bookmarking.value = false;
+  }
+}
+
 async function onContextMenuSelect(key: string | number): Promise<void> {
   if (key === "new-file") {
     openNewFileDialog(contextMenu.value.anchor);
@@ -503,6 +593,10 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
   }
   if (key === "copy-paths") {
     await onCopyPaths(contextMenu.value.items);
+    return;
+  }
+  if (key === "bookmark-add") {
+    await onBookmarkSelected(contextMenu.value.items);
     return;
   }
   if (key === "batch") {
@@ -714,7 +808,7 @@ function sortTree(items: TreeItem[]): void {
 
     <NSpin
       class="exp-spin"
-      :show="archive.loading || explorer.searching || adding || exporting || copying || batching || importer.running || creating || deleting"
+      :show="archive.loading || explorer.searching || adding || exporting || copying || batching || bookmarking || importer.running || creating || deleting"
     >
       <div class="exp-body">
         <!-- 空态 -->

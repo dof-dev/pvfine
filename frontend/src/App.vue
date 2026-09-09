@@ -23,12 +23,16 @@ import CloseGuard from "./components/CloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
+import { useSidebarStore } from "./stores/sidebar";
+import { useBookmarkStore } from "./stores/bookmarks";
 import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
+const sidebar = useSidebarStore();
+const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
 const version = useVersionStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
@@ -66,6 +70,7 @@ function onResizeEnd() {
 onMounted(() => {
 	void settings.load();
 	void fileSets.load();
+  void bookmarks.load();
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
   window.addEventListener("keydown", onKeydown);
@@ -126,7 +131,7 @@ async function onKeydown(e: KeyboardEvent) {
             <div class="editor-pane">
               <EditorTabs />
             </div>
-            <FileSetSidebar v-if="fileSets.visible" />
+            <FileSetSidebar v-if="sidebar.visible" />
           </div>
           <StatusBar />
         </div>

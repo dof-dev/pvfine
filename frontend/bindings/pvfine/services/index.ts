@@ -4,6 +4,7 @@
 import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
 import * as BatchService from "./batchservice.js";
+import * as BookmarkService from "./bookmarkservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -13,6 +14,7 @@ export {
     AnnotationService,
     ArchiveService,
     BatchService,
+    BookmarkService,
     EditorService,
     FileSetService,
     SettingsService,
@@ -33,6 +35,11 @@ export type {
     BatchFilePreview,
     BatchPreviewPage,
     BatchRequest,
+    BookmarkBook,
+    BookmarkBookFile,
+    BookmarkDocument,
+    BookmarkEntry,
+    BookmarkGroup,
     EditorAnnotation,
     FileMeta,
     FileRegistration,

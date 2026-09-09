@@ -84,6 +84,7 @@ func main() {
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(settingsService),
 			application.NewService(services.NewFileSetService()),
+			application.NewService(services.NewBookmarkService()),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

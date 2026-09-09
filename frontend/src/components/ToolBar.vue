@@ -9,6 +9,7 @@ import {
   FolderArrowUp24Regular,
   Stop24Regular,
   Search24Regular,
+  BookmarkMultiple24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
   DocumentSync24Regular,
@@ -25,7 +26,7 @@ import {
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
-import { useFileSetStore } from "../stores/fileSets";
+import { useSidebarStore } from "../stores/sidebar";
 import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
@@ -33,7 +34,7 @@ import { useVersionStore } from "../stores/version";
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
-const fileSets = useFileSetStore();
+const sidebar = useSidebarStore();
 const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
@@ -119,8 +120,8 @@ function onCancelUnpack() {
   archive.cancelUnpack();
 }
 
-function toggleFileSetSidebar() {
-  fileSets.visible = !fileSets.visible;
+function openBookmarks(): void {
+  sidebar.show("bookmarks");
 }
 
 function isCancel(e: any): boolean {
@@ -234,16 +235,30 @@ function isCancel(e: any): boolean {
     <div class="tb-group" role="group" aria-label="视图">
       <NTooltip>
         <template #trigger>
-          <NButton quaternary aria-label="切换文件集侧栏" @click="toggleFileSetSidebar">
+          <NButton quaternary aria-label="切换侧栏" @click="sidebar.toggle">
             <template #icon>
               <NIcon>
-                <PanelRightContract24Regular v-if="fileSets.visible" />
+                <PanelRightContract24Regular v-if="sidebar.visible" />
                 <PanelRight24Regular v-else />
               </NIcon>
             </template>
           </NButton>
         </template>
-        {{ fileSets.visible ? "收起文件集" : "显示文件集" }}
+        {{ sidebar.visible ? "收起侧栏" : "显示侧栏" }}
+      </NTooltip>
+
+      <NTooltip>
+        <template #trigger>
+          <NButton
+            quaternary
+            :type="sidebar.activePanel === 'bookmarks' && sidebar.visible ? 'primary' : 'default'"
+            aria-label="打开书签侧栏"
+            @click="openBookmarks"
+          >
+            <template #icon><NIcon><BookmarkMultiple24Regular /></NIcon></template>
+          </NButton>
+        </template>
+        打开书签侧栏
       </NTooltip>
     </div>
 

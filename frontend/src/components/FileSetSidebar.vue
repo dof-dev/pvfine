@@ -10,6 +10,7 @@ import {
   DocumentSync24Regular,
   Edit24Regular,
   ArrowExportLtr24Regular,
+  BookmarkMultiple24Regular,
   PanelRightContract24Regular,
   Save24Regular,
 } from "@vicons/fluent";
@@ -31,11 +32,16 @@ import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 import { useBatchStore } from "../stores/batch";
+import { useSidebarStore } from "../stores/sidebar";
+import { useSettingsStore } from "../stores/settings";
+import BookmarkSidebar from "./BookmarkSidebar.vue";
 
 const fileSets = useFileSetStore();
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const batch = useBatchStore();
+const sidebar = useSidebarStore();
+const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -231,6 +237,18 @@ function openEntry(entry: FileSetEntry): void {
   void editor.openFile(entry.fileIndex);
 }
 
+function onEntryClick(event: MouseEvent, entry: FileSetEntry): void {
+  if (settings.explorerOpenMode !== "single-click") return;
+  event.stopPropagation();
+  openEntry(entry);
+}
+
+function onEntryDblclick(event: MouseEvent, entry: FileSetEntry): void {
+  if (settings.explorerOpenMode !== "double-click") return;
+  event.stopPropagation();
+  openEntry(entry);
+}
+
 function isCancel(error: any): boolean {
   return String(error?.message ?? error).toLowerCase().includes("cancel");
 }
@@ -251,6 +269,36 @@ watch(
 
 <template>
   <aside class="file-set-sidebar">
+    <div class="collection-switcher">
+      <NButton
+        quaternary
+        size="small"
+        :type="sidebar.activePanel === 'filesets' ? 'primary' : 'default'"
+        @click="sidebar.show('filesets')"
+      >
+        <template #icon><NIcon><Collections24Regular /></NIcon></template>
+        文件集
+      </NButton>
+      <NButton
+        quaternary
+        size="small"
+        :type="sidebar.activePanel === 'bookmarks' ? 'primary' : 'default'"
+        @click="sidebar.show('bookmarks')"
+      >
+        <template #icon><NIcon><BookmarkMultiple24Regular /></NIcon></template>
+        书签
+      </NButton>
+      <NTooltip>
+        <template #trigger>
+          <NButton quaternary circle size="small" aria-label="收起侧栏" @click="sidebar.close">
+            <template #icon><NIcon><PanelRightContract24Regular /></NIcon></template>
+          </NButton>
+        </template>
+        收起侧栏
+      </NTooltip>
+    </div>
+
+    <template v-if="sidebar.activePanel === 'filesets'">
     <div class="fileset-heading">
       <div class="fileset-title">
         <NIcon :size="16"><Collections24Regular /></NIcon>
@@ -311,20 +359,6 @@ watch(
             </NButton>
           </template>
           删除当前文件集
-        </NTooltip>
-        <NTooltip>
-          <template #trigger>
-            <NButton
-              quaternary
-              circle
-              size="tiny"
-              aria-label="收起文件集"
-              @click="fileSets.visible = false"
-            >
-              <template #icon><NIcon><PanelRightContract24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          收起文件集
         </NTooltip>
       </div>
     </div>
@@ -393,7 +427,8 @@ watch(
         :key="entry.path"
         :class="['fileset-entry', { 'fileset-entry--missing': entry.fileIndex < 0 }]"
         :title="entry.path"
-        @dblclick="openEntry(entry)"
+        @click="onEntryClick($event, entry)"
+        @dblclick="onEntryDblclick($event, entry)"
       >
         <NIcon class="fileset-entry-icon" :size="16"><Document24Regular /></NIcon>
         <div class="fileset-entry-main">
@@ -470,6 +505,9 @@ watch(
         </div>
       </template>
     </NModal>
+    </template>
+
+    <BookmarkSidebar v-else />
   </aside>
 </template>
 
@@ -493,6 +531,20 @@ watch(
 .fileset-modal-footer {
   display: flex;
   align-items: center;
+}
+.collection-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+}
+.collection-switcher > .n-button {
+  flex: 1;
+}
+.collection-switcher > .n-button:last-child {
+  flex: 0 0 auto;
 }
 .fileset-heading {
   justify-content: space-between;

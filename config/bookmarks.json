@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "name": "系统内置",
+  "groups": [
+    {
+      "id": "builtin-list",
+      "name": "列表",
+      "entries": [
+        {
+          "path": "equipment/equipment.lst",
+          "name": "装备"
+        },
+        {
+          "path": "stackable/stackable.lst",
+          "name": "道具"
+        },
+        {
+          "path": "appendage/appendage.lst",
+          "name": "apd"
+        },
+        {
+          "path": "character/character.lst",
+          "name": "职业"
+        },
+        {
+          "path": "creature/creature.lst",
+          "name": "宠物"
+        },
+        {
+          "path": "dungeon/dungeon.lst",
+          "name": "地下城"
+        },
+        {
+          "path": "itemshop/itemshop.lst",
+          "name": "商店"
+        },
+        {
+          "path": "map/map.lst",
+          "name": "map"
+        },
+        {
+          "path": "monster/monster.lst",
+          "name": "怪物"
+        },
+        {
+          "path": "n_quest/quest.lst",
+          "name": "任务"
+        },
+        {
+          "path": "npc/npc.lst",
+          "name": "npc"
+        },
+        {
+          "path": "passiveobject/passiveobject.lst",
+          "name": "被动对象"
+        },
+        {
+          "path": "region/region.lst",
+          "name": "区域"
+        },
+        {
+          "path": "town/town.lst",
+          "name": "城镇"
+        },
+        {
+          "path": "worldmap/worldmap.lst",
+          "name": "副本接口"
+        }
+      ]
+    }
+  ]
+}

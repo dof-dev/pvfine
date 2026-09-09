@@ -7,3 +7,6 @@ var AnnotationsJSON []byte
 
 //go:embed lists.json
 var ListsJSON []byte
+
+//go:embed bookmarks.json
+var BookmarksJSON []byte

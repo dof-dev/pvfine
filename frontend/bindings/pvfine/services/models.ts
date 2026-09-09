@@ -113,6 +113,58 @@ export interface BatchRequest {
     "operations"?: StructuredOperation[] | null;
 }
 
+/**
+ * BookmarkBook is a runtime bookmark book. Builtin books are read-only in
+ * packaged applications and editable when running from the repository.
+ */
+export interface BookmarkBook {
+    "id": string;
+    "name": string;
+    "builtin": boolean;
+    "editable": boolean;
+    "groups"?: BookmarkGroup[] | null;
+    "entries"?: BookmarkEntry[] | null;
+}
+
+/**
+ * BookmarkBookFile is the portable JSON representation of one bookmark book.
+ * IDs and runtime flags are intentionally omitted so imports always receive
+ * fresh local identities and are treated as editable books.
+ */
+export interface BookmarkBookFile {
+    "version": number;
+    "name": string;
+    "groups"?: BookmarkGroup[] | null;
+    "entries"?: BookmarkEntry[] | null;
+}
+
+/**
+ * BookmarkDocument is the complete runtime bookmark state.
+ */
+export interface BookmarkDocument {
+    "version": number;
+    "activeBookId": string;
+    "books": BookmarkBook[] | null;
+}
+
+/**
+ * BookmarkEntry is one PVF-internal file bookmark.
+ */
+export interface BookmarkEntry {
+    "path": string;
+    "name": string;
+}
+
+/**
+ * BookmarkGroup is a recursively nested bookmark group.
+ */
+export interface BookmarkGroup {
+    "id": string;
+    "name": string;
+    "groups"?: BookmarkGroup[] | null;
+    "entries"?: BookmarkEntry[] | null;
+}
+
 export interface EditorAnnotation {
     "start": number;
     "end": number;

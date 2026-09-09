@@ -10,9 +10,11 @@ import {
   NTabPane,
   NTabs,
   NTooltip,
+  useDialog,
   useMessage,
 } from "naive-ui";
 import {
+  BookmarkAdd24Regular,
   Dismiss16Regular,
   DocumentSearch24Regular,
   SplitHorizontal24Regular,
@@ -26,6 +28,7 @@ import {
 } from "../stores/editor";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore } from "../stores/explorer";
+import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 
@@ -37,11 +40,14 @@ const paneId = props.paneId;
 const editor = useEditorStore();
 const archive = useArchiveStore();
 const explorer = useExplorerStore();
+const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
 const message = useMessage();
+const dialog = useDialog();
 const host = ref<HTMLDivElement | null>(null);
 const draggingIndex = ref<number | null>(null);
 const revealingFile = ref(false);
+const bookmarking = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
 
@@ -84,6 +90,12 @@ const fileTags = computed(() => {
 const canRevealActiveFile = computed(
   () => archive.open && !!activeTab.value && !revealingFile.value
 );
+const activeBookmarked = computed(
+  () => !!activeTab.value && bookmarks.isBookmarkedInGroup(activeTab.value.path)
+);
+const canBookmarkActiveFile = computed(
+  () => archive.open && bookmarks.loaded && !!activeTab.value && !bookmarking.value
+);
 
 function activatePane(): void {
   editor.activatePane(paneId);
@@ -111,6 +123,46 @@ async function onRevealActiveFile(): Promise<void> {
     message.error(`定位文件失败: ${error?.message ?? error}`);
   } finally {
     revealingFile.value = false;
+  }
+}
+
+function confirmBuiltinBookmarkCopy(): Promise<boolean> {
+  const active = bookmarks.activeBook;
+  if (!active || active.editable) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    dialog.warning({
+      title: "内置书签簿不可编辑",
+      content: `将复制“${active.name}”为新的可编辑书签簿，并把当前文件加入副本。继续吗？`,
+      positiveText: "复制并加入",
+      negativeText: "取消",
+      onPositiveClick: () => finish(!!bookmarks.copyBook(active.id)),
+      onNegativeClick: () => finish(false),
+      onClose: () => finish(false),
+    });
+  });
+}
+
+async function onBookmarkActive(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab || !canBookmarkActiveFile.value || activeBookmarked.value) return;
+  bookmarking.value = true;
+  try {
+    if (!(await confirmBuiltinBookmarkCopy())) return;
+    const result = bookmarks.addEntries([
+      { path: tab.path, name: tab.title, fileIndex: tab.index },
+    ]);
+    if (result.added > 0) message.success(`已加入书签：${tab.path}`);
+    else message.info("当前文件已在当前书签分组中");
+  } catch (error: any) {
+    message.error(`加入书签失败: ${error?.message ?? error}`);
+  } finally {
+    bookmarking.value = false;
   }
 }
 
@@ -323,6 +375,24 @@ function onDrop(event: DragEvent): void {
           </div>
 
           <div class="editor-pane-actions" role="group" aria-label="编辑器操作">
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :type="activeBookmarked ? 'primary' : 'default'"
+                  :loading="bookmarking"
+                  :disabled="!canBookmarkActiveFile || activeBookmarked"
+                  aria-label="加入书签"
+                  @click="onBookmarkActive"
+                >
+                  <template #icon><NIcon><BookmarkAdd24Regular /></NIcon></template>
+                  {{ activeBookmarked ? "已在书签" : "加入书签" }}
+                </NButton>
+              </template>
+              {{ activeBookmarked ? "当前文件已在当前书签簿" : "加入当前书签簿" }}
+            </NTooltip>
+
             <NTooltip trigger="hover">
               <template #trigger>
                 <NButton
