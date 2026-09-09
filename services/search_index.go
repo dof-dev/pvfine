@@ -31,12 +31,14 @@ const (
 
 // IndexStatus is the current state of the semantic search index.
 type IndexStatus struct {
-	State   string `json:"state"`
-	Stage   string `json:"stage"`
-	Done    int    `json:"done"`
-	Total   int    `json:"total"`
-	Skipped int    `json:"skipped"`
-	Error   string `json:"error"`
+	State           string  `json:"state"`
+	Stage           string  `json:"stage"`
+	Done            int     `json:"done"`
+	Total           int     `json:"total"`
+	Skipped         int     `json:"skipped"`
+	Error           string  `json:"error"`
+	OpenDurationMs  float64 `json:"openDurationMs"`
+	BuildDurationMs float64 `json:"buildDurationMs"`
 }
 
 // SearchHit is one searchable file/list record.
@@ -165,24 +167,28 @@ func (c *core) startSearchIndex() {
 	c.indexGen++
 	gen := c.indexGen
 	a := c.archive
+	startedAt := time.Now()
+	openDurationMs := c.indexStatus.OpenDurationMs
 	ctx, cancel := context.WithCancel(context.Background())
 	c.indexCancel = cancel
 	c.indexDirty = make(map[int32]struct{})
-	c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "preparing"}
+	c.indexStartedAt = startedAt
+	c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "preparing", OpenDurationMs: openDurationMs}
+	status := c.indexStatus
 	c.mu.Unlock()
 
-	emitEvent("archive:index-progress", IndexStatus{State: IndexStateBuilding, Stage: "preparing"})
-	go c.buildSearchIndex(ctx, gen, a)
+	emitEvent("archive:index-progress", status)
+	go c.buildSearchIndex(ctx, gen, a, startedAt)
 }
 
-func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive) {
+func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time) {
 	locked := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			if locked {
 				c.mu.Unlock()
 			}
-			c.failSearchIndex(a, gen, ctx, fmt.Errorf("搜索索引构建失败: %v", recovered))
+			c.failSearchIndex(a, gen, ctx, startedAt, fmt.Errorf("搜索索引构建失败: %v", recovered))
 		}
 	}()
 
@@ -340,11 +346,13 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 	c.treeTagsByFile = treeTagsByFile
 	c.visualsByFile = visualsByFile
 	c.indexStatus = IndexStatus{
-		State:   IndexStateReady,
-		Stage:   "ready",
-		Done:    len(refs),
-		Total:   len(refs),
-		Skipped: skipped,
+		State:           IndexStateReady,
+		Stage:           "ready",
+		Done:            len(refs),
+		Total:           len(refs),
+		Skipped:         skipped,
+		OpenDurationMs:  c.indexStatus.OpenDurationMs,
+		BuildDurationMs: elapsedMilliseconds(startedAt),
 	}
 	c.indexDirty = make(map[int32]struct{})
 	c.indexCancel = nil
@@ -355,7 +363,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive)
 	emitEvent("archive:index-ready", status)
 }
 
-func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, err error) {
+func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, startedAt time.Time, err error) {
 	if err == nil || ctx.Err() != nil {
 		return
 	}
@@ -365,9 +373,11 @@ func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, 
 		return
 	}
 	c.indexStatus = IndexStatus{
-		State: IndexStateError,
-		Stage: "error",
-		Error: err.Error(),
+		State:           IndexStateError,
+		Stage:           "error",
+		Error:           err.Error(),
+		OpenDurationMs:  c.indexStatus.OpenDurationMs,
+		BuildDurationMs: elapsedMilliseconds(startedAt),
 	}
 	c.indexCancel = nil
 	status := c.indexStatus
@@ -513,6 +523,8 @@ func (c *core) publishIndexStatus(a *pvf.Archive, gen uint64, ctx context.Contex
 		c.mu.Unlock()
 		return false
 	}
+	status.OpenDurationMs = c.indexStatus.OpenDurationMs
+	status.BuildDurationMs = elapsedMilliseconds(c.indexStartedAt)
 	c.indexStatus = status
 	c.mu.Unlock()
 	emitEvent("archive:index-progress", status)

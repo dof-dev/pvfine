@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -56,6 +57,7 @@ func (s *ArchiveService) OpenDialog() (*ArchiveInfo, error) {
 
 // Open 加载指定路径的归档并构建目录索引。
 func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
+	startedAt := time.Now()
 	if _, err := os.Stat(path); err != nil {
 		return ArchiveInfo{}, err
 	}
@@ -66,6 +68,7 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	if err := s.c.setArchive(a); err != nil {
 		return ArchiveInfo{}, err
 	}
+	s.c.recordOpenDuration(time.Since(startedAt))
 	info := a.Info()
 	// Version repository discovery/recovery is deliberately detached from the
 	// normal open path. The raw PVF and its tree are usable immediately; the

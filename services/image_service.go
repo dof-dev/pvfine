@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -318,16 +319,16 @@ func (s *ImageService) startBuild(directory string, generation uint64) {
 	s.status = ImageIndexStatus{State: ImageIndexStateBuilding, Stage: "scanning", Directory: directory, Generation: generation}
 	s.mu.Unlock()
 	emitEvent("image:index-progress", s.IndexStatus())
-	go s.buildIndex(ctx, directory, generation)
+	go s.buildIndex(ctx, directory, generation, time.Now())
 }
 
-func (s *ImageService) buildIndex(ctx context.Context, directory string, generation uint64) {
+func (s *ImageService) buildIndex(ctx context.Context, directory string, generation uint64, startedAt time.Time) {
 	manifest, err := scanImageManifest(directory)
 	if err != nil {
-		s.failBuild(directory, generation, err)
+		s.failBuild(directory, generation, startedAt, err)
 		return
 	}
-	status := ImageIndexStatus{State: ImageIndexStateBuilding, Stage: "scanning", Directory: directory, Total: len(manifest), Generation: generation}
+	status := ImageIndexStatus{State: ImageIndexStateBuilding, Stage: "scanning", Directory: directory, Total: len(manifest), Generation: generation, BuildDurationMs: elapsedMilliseconds(startedAt)}
 	s.publishProgress(directory, generation, status)
 
 	byPath := make(map[string]*imageRecord)
@@ -346,6 +347,7 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 			skipped++
 			status.Done = fileIndex + 1
 			status.Skipped = skipped
+			status.BuildDurationMs = elapsedMilliseconds(startedAt)
 			s.publishProgress(directory, generation, status)
 			continue
 		}
@@ -354,6 +356,7 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 			skipped++
 			status.Done = fileIndex + 1
 			status.Skipped = skipped
+			status.BuildDurationMs = elapsedMilliseconds(startedAt)
 			s.publishProgress(directory, generation, status)
 			continue
 		}
@@ -396,10 +399,11 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 		status.ImageCount = imageCount
 		status.Skipped = skipped
 		status.Duplicates = duplicates
+		status.BuildDurationMs = elapsedMilliseconds(startedAt)
 		s.publishProgress(directory, generation, status)
 	}
 	if len(records) == 0 {
-		s.failBuild(directory, generation, fmt.Errorf("NPK 目录中没有可用的 IMG 文件"))
+		s.failBuild(directory, generation, startedAt, fmt.Errorf("NPK 目录中没有可用的 IMG 文件"))
 		return
 	}
 	snapshot := &imageSnapshot{
@@ -418,7 +422,7 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 	}
 	s.snapshot = snapshot
 	s.cancel = nil
-	s.status = ImageIndexStatus{State: ImageIndexStateReady, Stage: "ready", Directory: directory, Done: len(manifest), Total: len(manifest), NPKFiles: len(manifest), IMGFiles: imgCount, ImageCount: imageCount, Skipped: skipped, Duplicates: duplicates, Generation: generation}
+	s.status = ImageIndexStatus{State: ImageIndexStateReady, Stage: "ready", Directory: directory, Done: len(manifest), Total: len(manifest), NPKFiles: len(manifest), IMGFiles: imgCount, ImageCount: imageCount, Skipped: skipped, Duplicates: duplicates, Generation: generation, BuildDurationMs: elapsedMilliseconds(startedAt)}
 	ready := s.status
 	s.mu.Unlock()
 	emitEvent("image:index-ready", ready)
@@ -437,14 +441,14 @@ func (s *ImageService) publishProgress(directory string, generation uint64, stat
 	emitEvent("image:index-progress", status)
 }
 
-func (s *ImageService) failBuild(directory string, generation uint64, err error) {
+func (s *ImageService) failBuild(directory string, generation uint64, startedAt time.Time, err error) {
 	s.mu.Lock()
 	if s.generation != generation || s.directory != directory {
 		s.mu.Unlock()
 		return
 	}
 	s.cancel = nil
-	s.status = ImageIndexStatus{State: ImageIndexStateError, Stage: "error", Directory: directory, Error: err.Error(), Generation: generation}
+	s.status = ImageIndexStatus{State: ImageIndexStateError, Stage: "error", Directory: directory, Error: err.Error(), Generation: generation, BuildDurationMs: elapsedMilliseconds(startedAt)}
 	status := s.status
 	s.mu.Unlock()
 	emitEvent("image:index-error", status)
@@ -494,7 +498,7 @@ func (s *ImageService) putCacheLocked(key string, data ImageData, size int) {
 }
 
 func readyImageStatus(snapshot *imageSnapshot, generation uint64) ImageIndexStatus {
-	return ImageIndexStatus{State: ImageIndexStateReady, Stage: "ready", Directory: snapshot.directory, Done: len(snapshot.manifest), Total: len(snapshot.manifest), NPKFiles: snapshot.npkFiles, IMGFiles: snapshot.imgFiles, ImageCount: snapshot.imageCount, Skipped: snapshot.skipped, Duplicates: snapshot.duplicates, Generation: generation}
+	return ImageIndexStatus{State: ImageIndexStateReady, Stage: "ready-cache", Directory: snapshot.directory, Done: len(snapshot.manifest), Total: len(snapshot.manifest), NPKFiles: snapshot.npkFiles, IMGFiles: snapshot.imgFiles, ImageCount: snapshot.imageCount, Skipped: snapshot.skipped, Duplicates: snapshot.duplicates, Generation: generation}
 }
 
 func canonicalImageDirectory(value string) (string, error) {

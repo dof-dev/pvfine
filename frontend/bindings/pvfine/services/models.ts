@@ -243,6 +243,7 @@ export interface ImageIndexStatus {
     "duplicates": number;
     "error": string;
     "generation": number;
+    "buildDurationMs": number;
 }
 
 /**
@@ -301,6 +302,8 @@ export interface IndexStatus {
     "total": number;
     "skipped": number;
     "error": string;
+    "openDurationMs": number;
+    "buildDurationMs": number;
 }
 
 /**

@@ -41,6 +41,9 @@ func TestRealImageServiceWithImagePacks2(t *testing.T) {
 			if status.NPKFiles != 120 || status.IMGFiles != 1692 || status.ImageCount != 145816 {
 				t.Fatalf("image status = %#v", status)
 			}
+			if status.BuildDurationMs <= 0 {
+				t.Fatalf("image timing = %#v, want positive build duration", status)
+			}
 			data, err := service.GetImage("Item/new_equipment/08_necklace/necklace.img", 69)
 			if err != nil {
 				t.Fatal(err)

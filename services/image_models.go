@@ -24,16 +24,17 @@ const (
 
 // ImageIndexStatus is emitted while the NPK directory is being scanned.
 type ImageIndexStatus struct {
-	State      string `json:"state"`
-	Stage      string `json:"stage"`
-	Directory  string `json:"directory"`
-	Done       int    `json:"done"`
-	Total      int    `json:"total"`
-	NPKFiles   int    `json:"npkFiles"`
-	IMGFiles   int    `json:"imgFiles"`
-	ImageCount int    `json:"imageCount"`
-	Skipped    int    `json:"skipped"`
-	Duplicates int    `json:"duplicates"`
-	Error      string `json:"error"`
-	Generation uint64 `json:"generation"`
+	State           string  `json:"state"`
+	Stage           string  `json:"stage"`
+	Directory       string  `json:"directory"`
+	Done            int     `json:"done"`
+	Total           int     `json:"total"`
+	NPKFiles        int     `json:"npkFiles"`
+	IMGFiles        int     `json:"imgFiles"`
+	ImageCount      int     `json:"imageCount"`
+	Skipped         int     `json:"skipped"`
+	Duplicates      int     `json:"duplicates"`
+	Error           string  `json:"error"`
+	Generation      uint64  `json:"generation"`
+	BuildDurationMs float64 `json:"buildDurationMs"`
 }

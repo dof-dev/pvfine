@@ -20,6 +20,8 @@ export const useArchiveStore = defineStore("archive", () => {
     total: 0,
     skipped: 0,
     error: "",
+    openDurationMs: 0,
+    buildDurationMs: 0,
   });
 
   // 解包状态
@@ -83,6 +85,8 @@ export const useArchiveStore = defineStore("archive", () => {
       total: Number(data?.total ?? 0),
       skipped: Number(data?.skipped ?? 0),
       error: String(data?.error ?? ""),
+      openDurationMs: Number(data?.openDurationMs ?? 0),
+      buildDurationMs: Number(data?.buildDurationMs ?? 0),
     };
   }
 

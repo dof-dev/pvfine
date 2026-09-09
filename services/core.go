@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -81,6 +82,7 @@ type core struct {
 	treeTagsByFile       map[int32][]TreeTag
 	visualsByFile        map[int32]fileVisuals
 	indexStatus          IndexStatus
+	indexStartedAt       time.Time
 	indexCancel          context.CancelFunc
 	indexDirty           map[int32]struct{}
 	indexGen             uint64
@@ -155,6 +157,14 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	return nil
 }
 
+func (c *core) recordOpenDuration(duration time.Duration) {
+	c.mu.Lock()
+	if c.archive != nil {
+		c.indexStatus.OpenDurationMs = durationMilliseconds(duration)
+	}
+	c.mu.Unlock()
+}
+
 // replaceArchiveLocked installs a newly materialized archive while retaining
 // the current version repository session. The caller must hold c.mu.
 func (c *core) replaceArchiveLocked(a *pvf.Archive) error {
@@ -192,6 +202,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.treeTagsByFile = make(map[int32][]TreeTag)
 	c.visualsByFile = make(map[int32]fileVisuals)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexStartedAt = time.Time{}
 	c.indexDirty = make(map[int32]struct{})
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}
@@ -249,6 +260,7 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 	c.treeTagsByFile = make(map[int32][]TreeTag)
 	c.visualsByFile = make(map[int32]fileVisuals)
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexStartedAt = time.Time{}
 	c.indexDirty = make(map[int32]struct{})
 	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
@@ -284,6 +296,7 @@ func (c *core) closeArchive() {
 	c.treeTagsByFile = nil
 	c.visualsByFile = nil
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.indexStartedAt = time.Time{}
 	c.indexDirty = nil
 	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}

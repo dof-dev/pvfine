@@ -3,10 +3,12 @@ import { computed } from "vue";
 import { NProgress, NText } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
+import { useImageStore } from "../stores/images";
 import { useVersionStore } from "../stores/version";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
+const images = useImageStore();
 const version = useVersionStore();
 
 const currentPath = computed(() => editor.activeTab?.path ?? "");
@@ -38,6 +40,31 @@ const indexStateLabel = computed(() => {
       return "索引准备中";
   }
 });
+const indexTimingTitle = computed(() => {
+  let npkIndex = "未完成";
+  if (!images.status.directory) {
+    npkIndex = "未配置 NPK 目录";
+  } else if (images.status.state === "ready" && images.status.stage === "ready-cache") {
+    npkIndex = "缓存命中（本次未重建）";
+  } else if (images.status.buildDurationMs > 0) {
+    npkIndex = formatDuration(images.status.buildDurationMs);
+  } else if (images.status.state === "building") {
+    npkIndex = "构建中";
+  } else if (images.status.state === "error") {
+    npkIndex = "构建失败";
+  }
+  return [
+    `打开 PVF 至可操作：${formatDuration(archive.indexStatus.openDurationMs)}`,
+    `构建 PVF 索引：${formatDuration(archive.indexStatus.buildDurationMs)}`,
+    `构建 NPK 索引：${npkIndex}`,
+  ].join("\n");
+});
+
+function formatDuration(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return "未完成";
+  if (milliseconds < 1) return `${milliseconds.toFixed(2)} ms`;
+  return `${milliseconds.toFixed(1)} ms`;
+}
 </script>
 
 <template>
@@ -65,7 +92,7 @@ const indexStateLabel = computed(() => {
         </span>
       </template>
       <span class="sb-spacer" />
-      <span v-if="archive.open" class="sb-item index-state" :class="{ 'sb-error': archive.indexStatus.state === 'error' }">
+      <span v-if="archive.open" class="sb-item index-state" :title="indexTimingTitle" :class="{ 'sb-error': archive.indexStatus.state === 'error' }">
         {{ indexStateLabel }}
         <NProgress
           v-if="archive.indexing"
@@ -144,6 +171,7 @@ const indexStateLabel = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: help;
 }
 .sb-error {
   color: #e88080;

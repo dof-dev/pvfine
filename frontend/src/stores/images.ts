@@ -21,6 +21,7 @@ const idleStatus: ImageIndexStatus = {
   duplicates: 0,
   error: "",
   generation: 0,
+  buildDurationMs: 0,
 };
 
 export const useImageStore = defineStore("images", () => {
