@@ -2,12 +2,60 @@ package services
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"pvfine/internal/pvf"
 )
+
+func TestVersionServiceImportUndoAndCommit(t *testing.T) {
+	c, _, _ := versionServiceFixture(t)
+	versions := NewVersionService(c)
+	if _, err := versions.Initialize(); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcePath := filepath.Join(t.TempDir(), "imported.equ")
+	if err := os.WriteFile(sourcePath, []byte("[name]\n`导入文件`"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	imports := NewArchiveService(c)
+	result, err := imports.ImportFiles([]string{sourcePath}, "", ImportModeText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedCount != 1 || result.OverwrittenCount != 0 {
+		t.Fatalf("import result = %#v", result)
+	}
+	status := versions.Status()
+	if status.ChangedFiles != 1 || status.PendingChangeSets != 1 {
+		t.Fatalf("import version status = %#v", status)
+	}
+
+	if _, err := versions.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.archive.Find("imported.equ"); ok {
+		t.Fatal("undo did not remove imported file")
+	}
+	status = versions.Status()
+	if status.ChangedFiles != 0 || status.PendingChangeSets != 0 {
+		t.Fatalf("undo version status = %#v", status)
+	}
+
+	if _, err := imports.ImportFiles([]string{sourcePath}, "", ImportModeText); err != nil {
+		t.Fatal(err)
+	}
+	commit, err := versions.Commit("导入文件")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commit.ChangeCount != 1 || versions.Status().ChangedFiles != 0 {
+		t.Fatalf("import commit = %#v status=%#v", commit, versions.Status())
+	}
+}
 
 func versionServiceFixture(t *testing.T) (*core, string, int32) {
 	t.Helper()

@@ -161,6 +161,43 @@ export interface FileSetDocument {
 }
 
 /**
+ * ImportPreview describes the validated changes without modifying the live
+ * archive. Entries is capped for large directory imports; the counters remain
+ * complete.
+ */
+export interface ImportPreview {
+    "targetDir": string;
+    "mode": string;
+    "totalFiles": number;
+    "importedCount": number;
+    "overwrittenCount": number;
+    "entries": (ImportPreviewEntry | null)[] | null;
+    "entriesTruncated": boolean;
+}
+
+/**
+ * ImportPreviewEntry is one validated source-to-archive mapping.
+ */
+export interface ImportPreviewEntry {
+    "sourcePath": string;
+    "targetPath": string;
+    "dataType": number;
+    "size": number;
+    "overwrite": boolean;
+}
+
+/**
+ * ImportResult describes one atomically applied import operation.
+ */
+export interface ImportResult {
+    "targetDir": string;
+    "mode": string;
+    "importedCount": number;
+    "overwrittenCount": number;
+    "changedPaths"?: string[] | null;
+}
+
+/**
  * IndexStatus is the current state of the semantic search index.
  */
 export interface IndexStatus {

@@ -70,6 +70,23 @@ export function FindFileRegistrations(fileIndexes: number[] | null): $Cancellabl
 }
 
 /**
+ * ImportFiles imports sourcePaths into targetDir. The source paths may be
+ * files or directories. All source data is read and staged before the live
+ * archive is replaced, so an error leaves the current archive unchanged.
+ */
+export function ImportFiles(sourcePaths: string[] | null, targetDir: string, mode: string): $CancellablePromise<$models.ImportResult | null> {
+    return $Call.ByID(1820874221, sourcePaths, targetDir, mode);
+}
+
+/**
+ * ImportFilesDialog opens a native multi-selection picker and imports the
+ * selected files or directories into targetDir.
+ */
+export function ImportFilesDialog(targetDir: string, mode: string): $CancellablePromise<$models.ImportResult | null> {
+    return $Call.ByID(2956082033, targetDir, mode);
+}
+
+/**
  * IndexStatus 返回当前归档的语义搜索索引状态。
  */
 export function IndexStatus(): $CancellablePromise<$models.IndexStatus> {
@@ -113,6 +130,15 @@ export function OpenDialog(): $CancellablePromise<$models.ArchiveInfo | null> {
 }
 
 /**
+ * PreviewImport validates and maps sourcePaths without modifying the live
+ * archive. It also stages the files on an isolated archive to catch encoding
+ * and index-building errors before the user confirms the operation.
+ */
+export function PreviewImport(sourcePaths: string[] | null, targetDir: string, mode: string): $CancellablePromise<$models.ImportPreview | null> {
+    return $Call.ByID(928248660, sourcePaths, targetDir, mode);
+}
+
+/**
  * ResolveFiles resolves archive files by their normalized paths. Missing
  * paths are omitted and duplicate input paths are returned only once.
  */
@@ -136,6 +162,14 @@ export function Search(query: string, cursor: number, limit: number): $Cancellab
  */
 export function SearchExact(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
     return $Call.ByID(2978904002, query, cursor, limit);
+}
+
+/**
+ * SelectImportFilesDialog opens the native multi-selection picker without
+ * changing the current archive. The returned paths can be previewed first.
+ */
+export function SelectImportFilesDialog(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2682653281);
 }
 
 /**

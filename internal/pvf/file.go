@@ -42,6 +42,20 @@ func (a *Archive) SetRawBytes(i int32, b []byte) error {
 	return nil
 }
 
+// SetDataType changes the PVF interpretation type of an existing entry.
+// Import uses this when replacing a file whose extension implies a different
+// type than the entry currently has.
+func (a *Archive) SetDataType(i int32, dataType int32) error {
+	if i < 0 || i >= int32(len(a.items)) {
+		return ErrBadIndex
+	}
+	if dataType != TypeScript && dataType != TypeUnicode {
+		return ErrBadDataType
+	}
+	a.items[i].typ = dataType
+	return nil
+}
+
 // Text decodes entry i: token scripts are decompiled, UTF-16 sections are
 // returned as text (with Korean-server mojibake repaired when detected).
 func (a *Archive) Text(i int32) (string, error) {

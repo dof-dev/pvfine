@@ -3,6 +3,7 @@ import { computed, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
+  ArrowDownload24Regular,
   Save24Regular,
   ArchiveMultiple24Regular,
   FolderArrowUp24Regular,
@@ -26,6 +27,7 @@ import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useFileSetStore } from "../stores/fileSets";
 import { useSettingsStore } from "../stores/settings";
+import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
 
 const archive = useArchiveStore();
@@ -33,6 +35,7 @@ const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
 const fileSets = useFileSetStore();
 const settings = useSettingsStore();
+const importer = useImportStore();
 const version = useVersionStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -53,6 +56,10 @@ async function onOpen() {
   } catch (e: any) {
     if (!isCancel(e)) message.error(`打开失败: ${e?.message ?? e}`);
   }
+}
+
+function onImport(): void {
+  importer.open("");
 }
 
 async function saveToSource() {
@@ -163,6 +170,20 @@ function isCancel(e: any): boolean {
         </template>
         另存为新 PVF (Cmd+Shift+S)
       </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :disabled="!archive.open || importer.running"
+            @click="onImport"
+          >
+            <template #icon><NIcon><ArrowDownload24Regular /></NIcon></template>
+            导入
+          </NButton>
+        </template>
+        批量导入文件到归档根目录
+      </NTooltip>
     </div>
 
     <div class="tb-sep" />
@@ -177,7 +198,6 @@ function isCancel(e: any): boolean {
         </template>
         在当前归档中搜索二进制或字符串池
       </NTooltip>
-
     </div>
 
     <div class="tb-sep" />

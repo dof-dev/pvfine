@@ -23,6 +23,7 @@ import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/expl
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 import { useBatchStore } from "../stores/batch";
+import { useImportStore } from "../stores/import";
 import { useSettingsStore } from "../stores/settings";
 import FileTree from "./FileTree.vue";
 
@@ -31,6 +32,7 @@ const explorer = useExplorerStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
 const batch = useBatchStore();
+const importer = useImportStore();
 const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -74,6 +76,20 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
+      !archive.open,
+  },
+  {
+    label: "导入文件…",
+    key: "import",
+    disabled:
+      creating.value ||
+      deleting.value ||
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      batching.value ||
+      importer.running ||
       !archive.open,
   },
   {
@@ -86,6 +102,7 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -103,6 +120,7 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -116,6 +134,7 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -129,6 +148,7 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -142,6 +162,7 @@ const contextMenuOptions = computed(() => [
       exporting.value ||
       copying.value ||
       batching.value ||
+      importer.running ||
       !archive.open ||
       contextMenu.value.items.length === 0,
   },
@@ -466,6 +487,12 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
     openNewFileDialog(contextMenu.value.anchor);
     return;
   }
+  if (key === "import") {
+    const targetDir = parentDirectory(contextMenu.value.anchor);
+    hideContextMenu();
+    importer.open(targetDir);
+    return;
+  }
   if (key === "delete") {
     void onDeleteSelected(contextMenu.value.items);
     return;
@@ -685,7 +712,7 @@ function sortTree(items: TreeItem[]): void {
 
     <NSpin
       class="exp-spin"
-      :show="archive.loading || explorer.searching || adding || exporting || copying || batching || creating || deleting"
+      :show="archive.loading || explorer.searching || adding || exporting || copying || batching || importer.running || creating || deleting"
     >
       <div class="exp-body">
         <!-- 空态 -->

@@ -45,5 +45,6 @@ var (
 	ErrOverflow             = errors.New("pvf: header sections exceed the file boundary")
 	ErrNotFound             = errors.New("pvf: file not found")
 	ErrBadIndex             = errors.New("pvf: file index out of range")
+	ErrBadDataType          = errors.New("pvf: unsupported data type")
 	ErrQueryStringNotInPool = errors.New("pvf: query string is not present in the string pool")
 )

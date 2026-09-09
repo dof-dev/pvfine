@@ -16,6 +16,7 @@ import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import BatchProcessModal from "./components/BatchProcessModal.vue";
+import ImportModal from "./components/ImportModal.vue";
 import VersionPanel from "./components/VersionPanel.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
@@ -114,6 +115,7 @@ async function onKeydown(e: KeyboardEvent) {
           <ToolBar />
           <AdvancedSearchModal />
           <BatchProcessModal />
+          <ImportModal />
           <VersionPanel />
           <SettingsModal />
           <div class="app-body">
