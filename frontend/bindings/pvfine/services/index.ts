@@ -33,6 +33,7 @@ export type {
     BatchRequest,
     EditorAnnotation,
     FileMeta,
+    FileRegistration,
     FileSetDocument,
     IndexStatus,
     SearchHit,

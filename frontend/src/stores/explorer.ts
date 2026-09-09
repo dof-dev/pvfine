@@ -52,6 +52,7 @@ export const useExplorerStore = defineStore("explorer", () => {
   const searching = ref(false);
   const mode = ref<"tree" | "search">("tree");
   const exactMatch = ref(false);
+  const revision = ref(0);
   let searchRequest = 0;
   let refreshTimer: number | undefined;
   let treeRefreshRequest = 0;
@@ -104,6 +105,37 @@ export const useExplorerStore = defineStore("explorer", () => {
     roots.value = nextRoots;
     itemsByKey.clear();
     registerItems(roots.value);
+    revision.value++;
+  }
+
+  /** 重新加载资源树；搜索模式会等待新的语义索引完成后自动恢复。 */
+  async function reload(): Promise<void> {
+    const restoreSearch = mode.value === "search" && query.value.trim() !== "";
+    const currentQuery = query.value;
+    selectedKey.value = null;
+    await loadRoots();
+    if (!restoreSearch) {
+      clearSearch();
+      return;
+    }
+
+    const request = ++searchRequest;
+    hits.value = [];
+    nextCursor.value = -1;
+    mode.value = "search";
+    searching.value = true;
+    try {
+      const status = await ArchiveService.IndexStatus();
+      if (request !== searchRequest || !archive.open) return;
+      if (status?.state === "ready") {
+        await search(currentQuery);
+      }
+    } finally {
+      if (request === searchRequest && mode.value === "search" && hits.value.length === 0) {
+        const status = await ArchiveService.IndexStatus().catch(() => null);
+        if (status?.state !== "building") searching.value = false;
+      }
+    }
   }
 
   /** n-tree onLoad:展开目录时加载其子节点 */
@@ -259,6 +291,9 @@ export const useExplorerStore = defineStore("explorer", () => {
   });
   Events.On("archive:index-ready", () => {
     void refreshTreeTags();
+    if (mode.value === "search" && query.value.trim()) {
+      void search(query.value);
+    }
   });
 
   return {
@@ -271,10 +306,12 @@ export const useExplorerStore = defineStore("explorer", () => {
     searching,
     exactMatch,
     mode,
+    revision,
     toTreeItem,
     toSearchItem,
     getItem,
     loadRoots,
+    reload,
     loadChildren,
     revealPath,
     refreshTreeTags,

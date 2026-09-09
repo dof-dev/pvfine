@@ -111,6 +111,25 @@ func (c *core) setArchive(a *pvf.Archive) error {
 		return err
 	}
 	c.mu.Lock()
+	c.installArchiveIndexesLocked(a, children, paths)
+	c.mu.Unlock()
+	return nil
+}
+
+// rebuildArchiveIndexesLocked refreshes every derived view after the archive's
+// file table changes. The caller must hold c.mu and must pass c.archive.
+func (c *core) rebuildArchiveIndexesLocked(a *pvf.Archive) error {
+	children, paths, err := buildIndex(a)
+	if err != nil {
+		return err
+	}
+	c.installArchiveIndexesLocked(a, children, paths)
+	return nil
+}
+
+// installArchiveIndexesLocked installs a complete set of derived indexes.
+// The caller must hold c.mu.
+func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][]*TreeNode, paths []pathEntry) {
 	if c.indexCancel != nil {
 		c.indexCancel()
 		c.indexCancel = nil
@@ -147,8 +166,6 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
-	c.mu.Unlock()
-	return nil
 }
 
 func (c *core) closeArchive() {

@@ -26,6 +26,33 @@ func TestScriptListPairs(t *testing.T) {
 	}
 }
 
+func TestRemoveListPairs(t *testing.T) {
+	a := New()
+	index, err := a.AddFileText(
+		"equipment/equipment.lst",
+		"1008 `character/common/amulet/1008.equ` 1009 `character/common/amulet/1009.equ` 1008 `character/common/amulet/1008.equ`",
+		TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := a.RemoveListPairs(index, []ListPair{{ID: "1008", Path: "character/common/amulet/1008.equ"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed = %d, want 2", removed)
+	}
+	pairs, err := a.ScriptListPairs(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pairs) != 1 || pairs[0].ID != "1009" {
+		t.Fatalf("remaining pairs = %#v", pairs)
+	}
+}
+
 func TestScriptName(t *testing.T) {
 	a := New()
 	index, err := a.AddFileText("equipment/character/amulet/1008.equ", "[name]\n`烈火之心项链`\n[grade]\n1", TypeScript)

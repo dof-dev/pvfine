@@ -57,6 +57,72 @@ func (a *Archive) ScriptListPairs(i int32) ([]ListPair, error) {
 	return pairs, nil
 }
 
+// RemoveListPairs removes matching id/path pairs from a TypeScript .lst
+// payload while preserving the original token encoding of every remaining
+// pair. Duplicate matching pairs are removed together.
+func (a *Archive) RemoveListPairs(i int32, entries []ListPair) (int, error) {
+	if i < 0 || i >= int32(len(a.items)) {
+		return 0, ErrBadIndex
+	}
+	if a.items[i].typ != TypeScript {
+		return 0, fmt.Errorf("pvf: file %d is not a script", i)
+	}
+	if len(entries) == 0 {
+		return 0, nil
+	}
+
+	targets := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		id := strings.TrimSpace(entry.ID)
+		path := strings.TrimSpace(entry.Path)
+		if id == "" || path == "" {
+			continue
+		}
+		targets[id+"\x00"+path] = struct{}{}
+	}
+	if len(targets) == 0 {
+		return 0, nil
+	}
+
+	raw, err := a.RawBytes(i)
+	if err != nil {
+		return 0, err
+	}
+	if len(raw)%5 != 0 {
+		return 0, fmt.Errorf("pvf: malformed script payload for file %d", i)
+	}
+	values := make([]scriptMetadataValue, 0, len(raw)/5)
+	for pos := 0; pos < len(raw); pos += 5 {
+		value, ok := a.scriptMetadataValue(raw[pos], int32(binary.LittleEndian.Uint32(raw[pos+1:])))
+		if !ok {
+			return 0, fmt.Errorf("pvf: incomplete or unsupported .lst pair data for file %d", i)
+		}
+		values = append(values, value)
+	}
+	if len(values)%2 != 0 {
+		return 0, fmt.Errorf("pvf: incomplete or unsupported .lst pair data for file %d", i)
+	}
+
+	result := make([]byte, 0, len(raw))
+	removed := 0
+	for pos := 0; pos < len(values); pos += 2 {
+		id := strings.TrimSpace(values[pos].text)
+		path := strings.TrimSpace(values[pos+1].text)
+		if _, ok := targets[id+"\x00"+path]; ok && id != "" && path != "" {
+			removed++
+			continue
+		}
+		result = append(result, raw[pos*5:(pos+2)*5]...)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	if err := a.SetRawBytes(i, result); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
 // ScriptName extracts the first direct string value from the [name] section
 // without formatting or materializing the full decompiled script.
 func (a *Archive) ScriptName(i int32) (string, bool, error) {

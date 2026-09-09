@@ -138,6 +138,19 @@ export interface FileMeta {
 }
 
 /**
+ * FileRegistration describes one indexed id/path entry in an archive list.
+ */
+export interface FileRegistration {
+    "id": string;
+    "category": string;
+    "fileIndex": number;
+    "filePath": string;
+    "listFileIndex": number;
+    "listPath": string;
+    "entryPath": string;
+}
+
+/**
  * FileSetDocument 是全部文件集的持久化文档,与当前打开的 PVF 无关。
  */
 export interface FileSetDocument {

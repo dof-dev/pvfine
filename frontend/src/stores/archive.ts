@@ -204,6 +204,10 @@ export const useArchiveStore = defineStore("archive", () => {
   Events.On("archive:saved", (event: any) => {
     info.value = eventData(event);
   });
+  Events.On("archive:changed", (event: any) => {
+    const data = eventData(event);
+    if (data?.path) info.value = data;
+  });
   Events.On("archive:batch-applied", () => {
     void refreshInfo();
   });

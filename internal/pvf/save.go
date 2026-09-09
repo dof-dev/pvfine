@@ -62,8 +62,18 @@ func (a *Archive) Save() error {
 // built from scratch that have not been saved yet).
 func (a *Archive) SourcePath() string { return a.sourcePath }
 
-// ModifiedCount returns the number of entries with pending in-memory edits.
-func (a *Archive) ModifiedCount() int { return len(a.overlay) }
+// ModifiedCount returns a non-zero modification count for both payload and
+// structural edits. Structural edits do not belong to a single entry, so they
+// contribute one indicator entry when no payload overlay exists.
+func (a *Archive) ModifiedCount() int {
+	if len(a.overlay) > 0 {
+		return len(a.overlay)
+	}
+	if a.structuralDirty {
+		return 1
+	}
+	return 0
+}
 
 // ExtractTo unpacks every entry under dir, recreating the internal directory
 // structure. Characters illegal in file names are replaced; the destination
@@ -179,6 +189,9 @@ func (a *Archive) rebuild() ([]byte, error) {
 			modifiedChunks[it.chunk] = true
 		}
 	}
+	for chunk := range a.removedSpans {
+		modifiedChunks[chunk] = true
+	}
 
 	// Pass 1: per-chunk output. Untouched chunks are copied as raw encrypted
 	// bytes; modified chunks are rebuilt, re-compressed and re-encrypted.
@@ -289,13 +302,16 @@ func (a *Archive) rebuild() ([]byte, error) {
 
 // rebuildChunk returns chunk ci with overlay payloads spliced in, ported from
 // the reference implementation: segments are written in offset order, gaps
-// are copied from the original chunk.
+// are copied from the original chunk except ranges belonging to deleted files.
 func (a *Archive) rebuildChunk(ci int32) ([]byte, error) {
 	orig, err := a.Chunk(ci)
 	if err != nil {
 		return nil, err
 	}
-	type seg struct{ off, size, idx int32; hasNew bool }
+	type seg struct {
+		off, size, idx int32
+		hasNew         bool
+	}
 	var segs []seg
 	for i := range a.items {
 		it := &a.items[i]
@@ -309,13 +325,13 @@ func (a *Archive) rebuildChunk(ci int32) ([]byte, error) {
 		segs = append(segs, seg{off: it.off, size: it.size, idx: int32(i), hasNew: hasNew})
 	}
 	sort.Slice(segs, func(x, y int) bool { return segs[x].off < segs[y].off })
+	removed := append([]removedFileSpan(nil), a.removedSpans[ci]...)
+	sort.Slice(removed, func(x, y int) bool { return removed[x].off < removed[y].off })
 
 	var buf bytes.Buffer
 	var srcPos int32
 	for _, s := range segs {
-		if int64(s.off) > int64(srcPos) && orig != nil {
-			buf.Write(orig[srcPos:s.off])
-		}
+		writeOriginalRange(&buf, orig, srcPos, s.off, removed)
 		it := &a.items[s.idx]
 		it.off = int32(buf.Len())
 		if s.hasNew {
@@ -327,10 +343,55 @@ func (a *Archive) rebuildChunk(ci int32) ([]byte, error) {
 		}
 		srcPos = s.off + s.size
 	}
-	if orig != nil && int(srcPos) < len(orig) {
-		buf.Write(orig[srcPos:])
-	}
+	writeOriginalRange(&buf, orig, srcPos, int32(len(orig)), removed)
 	return buf.Bytes(), nil
+}
+
+func writeOriginalRange(buf *bytes.Buffer, orig []byte, start, end int32, removed []removedFileSpan) {
+	if len(orig) == 0 || end <= start {
+		return
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > int32(len(orig)) {
+		end = int32(len(orig))
+	}
+	if end <= start {
+		return
+	}
+
+	pos := start
+	for _, span := range removed {
+		spanStart := span.off
+		spanEnd := span.off + span.size
+		if spanEnd <= pos {
+			continue
+		}
+		if spanStart >= end {
+			break
+		}
+		if spanStart > pos {
+			from, to := pos, minInt32(spanStart, end)
+			buf.Write(orig[from:to])
+		}
+		if spanEnd > pos {
+			pos = spanEnd
+		}
+		if pos >= end {
+			return
+		}
+	}
+	if pos < end {
+		buf.Write(orig[pos:end])
+	}
+}
+
+func minInt32(a, b int32) int32 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // adoptRebuilt refreshes in-memory state so the archive keeps working after a
@@ -363,6 +424,8 @@ func (a *Archive) adoptRebuilt(out []byte) {
 	a.chunkCache = map[int32][]byte{}
 	a.overlay = map[int32][]byte{}
 	a.poolsDirty = false
+	a.structuralDirty = false
+	a.removedSpans = make(map[int32][]removedFileSpan)
 }
 
 func marshalItem(b []byte, it *fileItem) {

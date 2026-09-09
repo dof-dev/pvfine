@@ -340,6 +340,102 @@ func TestSearchIndexUsesConfiguredRelationListPaths(t *testing.T) {
 	}
 }
 
+func TestArchiveServiceCreateAndDeleteFiles(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	first := a.AddFile("dir/first.equ", []byte("first"), pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	svc := NewArchiveService(c)
+	created, err := svc.CreateFile("dir/new.str", pvf.TypeUnicode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created == nil || created.Path != "dir/new.str" || created.FileIndex <= first {
+		t.Fatalf("created node = %#v", created)
+	}
+	if got := svc.Info().FileCount; got != 2 {
+		t.Fatalf("file count after create = %d", got)
+	}
+
+	removed, err := svc.DeleteFiles([]int32{first, created.FileIndex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 2 || svc.Info().FileCount != 0 {
+		t.Fatalf("removed=%#v info=%#v", removed, svc.Info())
+	}
+	children, err := svc.ListChildren("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 0 {
+		t.Fatalf("root children after delete = %#v", children)
+	}
+}
+
+func TestArchiveServiceDeleteFileRegistrations(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	_, err := a.AddFileText(
+		"equipment/equipment.lst",
+		"1008 `character/common/amulet/1008.equ` 1009 `character/common/amulet/1009.equ`",
+		pvf.TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := a.AddFileText(
+		"equipment/character/common/amulet/1008.equ",
+		"[name]\n`目标装备`",
+		pvf.TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddFileText(
+		"equipment/character/common/amulet/1009.equ",
+		"[name]\n`保留装备`",
+		pvf.TypeScript,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	svc := NewArchiveService(c)
+	registrations, err := svc.FindFileRegistrations([]int32{target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registrations) != 1 || registrations[0].ID != "1008" || registrations[0].ListPath != "equipment/equipment.lst" {
+		t.Fatalf("registrations = %#v", registrations)
+	}
+
+	if _, err := svc.DeleteFilesWithRegistrations([]int32{target}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.archive.Find("equipment/character/common/amulet/1008.equ"); ok {
+		t.Fatal("deleted target is still indexed")
+	}
+	listIndex, ok := c.archive.Find("equipment/equipment.lst")
+	if !ok {
+		t.Fatal("list file was deleted unexpectedly")
+	}
+	listText, err := c.archive.Text(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(listText, "1008") || !strings.Contains(listText, "1009") {
+		t.Fatalf("list after synced delete = %q", listText)
+	}
+}
+
 func TestSearchRequiresReadyIndex(t *testing.T) {
 	c := NewCore()
 	svc := NewArchiveService(c)

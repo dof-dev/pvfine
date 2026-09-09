@@ -719,29 +719,31 @@ func (a *Archive) cloneForBatch() *Archive {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
 	clone := &Archive{
-		data:         a.data,
-		hdr:          a.hdr,
-		guard:        a.guard,
-		sourcePath:   a.sourcePath,
-		tableOff:     a.tableOff,
-		hashOff:      a.hashOff,
-		nameOff:      a.nameOff,
-		grpiOff:      a.grpiOff,
-		bodyOff:      a.bodyOff,
-		hashSize:     a.hashSize,
-		nameSize:     a.nameSize,
-		grpiSize:     a.grpiSize,
-		items:        append([]fileItem(nil), a.items...),
-		groups:       append([]groupItem(nil), a.groups...),
-		strA:         append([]byte(nil), a.strA...),
-		strW:         append([]byte(nil), a.strW...),
-		strAIdx:      cloneStringOffsetMap(a.strAIdx),
-		strWIdx:      cloneStringOffsetMap(a.strWIdx),
-		poolsDirty:   a.poolsDirty,
-		resolveCache: cloneStringMap(a.resolveCache),
-		chunkCache:   make(map[int32][]byte),
-		overlay:      cloneBytesMap(a.overlay),
-		pathIndex:    a.pathIndex,
+		data:            a.data,
+		hdr:             a.hdr,
+		guard:           a.guard,
+		sourcePath:      a.sourcePath,
+		tableOff:        a.tableOff,
+		hashOff:         a.hashOff,
+		nameOff:         a.nameOff,
+		grpiOff:         a.grpiOff,
+		bodyOff:         a.bodyOff,
+		hashSize:        a.hashSize,
+		nameSize:        a.nameSize,
+		grpiSize:        a.grpiSize,
+		items:           append([]fileItem(nil), a.items...),
+		groups:          append([]groupItem(nil), a.groups...),
+		strA:            append([]byte(nil), a.strA...),
+		strW:            append([]byte(nil), a.strW...),
+		strAIdx:         cloneStringOffsetMap(a.strAIdx),
+		strWIdx:         cloneStringOffsetMap(a.strWIdx),
+		poolsDirty:      a.poolsDirty,
+		resolveCache:    cloneStringMap(a.resolveCache),
+		chunkCache:      make(map[int32][]byte),
+		overlay:         cloneBytesMap(a.overlay),
+		pathIndex:       cloneInt32Map(a.pathIndex),
+		structuralDirty: a.structuralDirty,
+		removedSpans:    cloneRemovedSpans(a.removedSpans),
 	}
 	return clone
 }
@@ -775,6 +777,17 @@ func cloneBytesMap(values map[int32][]byte) map[int32][]byte {
 	result := make(map[int32][]byte, len(values))
 	for key, value := range values {
 		result[key] = append([]byte(nil), value...)
+	}
+	return result
+}
+
+func cloneInt32Map(values map[string]int32) map[string]int32 {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]int32, len(values))
+	for key, value := range values {
+		result[key] = value
 	}
 	return result
 }

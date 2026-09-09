@@ -26,6 +26,10 @@ type fileItem struct {
 	typ              int32 // TypeScript / TypeUnicode
 }
 
+type removedFileSpan struct {
+	off, size int32
+}
+
 type groupItem struct{ compSize, origSize int32 }
 
 // Archive is a parsed PVF container. It is not safe for concurrent
@@ -50,10 +54,12 @@ type Archive struct {
 	strAIdx, strWIdx map[string]int32
 	poolsDirty       bool // pools gained appended strings since parse
 
-	resolveCache map[int32]string
-	chunkCache   map[int32][]byte
-	overlay      map[int32][]byte // index -> replacement payload
-	pathIndex    map[string]int32
+	resolveCache    map[int32]string
+	chunkCache      map[int32][]byte
+	overlay         map[int32][]byte // index -> replacement payload
+	pathIndex       map[string]int32
+	structuralDirty bool // file entries were added or removed since the last save
+	removedSpans    map[int32][]removedFileSpan
 }
 
 // Open reads and parses the archive at path.
@@ -82,6 +88,7 @@ func Parse(data []byte) (*Archive, error) {
 		chunkCache:   map[int32][]byte{},
 		overlay:      map[int32][]byte{},
 		pathIndex:    map[string]int32{},
+		removedSpans: make(map[int32][]removedFileSpan),
 	}
 
 	var raw [headerSize]byte
@@ -186,6 +193,7 @@ func New() *Archive {
 		chunkCache:   map[int32][]byte{},
 		overlay:      map[int32][]byte{},
 		pathIndex:    map[string]int32{},
+		removedSpans: make(map[int32][]removedFileSpan),
 	}
 }
 
@@ -326,10 +334,10 @@ type ArchiveInfoView struct {
 func (a *Archive) Info() ArchiveInfoView {
 	return ArchiveInfoView{
 		Path:          a.sourcePath,
-		FileCount:     a.hdr.FileCount,
+		FileCount:     int32(len(a.items)),
 		GroupCount:    a.hdr.GroupCount,
 		BodySize:      a.hdr.BodySize,
-		ModifiedCount: len(a.overlay),
+		ModifiedCount: a.ModifiedCount(),
 		UsesGuard:     a.guard,
 	}
 }

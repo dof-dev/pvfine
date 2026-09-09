@@ -396,6 +396,10 @@ export const useFileSetStore = defineStore("fileSets", () => {
   Events.On("archive:opened", (event: any) => {
     void onArchiveOpened(event);
   });
+  Events.On("archive:changed", (event: any) => {
+    const path = String(event?.data?.path ?? event?.path ?? "");
+    if (path && path === archivePath) void resolveEntries(path);
+  });
   Events.On("archive:closed", onArchiveClosed);
 
   return {

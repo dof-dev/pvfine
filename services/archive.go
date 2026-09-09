@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -18,6 +19,17 @@ func NewArchiveService(c *core) *ArchiveService { return &ArchiveService{c: c} }
 
 // ArchiveInfo 是前端可观察的归档状态快照。
 type ArchiveInfo = pvf.ArchiveInfoView
+
+// FileRegistration describes one indexed id/path entry in an archive list.
+type FileRegistration struct {
+	ID            string `json:"id"`
+	Category      string `json:"category"`
+	FileIndex     int32  `json:"fileIndex"`
+	FilePath      string `json:"filePath"`
+	ListFileIndex int32  `json:"listFileIndex"`
+	ListPath      string `json:"listPath"`
+	EntryPath     string `json:"entryPath"`
+}
 
 // OpenDialog 弹出文件选择框并加载归档。
 func (s *ArchiveService) OpenDialog() (*ArchiveInfo, error) {
@@ -180,6 +192,198 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 	return result, nil
 }
 
+// FindFileRegistrations returns configured .lst entries that point to the
+// supplied file indexes. It uses the same relation definitions as the search
+// index, including contextual skill lists.
+func (s *ArchiveService) FindFileRegistrations(fileIndexes []int32) ([]*FileRegistration, error) {
+	specs := s.c.searchableListSpecs()
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+	if err := validateFileIndexes(s.c.archive, fileIndexes); err != nil {
+		return nil, err
+	}
+	return findFileRegistrationsLocked(s.c.archive, specs, fileIndexes), nil
+}
+
+// CreateFile adds an empty editable file to the current archive. dataType is
+// pvf.TypeScript or pvf.TypeUnicode; the caller can fill its content through
+// EditorService.SetText afterwards.
+func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, error) {
+	path, err := normalizeNewFilePath(path)
+	if err != nil {
+		return nil, err
+	}
+	if dataType != pvf.TypeScript && dataType != pvf.TypeUnicode {
+		return nil, fmt.Errorf("不支持的新文件类型: %d", dataType)
+	}
+
+	s.c.mu.Lock()
+	a := s.c.archive
+	if a == nil {
+		s.c.mu.Unlock()
+		return nil, ErrNoArchive
+	}
+	if _, exists := a.Find(path); exists {
+		s.c.mu.Unlock()
+		return nil, fmt.Errorf("文件已存在: %s", path)
+	}
+	index := a.AddFile(path, []byte{}, dataType)
+	if err := s.c.rebuildArchiveIndexesLocked(a); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	node := &TreeNode{
+		Name:        a.File(index).Name,
+		Path:        a.Path(index),
+		Size:        0,
+		DataType:    dataType,
+		FileIndex:   index,
+		Annotations: cloneTreeAnnotations(s.c.pathAnnotations[a.Path(index)]),
+	}
+	info := a.Info()
+	s.c.mu.Unlock()
+
+	s.c.startSearchIndex()
+	emitEvent("archive:changed", info)
+	return node, nil
+}
+
+// DeleteFiles removes one or more file entries from the current archive.
+func (s *ArchiveService) DeleteFiles(fileIndexes []int32) ([]string, error) {
+	return s.deleteFiles(fileIndexes, false)
+}
+
+// DeleteFilesWithRegistrations removes files and, when requested, the
+// configured .lst entries that register those files.
+func (s *ArchiveService) DeleteFilesWithRegistrations(fileIndexes []int32, syncRegistrations bool) ([]string, error) {
+	return s.deleteFiles(fileIndexes, syncRegistrations)
+}
+
+func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool) ([]string, error) {
+	var specs []searchableListSpec
+	if syncRegistrations {
+		specs = s.c.searchableListSpecs()
+	}
+
+	s.c.mu.Lock()
+	a := s.c.archive
+	if a == nil {
+		s.c.mu.Unlock()
+		return nil, ErrNoArchive
+	}
+	if err := validateFileIndexes(a, fileIndexes); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	if syncRegistrations {
+		registrations := findFileRegistrationsLocked(a, specs, fileIndexes)
+		byList := make(map[int32][]pvf.ListPair)
+		for _, registration := range registrations {
+			byList[registration.ListFileIndex] = append(
+				byList[registration.ListFileIndex],
+				pvf.ListPair{ID: registration.ID, Path: registration.EntryPath},
+			)
+		}
+		for listIndex, entries := range byList {
+			if _, err := a.RemoveListPairs(listIndex, entries); err != nil {
+				s.c.mu.Unlock()
+				return nil, err
+			}
+		}
+	}
+	paths, err := a.RemoveFiles(fileIndexes)
+	if err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	if len(paths) == 0 {
+		s.c.mu.Unlock()
+		return []string{}, nil
+	}
+	if err := s.c.rebuildArchiveIndexesLocked(a); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	info := a.Info()
+	s.c.mu.Unlock()
+
+	s.c.startSearchIndex()
+	emitEvent("archive:changed", info)
+	return paths, nil
+}
+
+func validateFileIndexes(a *pvf.Archive, indexes []int32) error {
+	for _, index := range indexes {
+		if index < 0 || index >= a.FileCount() {
+			return fmt.Errorf("文件索引越界: %d", index)
+		}
+	}
+	return nil
+}
+
+func findFileRegistrationsLocked(a *pvf.Archive, specs []searchableListSpec, fileIndexes []int32) []*FileRegistration {
+	targets := make(map[int32]string, len(fileIndexes))
+	for _, index := range fileIndexes {
+		if index < 0 || index >= a.FileCount() {
+			continue
+		}
+		targets[index] = a.Path(index)
+	}
+	if len(targets) == 0 {
+		return []*FileRegistration{}
+	}
+
+	registrations := make([]*FileRegistration, 0)
+	for _, spec := range specs {
+		listIndex, ok := a.Find(spec.listPath)
+		if !ok {
+			continue
+		}
+		pairs, err := a.ScriptListPairs(listIndex)
+		if err != nil {
+			continue
+		}
+		listPath := a.Path(listIndex)
+		for _, pair := range pairs {
+			targetPath, ok := resolveListPath(spec.listPath, pair.Path)
+			if !ok {
+				continue
+			}
+			targetIndex, ok := a.Find(targetPath)
+			if !ok {
+				continue
+			}
+			filePath, selected := targets[targetIndex]
+			if !selected {
+				continue
+			}
+			registrations = append(registrations, &FileRegistration{
+				ID:            pair.ID,
+				Category:      spec.category,
+				FileIndex:     targetIndex,
+				FilePath:      filePath,
+				ListFileIndex: listIndex,
+				ListPath:      listPath,
+				EntryPath:     pair.Path,
+			})
+		}
+	}
+	sort.SliceStable(registrations, func(i, j int) bool {
+		left, right := registrations[i], registrations[j]
+		if left.FilePath != right.FilePath {
+			return left.FilePath < right.FilePath
+		}
+		if left.ListPath != right.ListPath {
+			return left.ListPath < right.ListPath
+		}
+		return left.ID < right.ID
+	})
+	return registrations
+}
+
 // SuggestDirectories returns directory paths with a case-insensitive prefix
 // match. An empty prefix returns no suggestions to avoid flooding the UI.
 func (s *ArchiveService) SuggestDirectories(prefix string, limit int) ([]string, error) {
@@ -207,6 +411,19 @@ func (s *ArchiveService) SuggestDirectories(prefix string, limit int) ([]string,
 		}
 	}
 	return result, nil
+}
+
+func normalizeNewFilePath(raw string) (string, error) {
+	path := strings.Trim(strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/"), "/")
+	if path == "" {
+		return "", errors.New("文件名不能为空")
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("文件路径无效: %q", raw)
+		}
+	}
+	return path, nil
 }
 
 // SearchResult 是一页搜索命中;NextCursor < 0 表示已扫完。

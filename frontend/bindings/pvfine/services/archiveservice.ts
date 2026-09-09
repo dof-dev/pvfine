@@ -37,6 +37,39 @@ export function Close(): $CancellablePromise<void> {
 }
 
 /**
+ * CreateFile adds an empty editable file to the current archive. dataType is
+ * pvf.TypeScript or pvf.TypeUnicode; the caller can fill its content through
+ * EditorService.SetText afterwards.
+ */
+export function CreateFile(path: string, dataType: number): $CancellablePromise<$models.TreeNode | null> {
+    return $Call.ByID(3528027549, path, dataType);
+}
+
+/**
+ * DeleteFiles removes one or more file entries from the current archive.
+ */
+export function DeleteFiles(fileIndexes: number[] | null): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1323782031, fileIndexes);
+}
+
+/**
+ * DeleteFilesWithRegistrations removes files and, when requested, the
+ * configured .lst entries that register those files.
+ */
+export function DeleteFilesWithRegistrations(fileIndexes: number[] | null, syncRegistrations: boolean): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3396075955, fileIndexes, syncRegistrations);
+}
+
+/**
+ * FindFileRegistrations returns configured .lst entries that point to the
+ * supplied file indexes. It uses the same relation definitions as the search
+ * index, including contextual skill lists.
+ */
+export function FindFileRegistrations(fileIndexes: number[] | null): $CancellablePromise<($models.FileRegistration | null)[] | null> {
+    return $Call.ByID(3214711988, fileIndexes);
+}
+
+/**
  * IndexStatus 返回当前归档的语义搜索索引状态。
  */
 export function IndexStatus(): $CancellablePromise<$models.IndexStatus> {

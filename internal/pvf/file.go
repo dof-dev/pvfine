@@ -9,7 +9,7 @@ import (
 )
 
 // Modified reports whether any pending edits exist.
-func (a *Archive) Modified() bool { return len(a.overlay) > 0 }
+func (a *Archive) Modified() bool { return len(a.overlay) > 0 || a.structuralDirty }
 
 // RawBytes returns the file payload. The slice aliases a cached chunk;
 // treat it as read-only.
@@ -106,12 +106,78 @@ func (a *Archive) AddFile(relPath string, data []byte, dataType int32) int32 {
 	a.items = append(a.items, item)
 	i := int32(len(a.items) - 1)
 	a.pathIndex[normalized] = i
+	a.structuralDirty = true
 	if data != nil {
 		cp := make([]byte, len(data))
 		copy(cp, data)
 		a.overlay[i] = cp
 	}
 	return i
+}
+
+// RemoveFiles removes the entries at the supplied indexes. The operation is
+// applied atomically: invalid indexes are rejected before any entry is
+// removed. Returned paths use the archive's original entry order.
+func (a *Archive) RemoveFiles(indexes []int32) ([]string, error) {
+	if len(indexes) == 0 {
+		return []string{}, nil
+	}
+
+	removed := make(map[int32]struct{}, len(indexes))
+	for _, index := range indexes {
+		if index < 0 || index >= int32(len(a.items)) {
+			return nil, ErrBadIndex
+		}
+		removed[index] = struct{}{}
+	}
+	if len(removed) == 0 {
+		return []string{}, nil
+	}
+
+	paths := make([]string, 0, len(removed))
+	nextItems := make([]fileItem, 0, len(a.items)-len(removed))
+	nextOverlay := make(map[int32][]byte, len(a.overlay))
+	nextPathIndex := make(map[string]int32, len(a.pathIndex))
+	nextRemovedSpans := cloneRemovedSpans(a.removedSpans)
+	for oldIndex, item := range a.items {
+		index := int32(oldIndex)
+		if _, ok := removed[index]; ok {
+			paths = append(paths, a.Path(index))
+			if item.chunk >= 0 && item.chunk < int32(len(a.groups)) && item.size > 0 {
+				nextRemovedSpans[item.chunk] = append(
+					nextRemovedSpans[item.chunk],
+					removedFileSpan{off: item.off, size: item.size},
+				)
+			}
+			continue
+		}
+
+		newIndex := int32(len(nextItems))
+		nextItems = append(nextItems, item)
+		if payload, ok := a.overlay[index]; ok {
+			nextOverlay[newIndex] = payload
+		}
+		path := normalizePath(a.Path(index))
+		if _, exists := nextPathIndex[path]; !exists {
+			nextPathIndex[path] = newIndex
+		}
+	}
+
+	a.items = nextItems
+	a.overlay = nextOverlay
+	a.pathIndex = nextPathIndex
+	a.resolveCache = make(map[int32]string)
+	a.removedSpans = nextRemovedSpans
+	a.structuralDirty = true
+	return paths, nil
+}
+
+func cloneRemovedSpans(values map[int32][]removedFileSpan) map[int32][]removedFileSpan {
+	result := make(map[int32][]removedFileSpan, len(values))
+	for chunk, spans := range values {
+		result[chunk] = append([]removedFileSpan(nil), spans...)
+	}
+	return result
 }
 
 // AddFileText appends a new entry from decompiled text, encoding it according

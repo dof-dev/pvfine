@@ -116,6 +116,74 @@ func TestSyntheticEditAndRebuild(t *testing.T) {
 	}
 }
 
+func TestSyntheticDeleteAndRebuild(t *testing.T) {
+	source := New()
+	source.AddFile("x/a.txt", []byte("a"), TypeScript)
+	source.AddFile("x/b.txt", []byte("b"), TypeScript)
+	source.AddFile("x/c.txt", []byte("c"), TypeScript)
+	var original bytes.Buffer
+	if err := source.SaveTo(&original); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Parse(original.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _ := a.Find("x/a.txt")
+	second, _ := a.Find("x/b.txt")
+	third, _ := a.Find("x/c.txt")
+	if err := a.SetRawBytes(second, []byte("b modified")); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetRawBytes(third, []byte("c modified")); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := a.RemoveFiles([]int32{first, second, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 2 || removed[0] != "x/a.txt" || removed[1] != "x/b.txt" {
+		t.Fatalf("removed paths = %#v", removed)
+	}
+	if a.FileCount() != 1 || a.ModifiedCount() == 0 {
+		t.Fatalf("after delete count=%d modified=%d", a.FileCount(), a.ModifiedCount())
+	}
+	if _, ok := a.Find("x/a.txt"); ok {
+		t.Fatal("deleted file is still indexed")
+	}
+	remaining, ok := a.Find("x/c.txt")
+	if !ok || remaining != 0 {
+		t.Fatalf("remaining index = (%d, %v), want (0, true)", remaining, ok)
+	}
+	raw, err := a.RawBytes(remaining)
+	if err != nil || string(raw) != "c modified" {
+		t.Fatalf("remaining payload = %q, err = %v", raw, err)
+	}
+
+	var out bytes.Buffer
+	if err := a.SaveTo(&out); err != nil {
+		t.Fatal(err)
+	}
+	if a.ModifiedCount() != 0 {
+		t.Fatalf("modified after save = %d", a.ModifiedCount())
+	}
+	b, err := Parse(out.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.FileCount() != 1 {
+		t.Fatalf("saved file count = %d", b.FileCount())
+	}
+	if index, ok := b.Find("x/c.txt"); !ok || index != 0 {
+		t.Fatalf("saved remaining index = (%d, %v)", index, ok)
+	}
+	chunk, err := b.Chunk(0)
+	if err != nil || string(chunk) != "c modified" {
+		t.Fatalf("saved chunk = %q, err = %v", chunk, err)
+	}
+}
+
 func TestFindIsCaseInsensitive(t *testing.T) {
 	a := New()
 	index := a.AddFile("skill/fighter/shouldercharge.skl", []byte("skill"), TypeScript)

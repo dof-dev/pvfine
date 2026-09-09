@@ -6,14 +6,18 @@ import {
   NEmpty,
   NIcon,
   NInput,
+  NModal,
+  NSelect,
   NSpin,
   NTag,
+  NText,
   NTooltip,
+  useDialog,
   useMessage,
 } from "naive-ui";
 import { Target20Regular } from "@vicons/fluent";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
-import type { TreeNode } from "../../bindings/pvfine/services/models";
+import type { FileRegistration, TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
@@ -29,28 +33,72 @@ const fileSets = useFileSetStore();
 const batch = useBatchStore();
 const settings = useSettingsStore();
 const message = useMessage();
+const dialog = useDialog();
 
 const searchInput = ref("");
 const adding = ref(false);
 const exporting = ref(false);
 const copying = ref(false);
 const batching = ref(false);
+const creating = ref(false);
+const deleting = ref(false);
+const newFileVisible = ref(false);
+const newFileParent = ref("");
+const newFileName = ref("");
+const newFileType = ref(1);
+const newFileError = ref("");
 const contextMenu = ref({
   show: false,
   x: 0,
   y: 0,
   items: [] as TreeItem[],
+  anchor: null as TreeItem | null,
 });
 const searchTreeItems = computed(() => buildSearchTree(explorer.hits));
 const visibleTreeItems = computed(() =>
   explorer.mode === "search" ? searchTreeItems.value : explorer.roots
 );
-const treeKey = computed(() => `${explorer.mode}:${explorer.query}`);
+const treeKey = computed(() => `${explorer.mode}:${explorer.query}:${explorer.revision}`);
+const newFileTypeOptions = [
+  { label: "脚本（DataType 1）", value: 1 },
+  { label: "文本（DataType 3）", value: 3 },
+];
 const contextMenuOptions = computed(() => [
+  {
+    label: "新建文件",
+    key: "new-file",
+    disabled:
+      creating.value ||
+      deleting.value ||
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      batching.value ||
+      !archive.open,
+  },
+  {
+    label: "删除文件",
+    key: "delete",
+    disabled:
+      creating.value ||
+      deleting.value ||
+      adding.value ||
+      exporting.value ||
+      copying.value ||
+      batching.value ||
+      !archive.open ||
+      contextMenu.value.items.length === 0,
+  },
+  {
+    type: "divider",
+    key: "divider",
+  },
   {
     label: "导出文件",
     key: "export",
     disabled:
+      creating.value ||
+      deleting.value ||
       adding.value ||
       exporting.value ||
       copying.value ||
@@ -62,6 +110,8 @@ const contextMenuOptions = computed(() => [
     label: "复制文件路径",
     key: "copy-paths",
     disabled:
+      creating.value ||
+      deleting.value ||
       adding.value ||
       exporting.value ||
       copying.value ||
@@ -73,6 +123,8 @@ const contextMenuOptions = computed(() => [
     label: `加入“${fileSets.activeSet?.name ?? "当前文件集"}”`,
     key: "add",
     disabled:
+      creating.value ||
+      deleting.value ||
       adding.value ||
       exporting.value ||
       copying.value ||
@@ -84,6 +136,8 @@ const contextMenuOptions = computed(() => [
     label: "批量处理…",
     key: "batch",
     disabled:
+      creating.value ||
+      deleting.value ||
       adding.value ||
       exporting.value ||
       copying.value ||
@@ -134,6 +188,7 @@ function onTreeOpen(item: TreeItem): void {
 function hideContextMenu(): void {
   contextMenu.value.show = false;
   contextMenu.value.items = [];
+  contextMenu.value.anchor = null;
 }
 
 function onTreeContextMenu(
@@ -141,7 +196,7 @@ function onTreeContextMenu(
   item: TreeItem | null,
   items: TreeItem[]
 ): void {
-  if (!item || items.length === 0) {
+  if (!archive.open) {
     hideContextMenu();
     return;
   }
@@ -149,8 +204,60 @@ function onTreeContextMenu(
     show: true,
     x: event.clientX,
     y: event.clientY,
-    items,
+    items: item ? items : [],
+    anchor: item,
   };
+}
+
+function parentDirectory(item: TreeItem | null): string {
+  if (!item) return "";
+  if (item.isDir) return item.key;
+  const slash = item.key.lastIndexOf("/");
+  return slash >= 0 ? item.key.slice(0, slash) : "";
+}
+
+function openNewFileDialog(item: TreeItem | null): void {
+  newFileParent.value = parentDirectory(item);
+  newFileName.value = "";
+  newFileType.value = 1;
+  newFileError.value = "";
+  newFileVisible.value = true;
+  hideContextMenu();
+}
+
+function closeNewFileDialog(): void {
+  if (creating.value) return;
+  newFileVisible.value = false;
+  newFileError.value = "";
+}
+
+async function submitNewFile(): Promise<void> {
+  if (creating.value) return;
+  const name = newFileName.value.trim().replaceAll("\\", "/");
+  if (!name || name.includes("/") || name === "." || name === "..") {
+    newFileError.value = "请输入不含目录的文件名";
+    return;
+  }
+
+  const path = newFileParent.value ? `${newFileParent.value}/${name}` : name;
+  creating.value = true;
+  newFileError.value = "";
+  try {
+    await editor.flushPending();
+    const node = await ArchiveService.CreateFile(path, newFileType.value);
+    if (!node) throw new Error("后端未返回新文件信息");
+    newFileVisible.value = false;
+    await archive.refreshInfo();
+    await explorer.reload();
+    if (explorer.mode === "tree") await explorer.revealPath(node.path);
+    else explorer.selectedKey = node.path;
+    await editor.openFile(node.fileIndex);
+    message.success(`已新建文件 ${node.path}`);
+  } catch (error: any) {
+    newFileError.value = String(error?.message ?? error);
+  } finally {
+    creating.value = false;
+  }
 }
 
 function serviceEntry(node: TreeNode): FileSetEntry {
@@ -226,6 +333,87 @@ async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
     .map(serviceEntry);
 }
 
+type DeleteDecision = "sync" | "files-only" | "cancel";
+
+function confirmDelete(
+  fileCount: number,
+  files: FileSetEntry[],
+  registrations: FileRegistration[]
+): Promise<DeleteDecision> {
+  const preview = files
+    .slice(0, 3)
+    .map((file) => file.path)
+    .join("、");
+  const fileSuffix = fileCount > 3 ? ` 等 ${fileCount} 个文件` : "";
+  const registrationPreview = registrations
+    .slice(0, 3)
+    .map((registration) => `${registration.listPath}（ID ${registration.id}）`)
+    .join("、");
+  const registrationSuffix = registrations.length > 3 ? ` 等 ${registrations.length} 条` : "";
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: DeleteDecision) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const hasRegistrations = registrations.length > 0;
+    dialog.warning({
+      title: "删除文件",
+      content: hasRegistrations
+        ? `确定删除 ${preview}${fileSuffix}吗？发现 ${registrations.length} 条注册项（${registrationPreview}${registrationSuffix}）。是否同步从 lst 中删除？`
+        : `确定删除 ${preview}${fileSuffix}吗？删除只会修改当前归档内存，保存后才写入磁盘。`,
+      positiveText: hasRegistrations ? "同步删除注册项" : "删除",
+      negativeText: hasRegistrations ? "仅删除文件" : "取消",
+      onPositiveClick: () => finish(hasRegistrations ? "sync" : "files-only"),
+      onNegativeClick: () => finish(hasRegistrations ? "files-only" : "cancel"),
+      onClose: () => finish("cancel"),
+    });
+  });
+}
+
+async function onDeleteSelected(items: TreeItem[]): Promise<void> {
+  if (deleting.value) return;
+  const selectedItems = [...items];
+  hideContextMenu();
+  deleting.value = true;
+  try {
+    const files = await collectFiles(selectedItems);
+    const indexes = [...new Set(files.map((file) => file.fileIndex).filter((index) => index >= 0))];
+    if (indexes.length === 0) {
+      message.info("选中的目录中没有文件");
+      return;
+    }
+    await editor.flushPending();
+    const registrations = ((await ArchiveService.FindFileRegistrations(indexes)) ?? []).filter(
+      (registration): registration is FileRegistration => !!registration
+    );
+    const decision = await confirmDelete(indexes.length, files, registrations);
+    if (decision === "cancel") return;
+
+    await editor.flushPending();
+    const removed = await ArchiveService.DeleteFilesWithRegistrations(
+      indexes,
+      decision === "sync"
+    );
+    await editor.refreshAfterArchiveChange(
+      decision === "sync" ? registrations.map((registration) => registration.listPath) : []
+    );
+    await archive.refreshInfo();
+    await explorer.reload();
+    const registrationMessage =
+      decision === "sync" ? `，同步删除 ${registrations.length} 条注册项` : "";
+    message.success(
+      `已删除 ${removed?.length ?? indexes.length} 个文件${registrationMessage}`
+    );
+  } catch (error: any) {
+    message.error(`删除文件失败: ${error?.message ?? error}`);
+  } finally {
+    deleting.value = false;
+  }
+}
+
 async function writeClipboardText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     try {
@@ -274,6 +462,14 @@ async function onCopyPaths(items: TreeItem[]): Promise<void> {
 }
 
 async function onContextMenuSelect(key: string | number): Promise<void> {
+  if (key === "new-file") {
+    openNewFileDialog(contextMenu.value.anchor);
+    return;
+  }
+  if (key === "delete") {
+    void onDeleteSelected(contextMenu.value.items);
+    return;
+  }
   if (key === "export") {
     await onExportSelected(contextMenu.value.items);
     return;
@@ -489,7 +685,7 @@ function sortTree(items: TreeItem[]): void {
 
     <NSpin
       class="exp-spin"
-      :show="archive.loading || explorer.searching || adding || exporting || copying || batching"
+      :show="archive.loading || explorer.searching || adding || exporting || copying || batching || creating || deleting"
     >
       <div class="exp-body">
         <!-- 空态 -->
@@ -541,6 +737,40 @@ function sortTree(items: TreeItem[]): void {
       @select="onContextMenuSelect"
       @clickoutside="hideContextMenu"
     />
+    <NModal
+      :show="newFileVisible"
+      preset="card"
+      title="新建文件"
+      :style="{ width: 'min(420px, calc(100vw - 48px))' }"
+      :mask-closable="false"
+      @update:show="(show) => !show && closeNewFileDialog()"
+    >
+      <div class="new-file-form">
+        <NText depth="3">
+          创建位置：{{ newFileParent ? `${newFileParent}/` : "归档根目录/" }}
+        </NText>
+        <NInput
+          v-model:value="newFileName"
+          autofocus
+          placeholder="输入文件名"
+          :disabled="creating"
+          :status="newFileError ? 'error' : undefined"
+          @keydown.enter.prevent="submitNewFile"
+        />
+        <NSelect
+          v-model:value="newFileType"
+          :options="newFileTypeOptions"
+          :disabled="creating"
+        />
+        <NText v-if="newFileError" type="error">{{ newFileError }}</NText>
+      </div>
+      <template #footer>
+        <div class="new-file-modal-footer">
+          <NButton quaternary :disabled="creating" @click="closeNewFileDialog">取消</NButton>
+          <NButton type="primary" :loading="creating" @click="submitNewFile">创建</NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
@@ -614,6 +844,16 @@ function sortTree(items: TreeItem[]): void {
 }
 .exp-empty {
   margin-top: 80px;
+}
+.new-file-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.new-file-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .search-meta {
   display: flex;

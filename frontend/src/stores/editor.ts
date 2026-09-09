@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, reactive, ref } from "vue";
-import { EditorService } from "../../bindings/pvfine/services";
+import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
@@ -481,6 +481,11 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  function discardPendingSync(): void {
+    window.clearTimeout(syncTimer);
+    pendingSync.clear();
+  }
+
   async function syncTab(tab: EditorTab) {
     const text = tab.text;
     await EditorService.SetText(tab.index, text);
@@ -526,6 +531,76 @@ export const useEditorStore = defineStore("editor", () => {
     );
   }
 
+  /** 文件表变化后按路径重新绑定标签，并刷新被自动修改的 lst 标签。 */
+  async function refreshAfterArchiveChange(refreshPaths: string[] = []): Promise<void> {
+    // 结构变更已经完成，旧索引上的待同步请求不能再发送；标签中的
+    // 本地文本保留，后续编辑会按新的文件索引继续同步。
+    discardPendingSync();
+    if (tabs.value.length === 0) return;
+
+    const currentTabs = [...tabs.value];
+    const nodes = (await ArchiveService.ResolveFiles(currentTabs.map((tab) => tab.path))) ?? [];
+    const indexByPath = new Map(
+      nodes
+        .filter((node): node is NonNullable<typeof node> => !!node && !node.isDir)
+        .map((node) => [node.path, node])
+    );
+    const nextIndexByOld = new Map<number, number>();
+    const remainingTabs: EditorTab[] = [];
+    const pathsToRefresh = new Set(
+      refreshPaths.map((path) => path.replaceAll("\\", "/").replace(/^\/+|\/+$/g, ""))
+    );
+
+    for (const tab of currentTabs) {
+      const node = indexByPath.get(tab.path);
+      if (!node) continue;
+      nextIndexByOld.set(tab.index, node.fileIndex);
+      tab.index = node.fileIndex;
+      tab.path = node.path;
+      tab.title = node.path.split("/").pop() ?? node.path;
+      tab.size = node.size;
+      tab.dataType = node.dataType;
+      remainingTabs.push(tab);
+    }
+
+    for (const pane of Object.values(paneStates)) {
+      const oldActive = pane.activeKey;
+      const nextIndexes = pane.tabIndexes
+        .map((index) => nextIndexByOld.get(index))
+        .filter((index): index is number => index !== undefined);
+      pane.tabIndexes.splice(0, pane.tabIndexes.length, ...nextIndexes);
+      pane.activeKey =
+        (oldActive === null ? null : nextIndexByOld.get(oldActive)) ??
+        pane.tabIndexes[pane.tabIndexes.length - 1] ??
+        null;
+    }
+
+    tabs.value = remainingTabs;
+    pendingSync.clear();
+    await Promise.all(
+      remainingTabs
+        .filter((tab) => pathsToRefresh.has(tab.path))
+        .map(async (tab) => {
+          const meta = await EditorService.GetFile(tab.index);
+          if (!meta) return;
+          tab.path = meta.path;
+          tab.title = meta.path.split("/").pop() ?? meta.path;
+          tab.dataType = meta.dataType;
+          tab.size = meta.size;
+          tab.text = meta.text;
+          tab.modified = meta.modified;
+          tab.annotations = (meta.annotations ?? []).filter(
+            (annotation): annotation is EditorAnnotation => !!annotation
+          );
+        })
+    );
+    while (isSplit.value) {
+      const emptyPane = panes.value.find((pane) => pane.tabIndexes.length === 0);
+      if (!emptyPane) break;
+      closeSplit(emptyPane.id);
+    }
+  }
+
   return {
     tabs,
     panes,
@@ -556,5 +631,6 @@ export const useEditorStore = defineStore("editor", () => {
     flushPending,
     refreshAnnotations,
     refreshBatchFiles,
+    refreshAfterArchiveChange,
   };
 });
