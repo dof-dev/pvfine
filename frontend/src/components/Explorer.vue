@@ -15,7 +15,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
-import { Target20Regular } from "@vicons/fluent";
+import { ArrowCollapseAll20Regular, Target20Regular } from "@vicons/fluent";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { FileRegistration, TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
@@ -40,6 +40,7 @@ const message = useMessage();
 const dialog = useDialog();
 
 const searchInput = ref("");
+const fileTreeRef = ref<{ collapseAll: () => void } | null>(null);
 const adding = ref(false);
 const bookmarking = ref(false);
 const exporting = ref(false);
@@ -211,6 +212,10 @@ function clearSearch(): void {
 
 function toggleExactMatch(): void {
   void explorer.setExactMatch(!explorer.exactMatch);
+}
+
+function collapseAllDirectories(): void {
+  fileTreeRef.value?.collapseAll();
 }
 
 async function onTreeLoad(item: TreeItem): Promise<void> {
@@ -780,6 +785,22 @@ function sortTree(items: TreeItem[]): void {
 <template>
   <div class="explorer">
     <div class="exp-search">
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            circle
+            size="small"
+            class="collapse-all"
+            :disabled="!archive.open"
+            aria-label="收起所有目录"
+            @click="collapseAllDirectories"
+          >
+            <template #icon><NIcon><ArrowCollapseAll20Regular /></NIcon></template>
+          </NButton>
+        </template>
+        收起所有目录
+      </NTooltip>
       <NInput
         v-model:value="searchInput"
         :placeholder="archive.indexReady ? '搜索路径、名称或 id（支持 *、?）…' : '索引完成后可搜索路径、名称或 id…'"
@@ -840,6 +861,7 @@ function sortTree(items: TreeItem[]): void {
           />
           <div v-else class="tree-viewport">
             <FileTree
+              ref="fileTreeRef"
               :key="treeKey"
               :items="visibleTreeItems"
               :expand-all="explorer.mode === 'search'"
@@ -933,8 +955,19 @@ function sortTree(items: TreeItem[]): void {
   border-right: 1px solid var(--pvf-border-normal);
 }
 .exp-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px;
   flex-shrink: 0;
+}
+.exp-search :deep(.n-input) {
+  flex: 1;
+  min-width: 0;
+}
+.collapse-all {
+  flex-shrink: 0;
+  color: var(--pvf-text-muted);
 }
 .exact-toggle {
   color: var(--pvf-text-muted);

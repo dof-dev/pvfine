@@ -218,6 +218,10 @@ function onExpandedKeys(keys: Array<string | number>): void {
   expandedKeys.value = keys;
 }
 
+function collapseAll(): void {
+  expandedKeys.value = [];
+}
+
 function renderLabel({ option }: { option: TreeOption }): VNodeChild {
   const item = (option as FileTreeNode).treeItem;
   if (!item) return option.label ?? "";
@@ -286,6 +290,8 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
   }
   return h("div", { class: "tree-label" }, children);
 }
+
+defineExpose({ collapseAll });
 </script>
 
 <template>
