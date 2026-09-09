@@ -31,6 +31,11 @@ var (
 	ErrBatchPlanStale = errors.New("批处理预览已过期,请重新预览")
 )
 
+const (
+	ChangeKindAdded    = "added"
+	ChangeKindModified = "modified"
+)
+
 // TreeNode is one entry in the explorer tree: either a directory or a file.
 type TreeNode struct {
 	Name        string           `json:"name"`
@@ -40,17 +45,19 @@ type TreeNode struct {
 	DataType    int32            `json:"dataType"`
 	ChildCount  int32            `json:"childCount"`
 	FileIndex   int32            `json:"fileIndex"` // -1 for directories
+	ChangeKind  string           `json:"changeKind,omitempty"`
 	Tags        []TreeTag        `json:"tags,omitempty"`
 	Annotations []TreeAnnotation `json:"annotations,omitempty"`
 }
 
 // pathEntry feeds the search scanner.
 type pathEntry struct {
-	path  string
-	lower string
-	idx   int32
-	size  int32
-	typ   int32
+	path       string
+	lower      string
+	idx        int32
+	size       int32
+	typ        int32
+	changeKind string
 }
 
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
@@ -116,6 +123,16 @@ func NewCore() *core { return makeCore() }
 func makeCore() *core {
 	engine, err := annotationrules.LoadDefault()
 	return &core{annotationEngine: engine, annotationErr: err}
+}
+
+func archiveChangeKind(a *pvf.Archive, index int32) string {
+	if a == nil || index < 0 || index >= a.FileCount() || !a.IsModified(index) {
+		return ""
+	}
+	if a.File(index).ChunkIndex < 0 {
+		return ChangeKindAdded
+	}
+	return ChangeKindModified
 }
 
 // setArchive loads an archive and builds derived indexes. Index building
@@ -332,12 +349,21 @@ func buildIndex(a *pvf.Archive) (map[string][]*TreeNode, []pathEntry, error) {
 			continue
 		}
 		f := a.File(i)
-		paths = append(paths, pathEntry{path: p, lower: strings.ToLower(p), idx: i, size: f.DataSize, typ: f.DataType})
+		changeKind := archiveChangeKind(a, i)
+		paths = append(paths, pathEntry{
+			path:       p,
+			lower:      strings.ToLower(p),
+			idx:        i,
+			size:       f.DataSize,
+			typ:        f.DataType,
+			changeKind: changeKind,
+		})
 
 		parent, name := splitParent(p)
 		dirChildren[parent] = append(dirChildren[parent], &TreeNode{
 			Name: name, Path: p, IsDir: false,
 			Size: f.DataSize, DataType: f.DataType, FileIndex: i,
+			ChangeKind: changeKind,
 		})
 		registerDir(parent)
 	}

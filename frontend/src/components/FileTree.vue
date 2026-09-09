@@ -221,8 +221,14 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
   const item = (option as FileTreeNode).treeItem;
   if (!item) return option.label ?? "";
 
+  const changeColor =
+    item.changeKind === "added"
+      ? "#63e2b7"
+      : item.changeKind === "modified"
+        ? "#f2c97d"
+        : undefined;
   const children: VNodeChild[] = [
-    h("span", { class: "tree-item-name" }, item.label),
+    h("span", { class: "tree-item-name", style: { color: changeColor } }, item.label),
   ];
   for (const annotation of item.annotations) {
     children.push(

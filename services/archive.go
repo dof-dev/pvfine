@@ -112,6 +112,7 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 		copyNode := *node
 		copyNode.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[copyNode.Path])
 		if !copyNode.IsDir {
+			copyNode.ChangeKind = archiveChangeKind(s.c.archive, copyNode.FileIndex)
 			copyNode.Tags = cloneTreeTags(s.c.treeTagsByFile[copyNode.FileIndex])
 		}
 		result[i] = &copyNode
@@ -150,6 +151,7 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 			Size:        entry.size,
 			DataType:    entry.typ,
 			FileIndex:   entry.idx,
+			ChangeKind:  archiveChangeKind(s.c.archive, entry.idx),
 			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
 			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
 		})
@@ -191,6 +193,7 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 			Size:        entry.size,
 			DataType:    entry.typ,
 			FileIndex:   entry.idx,
+			ChangeKind:  archiveChangeKind(s.c.archive, entry.idx),
 			Tags:        cloneTreeTags(s.c.treeTagsByFile[entry.idx]),
 			Annotations: cloneTreeAnnotations(s.c.pathAnnotations[entry.path]),
 		})
@@ -266,6 +269,7 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		Size:        0,
 		DataType:    dataType,
 		FileIndex:   index,
+		ChangeKind:  ChangeKindAdded,
 		Annotations: cloneTreeAnnotations(s.c.pathAnnotations[a.Path(index)]),
 	}
 	info := a.Info()
@@ -547,6 +551,7 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 			matcher.match(record.lowerID)
 		if matched {
 			hit := record.hit
+			hit.ChangeKind = archiveChangeKind(s.c.archive, hit.FileIndex)
 			hit.Annotations = cloneTreeAnnotations(s.c.pathAnnotations[hit.Path])
 			hit.PathAnnotations = clonePathAnnotationChain(s.c.pathAnnotations, hit.Path)
 			res.Hits = append(res.Hits, &hit)

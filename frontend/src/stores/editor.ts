@@ -4,6 +4,7 @@ import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta, TreeTag } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
+import { useExplorerStore } from "./explorer";
 
 export type EditorPaneId = string;
 export type SplitOrientation = "columns" | "rows";
@@ -498,6 +499,7 @@ export const useEditorStore = defineStore("editor", () => {
     current.annotations = annotations.filter(
       (annotation): annotation is EditorAnnotation => !!annotation
     );
+    await useExplorerStore().refreshTreeTags();
   }
 
   async function refreshAnnotations() {

@@ -220,6 +220,7 @@ export interface SearchHit {
     "size": number;
     "dataType": number;
     "fileIndex": number;
+    "changeKind"?: string;
     "annotations"?: TreeAnnotation[] | null;
     "pathAnnotations"?: { [_ in string]?: TreeAnnotation[] | null } | null;
 }
@@ -291,6 +292,7 @@ export interface TreeNode {
      * -1 for directories
      */
     "fileIndex": number;
+    "changeKind"?: string;
     "tags"?: TreeTag[] | null;
     "annotations"?: TreeAnnotation[] | null;
 }

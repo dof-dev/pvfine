@@ -75,6 +75,22 @@ func TestArchiveServiceImportFilesTextAndDirectoryMapping(t *testing.T) {
 	if c.archive.File(equIndex).DataType != pvf.TypeScript {
 		t.Fatalf("script data type = %d, want %d", c.archive.File(equIndex).DataType, pvf.TypeScript)
 	}
+	children, err := service.ListChildren(filepath.ToSlash(filepath.Join("equipment", directoryName)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundNewKind := false
+	for _, child := range children {
+		if child.Path == strPath {
+			foundNewKind = true
+			if child.ChangeKind != ChangeKindAdded {
+				t.Fatalf("new file change kind = %q, want %q", child.ChangeKind, ChangeKindAdded)
+			}
+		}
+	}
+	if !foundNewKind {
+		t.Fatalf("new file tree node missing: %q", strPath)
+	}
 	if text, err := c.archive.Text(strIndex); err != nil || text != "导入文本" {
 		t.Fatalf("string text = %q, err = %v", text, err)
 	}
@@ -115,7 +131,15 @@ func TestArchiveServiceImportFilesRawOverwritesAndUpdatesType(t *testing.T) {
 	if _, err := a.AddFileText("same.str", "old", pvf.TypeScript); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.setArchive(a); err != nil {
+	archivePath := filepath.Join(t.TempDir(), "base.pvf")
+	if err := a.SaveAs(archivePath); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := pvf.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.setArchive(loaded); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.closeArchive)
@@ -137,6 +161,22 @@ func TestArchiveServiceImportFilesRawOverwritesAndUpdatesType(t *testing.T) {
 	got, err := c.archive.RawBytes(index)
 	if err != nil || !bytes.Equal(got, raw) {
 		t.Fatalf("overwritten raw = %v, err = %v", got, err)
+	}
+	children, err := NewArchiveService(c).ListChildren("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundModifiedKind := false
+	for _, child := range children {
+		if child.Path == "same.str" {
+			foundModifiedKind = true
+			if child.ChangeKind != ChangeKindModified {
+				t.Fatalf("overwritten file change kind = %q, want %q", child.ChangeKind, ChangeKindModified)
+			}
+		}
+	}
+	if !foundModifiedKind {
+		t.Fatal("overwritten file tree node missing")
 	}
 }
 

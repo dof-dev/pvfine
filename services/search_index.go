@@ -43,6 +43,7 @@ type SearchHit struct {
 	Size            int32                       `json:"size"`
 	DataType        int32                       `json:"dataType"`
 	FileIndex       int32                       `json:"fileIndex"`
+	ChangeKind      string                      `json:"changeKind,omitempty"`
 	Annotations     []TreeAnnotation            `json:"annotations,omitempty"`
 	PathAnnotations map[string][]TreeAnnotation `json:"pathAnnotations,omitempty"`
 }
@@ -529,25 +530,27 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 		metadataIndexes := metadataByFile[p.idx]
 		if len(metadataIndexes) == 0 {
 			appendSearchRecord(&records, &recordsByFile, SearchHit{
-				Name:      pathBase(p.path),
-				Path:      p.path,
-				Category:  SearchCategoryFile,
-				Size:      p.size,
-				DataType:  p.typ,
-				FileIndex: p.idx,
+				Name:       pathBase(p.path),
+				Path:       p.path,
+				Category:   SearchCategoryFile,
+				Size:       p.size,
+				DataType:   p.typ,
+				FileIndex:  p.idx,
+				ChangeKind: p.changeKind,
 			})
 			continue
 		}
 		for _, metadataIndex := range metadataIndexes {
 			entry := metadata[metadataIndex]
 			appendSearchRecord(&records, &recordsByFile, SearchHit{
-				Name:      entry.name,
-				ID:        entry.id,
-				Path:      entry.path,
-				Category:  entry.category,
-				Size:      entry.size,
-				DataType:  entry.dataType,
-				FileIndex: entry.fileIndex,
+				Name:       entry.name,
+				ID:         entry.id,
+				Path:       entry.path,
+				Category:   entry.category,
+				Size:       entry.size,
+				DataType:   entry.dataType,
+				FileIndex:  entry.fileIndex,
+				ChangeKind: p.changeKind,
 			})
 		}
 	}

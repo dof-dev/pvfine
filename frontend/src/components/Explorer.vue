@@ -615,6 +615,7 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
           size: 0,
           dataType: 0,
           childCount: 0,
+          changeKind: "",
           tags: [],
           annotations: item.pathAnnotations[path] ?? [],
         };
@@ -638,6 +639,7 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
         size: item.size,
         dataType: item.dataType,
         childCount: 0,
+        changeKind: item.changeKind,
         tags: [],
         annotations: item.annotations,
       };

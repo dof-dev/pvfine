@@ -20,6 +20,7 @@ export interface TreeItem {
   size: number;
   dataType: number;
   childCount: number;
+  changeKind: string;
   tags: TreeTag[];
   annotations: TreeAnnotation[];
 }
@@ -33,6 +34,7 @@ export interface SearchItem {
   fileIndex: number;
   size: number;
   dataType: number;
+  changeKind: string;
   annotations: TreeAnnotation[];
   pathAnnotations: Record<string, TreeAnnotation[]>;
 }
@@ -68,6 +70,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       size: n.size,
       dataType: n.dataType,
       childCount: n.childCount,
+      changeKind: n.changeKind ?? "",
       tags: (n.tags ?? []).filter((tag): tag is TreeTag => !!tag),
       annotations: cleanAnnotations(n.annotations),
     };
@@ -88,6 +91,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       fileIndex: n.fileIndex,
       size: n.size,
       dataType: n.dataType,
+      changeKind: n.changeKind ?? "",
       annotations: cleanAnnotations(n.annotations),
       pathAnnotations: Object.fromEntries(
         Object.entries(n.pathAnnotations ?? {}).map(([path, annotations]) => [
@@ -203,10 +207,12 @@ export const useExplorerStore = defineStore("explorer", () => {
 
     const tagsByFile = new Map<number, TreeTag[]>();
     const annotationsByPath = new Map<string, TreeAnnotation[]>();
+    const changeKindsByPath = new Map<string, string>();
     for (const nodes of nodeLists) {
       for (const node of nodes) {
         if (!node) continue;
         annotationsByPath.set(node.path, cleanAnnotations(node.annotations));
+        if (!node.isDir) changeKindsByPath.set(node.path, node.changeKind ?? "");
         if (archive.indexReady && !node.isDir && node.fileIndex >= 0) {
           tagsByFile.set(
             node.fileIndex,
@@ -218,6 +224,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     for (const item of itemsByKey.values()) {
       item.annotations = annotationsByPath.get(item.key) ?? item.annotations;
       if (!item.isDir) {
+        item.changeKind = changeKindsByPath.get(item.key) ?? item.changeKind;
         const tags = tagsByFile.get(item.fileIndex);
         if (tags) item.tags = tags;
       }
