@@ -14,7 +14,13 @@ import {
   WidgetType,
   type DecorationSet,
 } from "@codemirror/view";
-import { EditorState, Compartment, StateEffect, StateField } from "@codemirror/state";
+import {
+  EditorState,
+  Compartment,
+  StateEffect,
+  StateField,
+  type Range,
+} from "@codemirror/state";
 import { indentUnit } from "@codemirror/language";
 import {
   defaultKeymap,
@@ -75,7 +81,7 @@ class AnnotationWidget extends WidgetType {
     tag.className = `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
     tag.textContent = this.annotation.title;
     const tooltip = this.annotation.targetFileIndex >= 0
-      ? `${this.annotation.content || this.annotation.title}\n\nCtrl+单击可以跳转`
+      ? `${this.annotation.content || this.annotation.title}\n\nCmd/Ctrl+单击可以跳转`
       : this.annotation.content;
     tag.title = tooltip;
     tag.setAttribute("aria-label", tooltip || this.annotation.title);
@@ -102,29 +108,63 @@ function annotationDecorations(
   state: EditorState,
   display: AnnotationDisplay
 ): DecorationSet {
-  if (display.placement === "hidden") return Decoration.none;
-  const ranges = display.annotations
-    .map((annotation) => {
-      const targetEnd = Math.max(0, Math.min(state.doc.length, annotation.end));
+  const ranges = display.annotations.flatMap((annotation) => {
+    const targetStart = Math.max(0, Math.min(state.doc.length, annotation.start));
+    const targetEnd = Math.max(targetStart, Math.min(state.doc.length, annotation.end));
+    const result: Range<Decoration>[] = [];
+
+    if (annotation.targetFileIndex >= 0 && targetStart < targetEnd) {
+      result.push(
+        Decoration.mark({ class: "cm-annotation-link" }).range(targetStart, targetEnd)
+      );
+    }
+
+    if (display.placement !== "hidden" && annotation.title.trim() !== "") {
       const position =
         display.placement === "line-end" ? state.doc.lineAt(targetEnd).to : targetEnd;
-      return Decoration.widget({
-        widget: new AnnotationWidget(annotation, (fileIndex) =>
-          emit("open-reference", fileIndex)
-        ),
-        side: 1,
-      }).range(position);
-    })
-    .sort((a, b) => a.from - b.from);
+      result.push(
+        Decoration.widget({
+          widget: new AnnotationWidget(annotation, (fileIndex) =>
+            emit("open-reference", fileIndex)
+          ),
+          side: 1,
+        }).range(position)
+      );
+    }
+    return result;
+  }).sort((a, b) => a.from - b.from);
   return Decoration.set(ranges, true);
 }
 
-const annotationField = StateField.define<DecorationSet>({
-  create(state) {
-    return annotationDecorations(state, {
+const annotationDisplayField = StateField.define<AnnotationDisplay>({
+  create() {
+    return {
       annotations: props.annotations ?? [],
       placement: props.tagPlacement ?? "after-target",
-    });
+    };
+  },
+  update(display, transaction) {
+    let next = display;
+    if (transaction.docChanged) {
+      next = {
+        ...next,
+        annotations: next.annotations.map((annotation) => ({
+          ...annotation,
+          start: transaction.changes.mapPos(annotation.start, 1),
+          end: transaction.changes.mapPos(annotation.end, -1),
+        })),
+      };
+    }
+    for (const effect of transaction.effects) {
+      if (effect.is(setAnnotations)) next = effect.value;
+    }
+    return next;
+  },
+});
+
+const annotationField = StateField.define<DecorationSet>({
+  create(state) {
+    return annotationDecorations(state, state.field(annotationDisplayField));
   },
   update(decorations, transaction) {
     let next = decorations.map(transaction.changes);
@@ -178,7 +218,29 @@ function makeExtensions() {
       ...searchKeymap,
       { key: "Tab", run: insertTab },
     ]),
+    EditorView.domEventHandlers({
+      click(event, currentView) {
+        const mouseEvent = event as MouseEvent;
+        if (!mouseEvent.metaKey && !mouseEvent.ctrlKey) return false;
+        const position = currentView.posAtCoords({
+          x: mouseEvent.clientX,
+          y: mouseEvent.clientY,
+        });
+        if (position === null) return false;
+        const display = currentView.state.field(annotationDisplayField, false);
+        const annotation = display?.annotations.find(
+          (item) =>
+            item.targetFileIndex >= 0 && item.start <= position && position < item.end
+        );
+        if (!annotation) return false;
+        mouseEvent.preventDefault();
+        mouseEvent.stopPropagation();
+        emit("open-reference", annotation.targetFileIndex);
+        return true;
+      },
+    }),
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
+    annotationDisplayField,
     annotationField,
     pvfLanguage.extension,
     indentUnit.of("\t"),
@@ -299,6 +361,11 @@ watch(
 }
 .code-editor :deep(.cm-annotation-tag--link:hover) {
   filter: brightness(1.15);
+}
+.code-editor :deep(.cm-annotation-link) {
+  cursor: pointer;
+  text-decoration: underline dotted rgba(174, 220, 255, 0.8);
+  text-underline-offset: 2px;
 }
 .code-editor :deep(.cm-scroller) {
   flex: 1 1 auto;

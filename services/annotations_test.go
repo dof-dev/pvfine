@@ -196,6 +196,105 @@ func TestAnnotationServicesAndCacheInvalidation(t *testing.T) {
 	}
 }
 
+func TestListFileAnnotationsResolveNamesAndTargets(t *testing.T) {
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"equipment": {
+				ListPath: "equipment/equipment.lst", IDToken: 0, PathToken: 1,
+				RecordTokens: 2, NameSection: "name",
+			},
+		},
+		Rules: []annotationrules.Rule{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := pvf.New()
+	listIndex := mustAddText(t, a, "equipment/equipment.lst", "1008 `character/item.equ` 1008 `character/other.equ` 404 `character/missing.equ`", pvf.TypeScript)
+	targetIndex := mustAddText(t, a, "equipment/character/item.equ", "[name]\n`测试装备`", pvf.TypeScript)
+	otherIndex := mustAddText(t, a, "equipment/character/other.equ", "[name]\n`重复 ID 装备`", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	meta, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Annotations) != 2 {
+		t.Fatalf("list annotations = %#v", meta.Annotations)
+	}
+	annotation := meta.Annotations[0]
+	pathStart := strings.Index(meta.Text, "`character/item.equ`")
+	if pathStart < 0 {
+		t.Fatalf("list text = %q", meta.Text)
+	}
+	if annotation.Start != int32(pathStart) || annotation.End != int32(pathStart+len("`character/item.equ`")) {
+		t.Fatalf("list annotation range = [%d,%d), want [%d,%d)", annotation.Start, annotation.End, pathStart, pathStart+len("`character/item.equ`"))
+	}
+	if annotation.Title != "测试装备" || annotation.TargetFileIndex != targetIndex {
+		t.Fatalf("list annotation = %#v", annotation)
+	}
+	if !strings.Contains(annotation.Content, "ID: 1008") {
+		t.Fatalf("list annotation content = %q", annotation.Content)
+	}
+	other := findEditorAnnotation(meta.Annotations, "重复 ID 装备")
+	if other == nil || other.TargetFileIndex != otherIndex {
+		t.Fatalf("duplicate ID list annotation = %#v", meta.Annotations)
+	}
+
+	if err := NewEditorService(c).SetText(targetIndex, "[name]\n`新装备名`"); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := NewEditorService(c).GetAnnotations(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 2 || findEditorAnnotation(updated, "新装备名") == nil {
+		t.Fatalf("updated list annotations = %#v", updated)
+	}
+}
+
+func TestUnindexedListFileLinksResolveRelativePaths(t *testing.T) {
+	emptyEngine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1, Relations: map[string]annotationrules.RelationSpec{}, Rules: []annotationrules.Rule{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	listIndex := mustAddText(t, a, "custom/unindexed.lst", "1 `entry/item.equ` 2 `entry/missing.equ`", pvf.TypeScript)
+	targetIndex := mustAddText(t, a, "custom/entry/item.equ", "[name]\n`未索引目标`", pvf.TypeScript)
+	c := &core{annotationEngine: emptyEngine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	meta, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Annotations) != 1 {
+		t.Fatalf("unindexed list links = %#v", meta.Annotations)
+	}
+	link := meta.Annotations[0]
+	pathStart := strings.Index(meta.Text, "`entry/item.equ`")
+	if pathStart < 0 {
+		t.Fatalf("list text = %q", meta.Text)
+	}
+	if link.Title != "" || link.Content != "" || link.TargetFileIndex != targetIndex {
+		t.Fatalf("unindexed list link = %#v", link)
+	}
+	if link.Start != int32(pathStart) || link.End != int32(pathStart+len("`entry/item.equ`")) {
+		t.Fatalf("unindexed link range = [%d,%d), want [%d,%d)", link.Start, link.End, pathStart, pathStart+len("`entry/item.equ`"))
+	}
+}
+
 func TestEditorAnnotationsUseNormalizedLineEndingOffsets(t *testing.T) {
 	index := 0
 	engine, err := annotationrules.Compile(annotationrules.Document{

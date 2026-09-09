@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	annotationrules "pvfine/internal/annotations"
@@ -67,7 +68,9 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	filePath := c.archive.Path(index)
 	view := pvf.ParseScriptView(text)
-	results := c.annotationEngine.AnnotateWithContextResolver(filePath, view, c.resolveAnnotationReferenceContextLocked)
+	results := c.annotationEngine.AnnotateWithContextAndListResolver(
+		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
+	)
 	annotations := make([]EditorAnnotation, 0, len(results))
 	for _, result := range results {
 		annotations = append(annotations, EditorAnnotation{
@@ -77,6 +80,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 			RuleIDs:         append([]string(nil), result.RuleIDs...),
 		})
 	}
+	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
 	c.editorAnnotation = editorAnnotationCache{
 		valid:       true,
 		fileIndex:   index,
@@ -84,6 +88,112 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		annotations: cloneEditorAnnotations(annotations),
 	}
 	return annotations, nil
+}
+
+// appendUnindexedListLinksLocked makes the path token in an otherwise
+// unconfigured .lst file navigable. These are link-only editor annotations:
+// they carry no title/content, so the frontend renders no name tag.
+func (c *core) appendUnindexedListLinksLocked(filePath string, view pvf.ScriptView, annotations []EditorAnnotation) []EditorAnnotation {
+	if c.archive == nil || c.annotationEngine == nil || !strings.EqualFold(path.Ext(filePath), ".lst") {
+		return annotations
+	}
+	if c.hasListRelationPathLocked(filePath) {
+		return annotations
+	}
+
+	linked := make(map[string]struct{}, len(annotations))
+	for _, annotation := range annotations {
+		if annotation.TargetFileIndex >= 0 {
+			linked[editorAnnotationRangeKey(annotation.Start, annotation.End)] = struct{}{}
+		}
+	}
+	tokens := make([]pvf.ScriptElement, 0, len(view.Elements))
+	for _, element := range view.Elements {
+		if element.Kind == pvf.ScriptElementToken {
+			tokens = append(tokens, element)
+		}
+	}
+	for offset := 0; offset+1 < len(tokens); offset += 2 {
+		pathToken := tokens[offset+1]
+		targetPath, ok := resolveListPath(filePath, pathToken.Value)
+		if !ok {
+			continue
+		}
+		targetIndex, ok := c.archive.Find(targetPath)
+		if !ok {
+			continue
+		}
+		key := editorAnnotationRangeKey(int32(pathToken.Start), int32(pathToken.End))
+		if _, exists := linked[key]; exists {
+			continue
+		}
+		annotations = append(annotations, EditorAnnotation{
+			Start: int32(pathToken.Start), End: int32(pathToken.End),
+			Type: "link", TargetFileIndex: targetIndex,
+		})
+		linked[key] = struct{}{}
+	}
+	return annotations
+}
+
+func (c *core) hasListRelationPathLocked(filePath string) bool {
+	current := normalizeAnnotationPath(filePath)
+	for _, relation := range c.annotationEngine.Document().Relations {
+		kind := relation.Kind
+		if kind == "" {
+			kind = "list"
+		}
+		switch kind {
+		case "list":
+			if normalizeAnnotationPath(relation.ListPath) == current {
+				return true
+			}
+		case "contextual":
+			for _, listPath := range relation.ContextPaths {
+				if normalizeAnnotationPath(listPath) == current {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func normalizeAnnotationPath(value string) string {
+	return strings.ToLower(strings.Trim(strings.ReplaceAll(strings.TrimSpace(value), "\\", "/"), "/"))
+}
+
+func editorAnnotationRangeKey(start, end int32) string {
+	return fmt.Sprintf("%d:%d", start, end)
+}
+
+// resolveListAnnotationReferenceLocked resolves a concrete row by its path.
+// The regular relation cache is intentionally ID-based for field references;
+// list rows need path-based resolution so duplicate IDs remain independent.
+func (c *core) resolveListAnnotationReferenceLocked(relationName, id, context, listPath, relativePath string) (annotationrules.Reference, bool) {
+	if c.archive == nil || c.annotationEngine == nil {
+		return annotationrules.Reference{}, false
+	}
+	targetPath, ok := resolveListPath(listPath, relativePath)
+	if !ok {
+		return annotationrules.Reference{}, false
+	}
+	fileIndex, ok := c.archive.Find(targetPath)
+	if !ok {
+		return annotationrules.Reference{}, false
+	}
+	relation, ok := c.annotationEngine.Relation(relationName)
+	if !ok {
+		return annotationrules.Reference{}, false
+	}
+	reference := annotationrules.Reference{
+		ID: id, Path: c.archive.Path(fileIndex), FileIndex: fileIndex,
+	}
+	text, err := c.archive.Text(fileIndex)
+	if err == nil {
+		reference.Name = firstSectionValue(text, relation.NameSection)
+	}
+	return reference, true
 }
 
 func (c *core) resolveAnnotationReferenceLocked(relationName, id string) (annotationrules.Reference, bool) {

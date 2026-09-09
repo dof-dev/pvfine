@@ -19,6 +19,11 @@ type Engine struct {
 // on another token, such as skill IDs grouped by profession.
 type ContextResolver func(relation, id, context string) (Reference, bool)
 
+// ListResolver resolves one concrete list row. Unlike ContextResolver, it
+// receives the row's relative path as well, so duplicate IDs in a list still
+// navigate to the file represented by that particular row.
+type ListResolver func(relation, id, context, listPath, relativePath string) (Reference, bool)
+
 type compiledRule struct {
 	rule       Rule
 	extensions map[string]struct{}
@@ -61,16 +66,45 @@ func (e *Engine) Annotate(filePath string, view pvf.ScriptView, resolver Resolve
 			return Reference{}, false
 		}
 		return resolver(relation, id)
-	})
+	}, nil)
 }
 
 func (e *Engine) AnnotateWithContextResolver(filePath string, view pvf.ScriptView, resolver ContextResolver) []Result {
-	return e.annotate(filePath, view, resolver)
+	return e.annotate(filePath, view, resolver, nil)
 }
 
-func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver ContextResolver) []Result {
+// AnnotateWithContextAndListResolver is the context-aware annotation entry
+// point used by the application. List annotations use listResolver when it is
+// available, while ordinary rules continue to use resolver.
+func (e *Engine) AnnotateWithContextAndListResolver(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver) []Result {
+	return e.annotate(filePath, view, resolver, listResolver)
+}
+
+func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver) []Result {
 	results := make([]Result, 0)
 	resultByAnchor := make(map[string]int)
+	appendResult := func(anchor editorAnchor, item matchedItem) {
+		key := fmt.Sprintf("%d:%d", anchor.start, anchor.end)
+		if index, ok := resultByAnchor[key]; ok {
+			result := &results[index]
+			result.Content = appendTooltip(result.Content, item.title, item.content)
+			result.RuleIDs = append(result.RuleIDs, item.ruleID)
+			if result.TargetFileIndex < 0 && item.targetFileIndex >= 0 {
+				result.TargetFileIndex = item.targetFileIndex
+			}
+			return
+		}
+		resultByAnchor[key] = len(results)
+		results = append(results, Result{
+			Start:           anchor.start,
+			End:             anchor.end,
+			Title:           item.title,
+			Content:         appendTooltip("", item.title, item.content),
+			Type:            item.typ,
+			TargetFileIndex: item.targetFileIndex,
+			RuleIDs:         []string{item.ruleID},
+		})
+	}
 	for _, compiled := range e.rules {
 		rule := compiled.rule
 		if rule.Target.Kind == "path" || !compiled.matches(filePath, false) {
@@ -79,24 +113,11 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 		anchors := e.editorAnchors(rule, view)
 		for _, anchor := range anchors {
 			item := annotationItem(rule, anchor.value, anchor.context, resolver)
-			key := fmt.Sprintf("%d:%d", anchor.start, anchor.end)
-			if index, ok := resultByAnchor[key]; ok {
-				result := &results[index]
-				result.Content = appendTooltip(result.Content, item.title, item.content)
-				result.RuleIDs = append(result.RuleIDs, item.ruleID)
-				continue
-			}
-			resultByAnchor[key] = len(results)
-			results = append(results, Result{
-				Start:           anchor.start,
-				End:             anchor.end,
-				Title:           item.title,
-				Content:         appendTooltip("", item.title, item.content),
-				Type:            item.typ,
-				TargetFileIndex: item.targetFileIndex,
-				RuleIDs:         []string{item.ruleID},
-			})
+			appendResult(anchor, item)
 		}
+	}
+	for _, item := range e.listAnnotations(filePath, view, resolver, listResolver) {
+		appendResult(item.anchor, item.item)
 	}
 	sort.SliceStable(results, func(i, j int) bool {
 		if results[i].Start != results[j].Start {
@@ -105,6 +126,142 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 		return results[i].End < results[j].End
 	})
 	return results
+}
+
+type listAnnotation struct {
+	anchor editorAnchor
+	item   matchedItem
+}
+
+type listBinding struct {
+	relationName string
+	context      string
+	listPath     string
+	relation     RelationSpec
+}
+
+// listAnnotations adds the implicit name/link annotations for a list file.
+// List files are formatted as fixed-size records, so the path token is the
+// natural anchor for both the displayed name and Cmd/Ctrl-click navigation.
+func (e *Engine) listAnnotations(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver) []listAnnotation {
+	if resolver == nil && listResolver == nil {
+		return nil
+	}
+
+	bindings := make([]listBinding, 0)
+	seenBindings := make(map[string]struct{})
+	appendBinding := func(binding listBinding) {
+		key := binding.relationName + "\x00" + normalizePath(binding.listPath)
+		if _, exists := seenBindings[key]; exists {
+			return
+		}
+		seenBindings[key] = struct{}{}
+		bindings = append(bindings, binding)
+	}
+	for relationName, relation := range e.document.Relations {
+		kind := relation.Kind
+		if kind == "" {
+			kind = "list"
+		}
+		switch kind {
+		case "list":
+			if normalizePath(relation.ListPath) == normalizePath(filePath) {
+				appendBinding(listBinding{
+					relationName: relationName,
+					listPath:     relation.ListPath,
+					relation:     e.relationWithDefaults(relation),
+				})
+			}
+		case "contextual":
+			for context, listPath := range relation.ContextPaths {
+				if normalizePath(listPath) != normalizePath(filePath) {
+					continue
+				}
+				appendBinding(listBinding{
+					relationName: relationName,
+					context:      context,
+					listPath:     listPath,
+					relation:     e.relationWithDefaults(relation),
+				})
+			}
+		}
+	}
+	if len(bindings) == 0 {
+		return nil
+	}
+	sort.SliceStable(bindings, func(i, j int) bool {
+		if bindings[i].relationName != bindings[j].relationName {
+			return bindings[i].relationName < bindings[j].relationName
+		}
+		if bindings[i].listPath != bindings[j].listPath {
+			return bindings[i].listPath < bindings[j].listPath
+		}
+		return bindings[i].context < bindings[j].context
+	})
+
+	tokens := make([]pvf.ScriptElement, 0, len(view.Elements))
+	for _, element := range view.Elements {
+		if element.Kind == pvf.ScriptElementToken {
+			tokens = append(tokens, element)
+		}
+	}
+
+	results := make([]listAnnotation, 0)
+	for _, binding := range bindings {
+		relation := binding.relation
+		for offset := 0; offset+relation.RecordTokens <= len(tokens); offset += relation.RecordTokens {
+			id := tokens[offset+relation.IDToken].Value
+			pathToken := tokens[offset+relation.PathToken]
+			if id == "" || pathToken.Value == "" {
+				continue
+			}
+			var reference Reference
+			var ok bool
+			if listResolver != nil {
+				reference, ok = listResolver(binding.relationName, id, binding.context, binding.listPath, pathToken.Value)
+			} else if resolver != nil {
+				reference, ok = resolver(binding.relationName, id, binding.context)
+			}
+			if !ok || reference.FileIndex < 0 {
+				continue
+			}
+
+			title := strings.TrimSpace(reference.Name)
+			if title == "" {
+				// A valid indexed file can still omit [name]. Keep the
+				// annotation useful and, importantly, keep the path clickable.
+				title = reference.Path
+			}
+			if title == "" {
+				title = id
+			}
+			content := "ID: " + id
+			if reference.Path != "" {
+				content += "\n路径: " + reference.Path
+			}
+			results = append(results, listAnnotation{
+				anchor: editorAnchor{start: pathToken.Start, end: pathToken.End},
+				item: matchedItem{
+					ruleID:          "list:" + binding.relationName,
+					title:           title,
+					content:         content,
+					typ:             "reference",
+					targetFileIndex: reference.FileIndex,
+				},
+			})
+		}
+	}
+	return results
+}
+
+func (e *Engine) relationWithDefaults(relation RelationSpec) RelationSpec {
+	if relation.RecordTokens == 0 {
+		relation.RecordTokens = max(relation.IDToken, relation.PathToken) + 1
+	}
+	if relation.Kind == "" {
+		relation.Kind = "list"
+	}
+	return relation
 }
 
 func (e *Engine) AnnotatePath(filePath string, isDir bool) []Result {
