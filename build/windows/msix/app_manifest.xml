@@ -8,15 +8,15 @@
   IgnorableNamespaces="uap3">
   
   <Identity 
-    Name="com.example.pvfine"
-    Publisher="CN=My Company"
-    Version="0.1.0.0" 
+    Name="com.dofdev.pvfine"
+    Publisher="CN=dof-dev"
+    Version="0.2.0.0"
     ProcessorArchitecture="arm64" />
   
   <Properties>
-    <DisplayName>My Product</DisplayName>
-    <PublisherDisplayName>My Company</PublisherDisplayName>
-    <Description>A pvfine application</Description>
+    <DisplayName>pvfine</DisplayName>
+    <PublisherDisplayName>dof-dev</PublisherDisplayName>
+    <Description>PVF 归档编辑器</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   
@@ -29,10 +29,10 @@
   </Resources>
   
   <Applications>
-    <Application Id="com.example.pvfine" Executable="pvfine" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="com.dofdev.pvfine" Executable="pvfine" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="My Product"
-        Description="A pvfine application"
+        DisplayName="pvfine"
+        Description="PVF 归档编辑器"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

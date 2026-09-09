@@ -10,24 +10,24 @@
     <Installer
         Path="pvfine"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\dof-dev\pvfine">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
-        Version="0.1.0.0"
-        PackageDescription="A pvfine application">
+        PackageName="pvfine"
+        PackageDisplayName="pvfine"
+        PublisherName="CN=dof-dev"
+        PublisherDisplayName="dof-dev"
+        Version="0.2.0.0"
+        PackageDescription="PVF 归档编辑器">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.pvfine"
-                Description="A pvfine application"
-                DisplayName="My Product"
+                Id="com.dofdev.pvfine"
+                Description="PVF 归档编辑器"
+                DisplayName="pvfine"
                 ExecutableName="pvfine"
                 EntryPoint="Windows.FullTrustApplication">
                 
@@ -41,9 +41,9 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A pvfine application</Description>
+            <DisplayName>pvfine</DisplayName>
+            <PublisherDisplayName>dof-dev</PublisherDisplayName>
+            <Description>PVF 归档编辑器</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>

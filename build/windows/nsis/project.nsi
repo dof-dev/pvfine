@@ -19,14 +19,14 @@ Unicode true
 ####
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
-## !define INFO_PROJECTNAME    "my-project" # Default "pvfine"
-## !define INFO_COMPANYNAME    "My Company" # Default "My Company"
-## !define INFO_PRODUCTNAME    "My Product Name" # Default "My Product"
-## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.0"
-## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "© 2026, My Company"
+## !define INFO_PROJECTNAME    "pvfine" # Default "pvfine"
+## !define INFO_COMPANYNAME    "dof-dev" # Default "dof-dev"
+## !define INFO_PRODUCTNAME    "pvfine" # Default "pvfine"
+## !define INFO_PRODUCTVERSION "0.2.0" # Default "0.2.0"
+## !define INFO_COPYRIGHT      "© 2026, dof-dev" # Default "© 2026, dof-dev"
 ###
-## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
-## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
+## !define PRODUCT_EXECUTABLE  "pvfine.exe" # Default "${INFO_PROJECTNAME}.exe"
+## !define UNINST_KEY_NAME     "dof-devpvfine" # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ## !define WAILS_INSTALL_SCOPE     "user"             # Default "machine" - set to "user" for per-user install ($LOCALAPPDATA) without UAC prompt

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A pvfine application
+Name=pvfine
+Comment=PVF 归档编辑器
 # The Exec line includes %u to pass the URL to the application
 Exec=/usr/local/bin/pvfine %u
 Terminal=false

@@ -6,12 +6,12 @@
 name: "pvfine"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
+version: "0.2.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A pvfine application"
-vendor: "My Company"
+description: "PVF 归档编辑器"
+vendor: "dof-dev"
 homepage: "https://wails.io"
 license: "MIT"
 release: "1"
@@ -66,15 +66,3 @@ scripts:
 #       - gtk3
 #       - webkit2gtk-4.1
 #
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"
