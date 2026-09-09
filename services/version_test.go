@@ -1,6 +1,7 @@
 package services
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -137,6 +138,34 @@ func TestVersionServiceStatusTracksIncrementalRevert(t *testing.T) {
 	status = versions.Status()
 	if status.ChangedFiles != 0 || status.NeedsSave {
 		t.Fatalf("reverted status = %#v", status)
+	}
+}
+
+func TestVersionServiceRemoveDeletesOnlySidecar(t *testing.T) {
+	c, path, _ := versionServiceFixture(t)
+	versions := NewVersionService(c)
+	if _, err := versions.Initialize(); err != nil {
+		t.Fatal(err)
+	}
+	sidecar := path + ".pvfine"
+	if _, err := os.Stat(sidecar); err != nil {
+		t.Fatalf("sidecar was not created: %v", err)
+	}
+	status, err := versions.Remove()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status == nil || status.Enabled {
+		t.Fatalf("removed status = %#v", status)
+	}
+	if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
+		t.Fatalf("sidecar still exists or stat failed: %v", err)
+	}
+	if c.archive == nil {
+		t.Fatal("removing version control closed the archive")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("PVF was removed: %v", err)
 	}
 }
 

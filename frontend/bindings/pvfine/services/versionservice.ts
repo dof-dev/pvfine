@@ -47,6 +47,15 @@ export function Discard(): $CancellablePromise<$models.VersionStatus | null> {
 }
 
 /**
+ * ExportCommitFilesDialog exports the files touched by one commit. Add/modify
+ * entries use their after-state; deleted entries use their before-state so the
+ * exported directory represents every file involved in that version.
+ */
+export function ExportCommitFilesDialog(commitID: string): $CancellablePromise<string> {
+    return $Call.ByID(3937038033, commitID);
+}
+
+/**
  * History returns main-branch commits from newest to oldest.
  */
 export function History(cursor: number, limit: number): $CancellablePromise<$models.VersionHistoryPage | null> {
@@ -72,6 +81,14 @@ export function ListChanges(cursor: number, limit: number): $CancellablePromise<
  */
 export function ListCommitChanges(commitID: string, cursor: number, limit: number): $CancellablePromise<$models.VersionChangePage | null> {
     return $Call.ByID(1789693609, commitID, cursor, limit);
+}
+
+/**
+ * Remove disables version control for the current artifact and deletes only
+ * its sidecar repository. The loaded PVF and its in-memory edits are kept.
+ */
+export function Remove(): $CancellablePromise<$models.VersionStatus | null> {
+    return $Call.ByID(4079566109);
 }
 
 /**

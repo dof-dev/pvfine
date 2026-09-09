@@ -14,6 +14,7 @@ import {
   NText,
 } from "naive-ui";
 import type { VersionChange, VersionCommit } from "../../bindings/pvfine/services/models";
+import { ArchiveService } from "../../bindings/pvfine/services";
 import { useVersionStore } from "../stores/version";
 import { useEditorStore } from "../stores/editor";
 
@@ -23,7 +24,8 @@ const message = useMessage();
 
 type ConfirmAction =
   | { type: "discard" }
-  | { type: "checkout"; commit: VersionCommit };
+  | { type: "checkout"; commit: VersionCommit }
+  | { type: "remove" };
 
 const confirmAction = ref<ConfirmAction | null>(null);
 const confirmRunning = ref(false);
@@ -32,10 +34,23 @@ const confirmMessage = computed(() => {
   if (confirmAction.value.type === "discard") {
     return "这会将工作区恢复到当前 HEAD，未提交的编辑将丢失。确定继续吗？";
   }
+  if (confirmAction.value.type === "remove") {
+    return "这会删除当前 PVF 旁边的 .pvfine 版本库、版本历史和对象文件，但不会删除 PVF 本体或当前内存编辑。确定继续吗？";
+  }
   return `将 ${confirmAction.value.commit.message} 加载到当前工作区，当前未提交变更会被替换。确定继续吗？`;
 });
 const confirmPositiveText = computed(() =>
-  confirmAction.value?.type === "checkout" ? "加载版本" : "放弃变更"
+  confirmAction.value?.type === "checkout"
+    ? "加载版本"
+    : confirmAction.value?.type === "remove"
+      ? "取消版本控制"
+      : "放弃变更"
+);
+const confirmAlertType = computed<"warning" | "error">(() =>
+  confirmAction.value?.type === "remove" ? "error" : "warning"
+);
+const confirmButtonType = computed<"warning" | "error">(() =>
+  confirmAction.value?.type === "remove" ? "error" : "warning"
 );
 
 watch(
@@ -127,6 +142,11 @@ function confirmCheckout(commit: VersionCommit): void {
   confirmAction.value = { type: "checkout", commit };
 }
 
+function confirmRemove(): void {
+  if (confirmRunning.value || version.loading || version.committing || version.exporting) return;
+  confirmAction.value = { type: "remove" };
+}
+
 function cancelConfirmation(): void {
   if (confirmRunning.value) return;
   confirmAction.value = null;
@@ -140,17 +160,47 @@ async function executeConfirmation(): Promise<void> {
     if (action.type === "discard") {
       await discard();
       message.success("已放弃未提交变更");
-    } else {
+    } else if (action.type === "checkout") {
       await editor.flushPending();
       await version.checkout(action.commit);
       message.success(`已加载版本 ${shortID(action.commit.id)}`);
+    } else {
+      await version.remove();
+      message.success("已取消版本控制，相关版本文件已删除");
     }
     confirmAction.value = null;
   } catch (error: any) {
-    const label = action.type === "discard" ? "放弃变更" : "加载版本";
+    const label = action.type === "discard" ? "放弃变更" : action.type === "checkout" ? "加载版本" : "取消版本控制";
     message.error(`${label}失败: ${error?.message ?? error}`);
   } finally {
     confirmRunning.value = false;
+  }
+}
+
+async function openChange(change: VersionChange): Promise<void> {
+  if (change.operation === "delete") {
+    message.info("该文件已被删除，当前工作区中没有可打开的文件");
+    return;
+  }
+  try {
+    const nodes = (await ArchiveService.ResolveFiles([change.path])) ?? [];
+    const node = nodes.find((item) => item && item.fileIndex >= 0);
+    if (!node) {
+      message.warning(`当前工作区找不到文件: ${change.path}`);
+      return;
+    }
+    await editor.openFile(node.fileIndex);
+  } catch (error: any) {
+    message.error(`打开文件失败: ${error?.message ?? error}`);
+  }
+}
+
+async function exportCommit(commit: VersionCommit): Promise<void> {
+  try {
+    const path = await version.exportCommit(commit);
+    if (path) message.success(`已导出版本“${commit.message}”涉及的文件到 ${path}`);
+  } catch (error: any) {
+    message.error(`导出版本文件失败: ${error?.message ?? error}`);
   }
 }
 
@@ -165,13 +215,14 @@ function changeTitle(change: VersionChange): string {
     preset="card"
     title="版本控制"
     style="width: min(860px, calc(100vw - 48px)); max-height: calc(100vh - 80px);"
-    :mask-closable="!version.loading && !version.committing && !confirmRunning"
-    :close-on-esc="!version.loading && !version.committing && !confirmRunning"
+    :mask-closable="!version.loading && !version.committing && !version.exporting && !confirmRunning"
+    :close-on-esc="!version.loading && !version.committing && !version.exporting && !confirmRunning"
   >
     <NSpin :show="version.loading && !version.enabled">
       <template v-if="!version.enabled">
         <NAlert type="info" :show-icon="false">
           版本库使用当前 PVF 的逻辑文件作为基线，创建后会在旁边生成 .pvfine 目录。
+          初始化需要扫描整个归档，可能耗时几分钟，并会占用不少额外磁盘空间；期间请勿关闭应用。
         </NAlert>
         <div class="version-init">
           <NText depth="3">初始化不会修改当前 PVF 文件。</NText>
@@ -192,6 +243,15 @@ function changeTitle(change: VersionChange): string {
             </NTag>
             <NTag v-if="version.status.needsSave" type="warning" size="small">PVF 未保存</NTag>
             <NTag v-else type="success" size="small">PVF 已保存</NTag>
+            <NButton
+              size="small"
+              secondary
+              type="error"
+              :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
+              @click="confirmRemove"
+            >
+              取消版本控制
+            </NButton>
           </NSpace>
         </div>
 
@@ -199,16 +259,16 @@ function changeTitle(change: VersionChange): string {
           {{ version.error }}
         </NAlert>
 
-        <NAlert v-if="confirmAction" type="warning" :show-icon="false" class="version-confirm">
+        <NAlert v-if="confirmAction" :type="confirmAlertType" :show-icon="false" class="version-confirm">
           <div class="version-confirm-content">
             <div>{{ confirmMessage }}</div>
             <NSpace size="small">
               <NButton size="small" :disabled="confirmRunning" @click="cancelConfirmation">取消</NButton>
               <NButton
                 size="small"
-                type="warning"
+                :type="confirmButtonType"
                 :loading="confirmRunning"
-                :disabled="confirmRunning || version.loading || version.committing"
+                :disabled="confirmRunning || version.loading || version.committing || version.exporting"
                 @click="executeConfirmation"
               >
                 {{ confirmPositiveText }}
@@ -223,13 +283,13 @@ function changeTitle(change: VersionChange): string {
             <NInput
               v-model:value="version.commitMessage"
               placeholder="提交说明，例如：调整装备价格"
-              :disabled="version.committing || version.loading || !!confirmAction"
+              :disabled="version.committing || version.loading || version.exporting || !!confirmAction"
               @keyup.enter="commit"
             />
             <NButton
               type="primary"
               :loading="version.committing"
-              :disabled="!version.canCommit || version.loading || !!confirmAction"
+              :disabled="!version.canCommit || version.loading || version.exporting || !!confirmAction"
               @click="commit"
             >
               创建版本
@@ -239,14 +299,14 @@ function changeTitle(change: VersionChange): string {
             <NButton
               size="small"
               :loading="version.loading && !confirmAction"
-              :disabled="!version.status.pendingChangeSets || version.loading || !!confirmAction"
+              :disabled="!version.status.pendingChangeSets || version.loading || version.exporting || !!confirmAction"
               @click="undo"
             >
               撤销最近变更
             </NButton>
             <NButton
               size="small"
-              :disabled="!version.status.changedFiles || version.loading || !!confirmAction"
+              :disabled="!version.status.changedFiles || version.loading || version.exporting || !!confirmAction"
               @click="confirmDiscard"
             >
               放弃未提交变更
@@ -257,7 +317,16 @@ function changeTitle(change: VersionChange): string {
               <NTag :type="operationType(change.operation)" size="small" :bordered="false">
                 {{ operationLabel(change.operation) }}
               </NTag>
-              <NText :title="changeTitle(change)">{{ change.path }}</NText>
+              <NButton
+                text
+                type="primary"
+                class="version-change-link"
+                :disabled="change.operation === 'delete'"
+                :title="change.operation === 'delete' ? '文件已删除，无法在当前工作区打开' : '打开文件'"
+                @click="openChange(change)"
+              >
+                {{ change.path }}
+              </NButton>
             </div>
           </div>
           <NEmpty v-else description="工作区没有相对 HEAD 的变更" size="small" />
@@ -284,7 +353,7 @@ function changeTitle(change: VersionChange): string {
                   <NButton
                     size="small"
                     secondary
-                    :disabled="version.loading || version.committing || !!confirmAction"
+                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
                     @click="version.toggleCommitChanges(commitItem)"
                   >
                     {{ version.expandedCommitID === commitItem.id ? "收起变更" : "查看变更" }}
@@ -292,10 +361,19 @@ function changeTitle(change: VersionChange): string {
                   <NButton
                     size="small"
                     secondary
-                    :disabled="version.loading || version.committing || !!confirmAction"
+                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction"
                     @click="confirmCheckout(commitItem)"
                   >
                     加载到工作区
+                  </NButton>
+                  <NButton
+                    size="small"
+                    secondary
+                    :loading="version.exporting && version.exportingCommitID === commitItem.id"
+                    :disabled="version.loading || version.committing || version.exporting || !!confirmAction || !commitItem.changeCount"
+                    @click="exportCommit(commitItem)"
+                  >
+                    导出修改文件
                   </NButton>
                 </NSpace>
               </div>
@@ -308,7 +386,16 @@ function changeTitle(change: VersionChange): string {
                   <NTag :type="operationType(change.operation)" size="small" :bordered="false">
                     {{ operationLabel(change.operation) }}
                   </NTag>
-                  <NText :title="changeTitle(change)">{{ change.path }}</NText>
+                  <NButton
+                    text
+                    type="primary"
+                    class="version-change-link"
+                    :disabled="change.operation === 'delete'"
+                    :title="change.operation === 'delete' ? '文件已删除，无法在当前工作区打开' : '打开文件'"
+                    @click="openChange(change)"
+                  >
+                    {{ change.path }}
+                  </NButton>
                 </div>
                 <NEmpty v-if="version.commitChanges.length === 0" description="该版本没有文件变更" size="small" />
               </div>
@@ -379,6 +466,14 @@ function changeTitle(change: VersionChange): string {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.version-change-link {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 .version-change :deep(.n-text) {
   overflow: hidden;

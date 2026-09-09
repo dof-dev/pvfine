@@ -32,6 +32,8 @@ export const useVersionStore = defineStore("version", () => {
   const commitMessage = ref("");
   const loading = ref(false);
   const committing = ref(false);
+  const exporting = ref(false);
+  const exportingCommitID = ref("");
   const error = ref("");
   let refreshToken = 0;
 
@@ -125,7 +127,7 @@ export const useVersionStore = defineStore("version", () => {
   }
 
   function close(): void {
-    if (loading.value || committing.value) return;
+    if (loading.value || committing.value || exporting.value) return;
     visible.value = false;
   }
 
@@ -205,6 +207,41 @@ export const useVersionStore = defineStore("version", () => {
     }
   }
 
+  async function remove(): Promise<void> {
+    loading.value = true;
+    error.value = "";
+    try {
+      const next = await VersionService.Remove();
+      applyStatus(next);
+      changes.value = [];
+      history.value = [];
+      expandedCommitID.value = "";
+      commitChanges.value = [];
+      commitMessage.value = "";
+    } catch (value: any) {
+      error.value = errorMessage(value);
+      throw value;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function exportCommit(commit: VersionCommit): Promise<string> {
+    if (exporting.value) return "";
+    exporting.value = true;
+    exportingCommitID.value = commit.id;
+    error.value = "";
+    try {
+      return (await VersionService.ExportCommitFilesDialog(commit.id)) ?? "";
+    } catch (value: any) {
+      error.value = errorMessage(value);
+      throw value;
+    } finally {
+      exporting.value = false;
+      exportingCommitID.value = "";
+    }
+  }
+
   async function toggleCommitChanges(commit: VersionCommit): Promise<void> {
     if (expandedCommitID.value === commit.id) {
       expandedCommitID.value = "";
@@ -234,6 +271,14 @@ export const useVersionStore = defineStore("version", () => {
   Events.On("version:changed", (event: any) => {
     const data = eventData(event);
     if (data?.status) applyStatus(data.status);
+    if (data?.status && !data.status.enabled) {
+      changes.value = [];
+      history.value = [];
+      expandedCommitID.value = "";
+      commitChanges.value = [];
+      commitMessage.value = "";
+      return;
+    }
     if (Array.isArray(data?.changes)) {
       changes.value = data.changes.filter(
         (item: VersionChange | null | undefined): item is VersionChange => !!item
@@ -264,6 +309,8 @@ export const useVersionStore = defineStore("version", () => {
     commitMessage,
     loading,
     committing,
+    exporting,
+    exportingCommitID,
     error,
     enabled,
     canCommit,
@@ -275,6 +322,8 @@ export const useVersionStore = defineStore("version", () => {
     undo,
     discard,
     checkout,
+    remove,
+    exportCommit,
     toggleCommitChanges,
   };
 });
