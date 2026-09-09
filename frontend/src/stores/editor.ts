@@ -197,6 +197,7 @@ export const useEditorStore = defineStore("editor", () => {
     const paneId = resolvePaneId(requestedPaneId);
     const pane = paneStates[paneId];
     if (!pane) return;
+    const tab = tabs.value.find((item) => item.index === index);
     const tabIndex = pane.tabIndexes.indexOf(index);
     if (tabIndex < 0) return;
 
@@ -210,6 +211,7 @@ export const useEditorStore = defineStore("editor", () => {
       const globalTabIndex = tabs.value.findIndex((tab) => tab.index === index);
       if (globalTabIndex >= 0) tabs.value.splice(globalTabIndex, 1);
       pendingSync.delete(index);
+      clearExplorerSelection(tab?.path);
     }
 
     if (pane.tabIndexes.length === 0 && isSplit.value) {
@@ -234,6 +236,9 @@ export const useEditorStore = defineStore("editor", () => {
         .filter((index) => keepIndex === null || index !== keepIndex)
     );
     if (removedIndexes.size === 0) return;
+    const removedPaths = tabs.value
+      .filter((tab) => removedIndexes.has(tab.index))
+      .map((tab) => tab.path);
 
     for (const pane of Object.values(paneStates)) {
       const oldActive = pane.activeKey;
@@ -247,6 +252,7 @@ export const useEditorStore = defineStore("editor", () => {
 
     tabs.value = tabs.value.filter((tab) => !removedIndexes.has(tab.index));
     for (const index of removedIndexes) pendingSync.delete(index);
+    clearExplorerSelection(removedPaths);
 
     while (isSplit.value) {
       const emptyPane = panes.value.find((pane) => pane.tabIndexes.length === 0);
@@ -530,6 +536,15 @@ export const useEditorStore = defineStore("editor", () => {
   function discardPendingSync(): void {
     window.clearTimeout(syncTimer);
     pendingSync.clear();
+  }
+
+  function clearExplorerSelection(paths: string | string[] | undefined): void {
+    if (!paths) return;
+    const explorer = useExplorerStore();
+    const selection = explorer.selectedKey;
+    if (!selection) return;
+    const closedPaths = new Set(Array.isArray(paths) ? paths : [paths]);
+    if (closedPaths.has(selection)) explorer.selectedKey = null;
   }
 
   async function syncTab(tab: EditorTab) {

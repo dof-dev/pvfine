@@ -56,6 +56,7 @@ const itemsByKey = computed(() => {
 });
 
 const expandedKeys = ref<Array<string | number>>([]);
+const searchExpansionInitialized = ref(false);
 const checkedKeys = ref<string[]>([]);
 const treeRef = ref<TreeInst | null>(null);
 const directoryToggleKeys = new Set<string>();
@@ -80,11 +81,13 @@ watch(
   (expandAll) => {
     if (!expandAll) {
       expandedKeys.value = [];
+      searchExpansionInitialized.value = false;
       return;
     }
     const next: Array<string | number> = [];
     collectExpandedKeys(props.items, next);
     expandedKeys.value = next;
+    searchExpansionInitialized.value = props.items.length > 0;
   },
   { immediate: true }
 );
@@ -92,10 +95,14 @@ watch(
 watch(
   () => props.items,
   () => {
-    if (props.expandAll) {
+    if (props.expandAll && props.items.length === 0) {
+      expandedKeys.value = [];
+      searchExpansionInitialized.value = false;
+    } else if (props.expandAll && !searchExpansionInitialized.value) {
       const next: Array<string | number> = [];
       collectExpandedKeys(props.items, next);
       expandedKeys.value = next;
+      searchExpansionInitialized.value = true;
     }
     if (props.selectedKey) void revealSelectedKey(props.selectedKey);
   },
