@@ -121,6 +121,12 @@ export const useScriptStore = defineStore("script", () => {
     workspaceVisible.value = false;
   }
 
+  // 外部文件入口（资源管理器、文件集、书签等）打开归档文件时，
+  // 允许直接切回归档编辑，即使脚本仍在后台运行。
+  function showArchiveEditor(): void {
+    workspaceVisible.value = false;
+  }
+
   async function refreshFiles(): Promise<void> {
     if (loadingFiles.value) return;
     loadingFiles.value = true;
@@ -428,6 +434,7 @@ export const useScriptStore = defineStore("script", () => {
     canApply,
     showWorkspace,
     hideWorkspace,
+    showArchiveEditor,
     refreshFiles,
     newScript,
     loadScript,

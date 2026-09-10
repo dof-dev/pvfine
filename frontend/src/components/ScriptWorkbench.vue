@@ -234,10 +234,6 @@ async function onOpenDirectory(): Promise<void> {
           <template #icon><NIcon><Stop24Regular /></NIcon></template>
           停止
         </NButton>
-        <NButton size="small" quaternary @click="emit('close')" :disabled="script.running">
-          <template #icon><NIcon><Dismiss24Regular /></NIcon></template>
-          归档编辑
-        </NButton>
       </div>
 
       <div class="script-main">

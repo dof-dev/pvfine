@@ -5,6 +5,7 @@ import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
+import { useScriptStore } from "./script";
 
 export type EditorPaneId = string;
 export type SplitOrientation = "columns" | "rows";
@@ -74,6 +75,7 @@ export const useEditorStore = defineStore("editor", () => {
   const draggingTab = ref<DraggedEditorTab | null>(null);
   const openingPaneId = ref<EditorPaneId | null>(null);
   const saving = ref(false);
+  const script = useScriptStore();
   let paneSequence = 1;
   let splitSequence = 0;
 
@@ -152,12 +154,14 @@ export const useEditorStore = defineStore("editor", () => {
     const targetPaneId = resolvePaneId(requestedPaneId);
     const targetPane = paneStates[targetPaneId];
     if (targetPane.tabIndexes.includes(index)) {
+      script.showArchiveEditor();
       activateTab(targetPaneId, index);
       return;
     }
 
     const existing = tabs.value.find((tab) => tab.index === index);
     if (existing) {
+      script.showArchiveEditor();
       addTabToPane(targetPaneId, index);
       return;
     }
@@ -170,6 +174,7 @@ export const useEditorStore = defineStore("editor", () => {
       if (tabs.value.length >= 20) {
         throw new Error("打开的标签过多,请先关闭一些(上限 20)");
       }
+      script.showArchiveEditor();
       tabs.value.push({
         index,
         path: meta.path,
