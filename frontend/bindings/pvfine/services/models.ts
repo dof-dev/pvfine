@@ -314,6 +314,80 @@ export interface RenderingReloadResult {
     "ruleCount": number;
 }
 
+export interface ScriptApplyResult {
+    "appliedFiles": number;
+    "fileIndexes": number[] | null;
+    "modifiedCount": number;
+    "revision": number;
+}
+
+export interface ScriptCompileResult {
+    "valid": boolean;
+    "diagnostics": (ScriptDiagnostic | null)[] | null;
+}
+
+export interface ScriptDiagnostic {
+    "kind": string;
+    "message": string;
+    "stack"?: string;
+    "line"?: number;
+    "column"?: number;
+}
+
+export interface ScriptError {
+    "kind": string;
+    "message": string;
+    "stack"?: string;
+    "line"?: number;
+    "column"?: number;
+}
+
+export interface ScriptFile {
+    "name": string;
+    "size": number;
+    "modifiedAt": string;
+}
+
+export interface ScriptFilePreview {
+    "fileIndex": number;
+    "path": string;
+    "status": string;
+    "matchCount": number;
+    "reason"?: string;
+    "warnings"?: string[] | null;
+    "diff"?: (BatchDiffLine | null)[] | null;
+    "diffTruncated"?: boolean;
+}
+
+export interface ScriptLog {
+    "level": string;
+    "message": string;
+}
+
+export interface ScriptPreviewPage {
+    "planId": string;
+    "nextCursor": number;
+    "scannedFiles": number;
+    "modifiedFiles": number;
+    "rows": (ScriptFilePreview | null)[] | null;
+}
+
+export interface ScriptRunRequest {
+    "name"?: string;
+    "source": string;
+}
+
+export interface ScriptRunResult {
+    "runId": string;
+    "status": string;
+    "planId"?: string;
+    "scannedFiles": number;
+    "modifiedFiles": number;
+    "durationMs": number;
+    "logs": (ScriptLog | null)[] | null;
+    "error"?: ScriptError | null;
+}
+
 /**
  * SearchHit is one searchable file/list record.
  */

@@ -89,6 +89,7 @@
 
 ### ⚡ 脚本批处理与外部资源导入
 - **Token 级批处理引擎**：支持针对 5-byte Token 树和 Section 节点的批量修改规则执行，提供变更数量统计与可视化的 Diff 差异对比预览，确认无误后再安全应用。
+- **沙箱 JavaScript 工作区**：使用 Goja 运行 `.pvf.js`，通过 `pvf.files/find/glob`、文本接口和结构化 Token 文档 API 生成可审阅预览；脚本异常、取消或超时自动回滚，应用后仍需手动保存 PVF。
 - **外部资源一键导入**：支持从本地文件系统批量导入文件与目录至归档指定目录，智能识别脚本/原始二进制，提供冲突与覆盖预览。
 
 ### 🛡️ 增量打包、原子落盘与退出防护
@@ -143,6 +144,7 @@
 │  - AnnotationService: 规则引擎绑定、LST 索引构建与关联计算             │
 │  - ImageService: NPK 资源索引、DXT 图像解码与缩略图缓存                │
 │  - BatchService: 批处理规则变换、语法树扫描与 Diff 差异生成            │
+│  - ScriptService: Goja 沙箱执行、结构化脚本预览与选择性应用             │
 │  - BookmarkService & FileSetService: 嵌套书签簿与文件集持久化          │
 │  - SettingsService: 全局用户配置 (主题、打开方式、Vim、备份等)         │
 │  - Core: 读写锁守卫的共享并发状态模型                                  │
@@ -287,7 +289,8 @@ wails3 task package
 ├── cmd/
 │   └── annotation-editor/    # 独立标注规则可视化编辑与调试服务
 ├── internal/                 # 核心内核模块（纯 Go 独立可测）
-│   ├── pvf/                  # PVF 解析与打包引擎（加解密、反编译、分块、Token、字符串池、批处理）
+│   ├── pvf/                  # PVF 解析与打包引擎（加解密、反编译、分块、Token、字符串池、批处理、文档树）
+│   ├── script/               # Goja 沙箱与仅面向事务的 PVF 宿主 API
 │   ├── npk/                  # NPK 资源包读取、IMG 图像帧解析与 DXT1/3/5 解码器
 │   ├── annotations/          # 标注规则引擎、LST 列表关联与装备/道具联合索引
 │   └── version/              # 本地版本库模型、SQLite 元数据与 SHA-256 CAS 对象存储
@@ -297,6 +300,7 @@ wails3 task package
 │   ├── editor.go             # EditorService：文本反编译、内存编辑、保存与解包
 │   ├── annotations.go        # AnnotationService：标注查询与 LST 关联
 │   ├── batch.go              # BatchService：批处理规则解析与 Diff 预览
+│   ├── script.go             # ScriptService：脚本运行、预览计划、脚本目录与应用
 │   ├── bookmarks.go          # BookmarkService：嵌套书签簿增删改查
 │   ├── filesets.go           # FileSetService：文件集持久化管理
 │   ├── image_service.go      # ImageService：NPK 资源管理与图像缓存
@@ -305,11 +309,12 @@ wails3 task package
 │   └── version.go            # VersionService：版本仓库控制与快照管理
 ├── frontend/                 # 前端工程：Vue 3 + TypeScript 响应式桌面 UI
 │   ├── src/
-│   │   ├── components/       # UI 组件 (ToolBar, Explorer, EditorTabs, EditorPane, CodeEditor,
+│   │   ├── components/       # UI 组件 (ToolBar, Explorer, EditorTabs, EditorPane,
 │   │   │                     #         BookmarkSidebar, FileSetSidebar, VersionPanel, BatchProcessModal,
+│   │   │                     #         ScriptWorkbench, CodeEditor（PVF / JavaScript 双模式）,
 │   │   │                     #         AdvancedSearchModal, ImportModal, SettingsModal, StatusBar, CloseGuard)
 │   │   ├── stores/           # Pinia 状态管理 (archive, explorer, editor, bookmarks, fileSets,
-│   │   │                     #                 version, images, settings, batch, advancedSearch, import)
+│   │   │                     #                 version, images, settings, batch, script, advancedSearch, import)
 │   │   ├── theme.ts          # 深色 / 浅色 / 跟随系统主题配色体系
 │   │   ├── App.vue           # 主界面布局、侧边栏集成与全局快捷键监听
 │   │   └── main.ts           # 前端入口

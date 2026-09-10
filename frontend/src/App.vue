@@ -26,6 +26,7 @@ import { useBookmarkStore } from "./stores/bookmarks";
 import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
 import { useImageStore } from "./stores/images";
+import { useScriptStore } from "./stores/script";
 import {
   applyTheme,
   getTheme,
@@ -41,6 +42,7 @@ const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
 const version = useVersionStore();
 const images = useImageStore();
+const script = useScriptStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -119,6 +121,13 @@ async function onKeydown(e: KeyboardEvent) {
   } else if (key === "o") {
     e.preventDefault();
     if (!archive.loading) await archive.openDialog();
+  } else if (key === "s" && !e.shiftKey && script.workspaceVisible) {
+    e.preventDefault();
+    try {
+      await script.saveScript();
+    } catch {
+      // 工作区已经展示了具体错误。
+    }
   } else if (key === "s" && e.shiftKey) {
     e.preventDefault();
     if (archive.open) await editor.saveAs();

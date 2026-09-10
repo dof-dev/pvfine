@@ -82,6 +82,7 @@ func main() {
 			application.NewService(services.NewArchiveService(core)),
 			application.NewService(services.NewEditorService(core, settingsService)),
 			application.NewService(services.NewBatchService(core)),
+			application.NewService(services.NewScriptService(core)),
 			application.NewService(services.NewVersionService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewRenderingService(core)),

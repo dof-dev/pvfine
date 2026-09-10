@@ -1464,6 +1464,12 @@ func setVersionContent(archive *pvf.Archive, index int32, content pvfversion.Con
 }
 
 func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.ContentSnapshot) error {
+	// Undo is a live archive mutation even when the file table does not change.
+	// Advance the shared revision before touching payloads so any script
+	// preview or running transaction is rejected/cancelled consistently.
+	c.batchRevision++
+	c.batchPlan = nil
+	c.invalidateScriptLocked()
 	remove := make([]int32, 0)
 	for _, key := range paths {
 		index, exists := c.archive.Find(key)

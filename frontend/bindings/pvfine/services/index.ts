@@ -9,6 +9,7 @@ import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
 import * as RenderingService from "./renderingservice.js";
+import * as ScriptService from "./scriptservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
 import * as VersionService from "./versionservice.js";
@@ -21,6 +22,7 @@ export {
     FileSetService,
     ImageService,
     RenderingService,
+    ScriptService,
     SettingsService,
     UpdateService,
     VersionService
@@ -56,6 +58,16 @@ export type {
     ImportResult,
     IndexStatus,
     RenderingReloadResult,
+    ScriptApplyResult,
+    ScriptCompileResult,
+    ScriptDiagnostic,
+    ScriptError,
+    ScriptFile,
+    ScriptFilePreview,
+    ScriptLog,
+    ScriptPreviewPage,
+    ScriptRunRequest,
+    ScriptRunResult,
     SearchHit,
     SearchResult,
     StoredFileSet,

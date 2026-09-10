@@ -11,6 +11,7 @@ import {
   rectangularSelection,
   crosshairCursor,
   Decoration,
+  tooltips,
   WidgetType,
   type DecorationSet,
 } from "@codemirror/view";
@@ -21,23 +22,32 @@ import {
   StateField,
   type Range,
 } from "@codemirror/state";
-import { indentUnit } from "@codemirror/language";
+import {
+  HighlightStyle,
+  indentUnit,
+  syntaxHighlighting,
+} from "@codemirror/language";
 import {
   defaultKeymap,
   history,
   historyKeymap,
-  insertTab,
+  indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { javascript } from "@codemirror/lang-javascript";
+import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
 import { useImageStore } from "../stores/images";
+import { scriptCompletionSource as declarationCompletionSource } from "../scriptLanguageService";
 import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
   doc: string;
+  language?: "pvf" | "javascript";
   readOnly?: boolean;
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
@@ -63,6 +73,27 @@ interface AnnotationDisplay {
 }
 
 const setAnnotations = StateEffect.define<AnnotationDisplay>();
+
+const javascriptHighlighting = syntaxHighlighting(
+  HighlightStyle.define([
+    { tag: tags.comment, color: "var(--pvf-text-faint)", fontStyle: "italic" },
+    { tag: [tags.string, tags.regexp], color: "var(--pvf-editor-syntax-string)" },
+    { tag: [tags.number, tags.bool, tags.atom], color: "var(--pvf-editor-syntax-number)" },
+    {
+      tag: [tags.keyword, tags.controlKeyword],
+      color: "var(--pvf-editor-syntax-heading)",
+      fontWeight: "600",
+    },
+    { tag: tags.operator, color: "var(--pvf-text-secondary)" },
+    { tag: tags.variableName, color: "var(--pvf-text-code)" },
+    { tag: tags.definition(tags.variableName), color: "var(--pvf-editor-syntax-heading)" },
+    { tag: tags.function(tags.variableName), color: "var(--pvf-editor-syntax-heading)" },
+    { tag: tags.propertyName, color: "var(--pvf-editor-syntax-string)" },
+    { tag: [tags.typeName, tags.className], color: "var(--pvf-editor-syntax-heading)" },
+    { tag: [tags.punctuation, tags.bracket], color: "var(--pvf-text-muted)" },
+    { tag: tags.invalid, color: "var(--pvf-error)" },
+  ]),
+);
 
 class AnnotationWidget extends WidgetType {
   constructor(
@@ -359,6 +390,7 @@ function createEditorTheme(themeId: ResolvedThemeId) {
 }
 
 function makeExtensions(themeId: ResolvedThemeId) {
+  const isJavaScript = props.language === "javascript";
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -374,7 +406,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
-      { key: "Tab", run: insertTab },
+      indentWithTab,
     ]),
     EditorView.domEventHandlers({
       click(event, currentView) {
@@ -400,15 +432,57 @@ function makeExtensions(themeId: ResolvedThemeId) {
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
     annotationDisplayField,
     annotationField,
-    pvfLanguage.extension,
     indentUnit.of("\t"),
-    pvfHighlighting,
+    isJavaScript ? javascript() : pvfLanguage.extension,
+    isJavaScript
+      ? [
+          tooltips({ parent: document.body, position: "fixed" }),
+          javascriptHighlighting,
+          autocompletion({ override: [scriptCompletionSource] }),
+        ]
+      : pvfHighlighting,
     editorThemeComp.of(createEditorTheme(themeId)),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
       if (u.docChanged) emit("change", u.state.doc.toString());
     }),
   ];
+}
+
+function scriptCompletionSource(
+  context: CompletionContext,
+): CompletionResult | Promise<CompletionResult | null> | null {
+  const fallback = (): CompletionResult | null => {
+    const word = context.matchBefore(/[\w$.-]*/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
+    return {
+      from: word.from,
+      options: [
+        { label: "pvf", type: "variable", detail: "PVF 脚本 API" },
+        { label: "pvf.files", type: "function", detail: "PVFFile[]" },
+        { label: "pvf.find", type: "function", detail: "(path) => PVFFile | null" },
+        { label: "pvf.glob", type: "function", detail: "(pattern) => PVFFile[]" },
+        { label: "pvf.log", type: "function", detail: "记录脚本日志" },
+        { label: "pvf.progress", type: "function", detail: "更新执行进度" },
+        { label: "pvf.modifiedCount", type: "property", detail: "number" },
+        { label: "pvf.scannedCount", type: "property", detail: "number" },
+        { label: "file.parse", type: "function", detail: "() => PVFDocument" },
+        { label: "file.write", type: "function", detail: "(document) => void" },
+        { label: "document.section", type: "function", detail: "(path) => PVFSection | null" },
+        { label: "document.sections", type: "function", detail: "(path) => PVFSection[]" },
+        { label: "document.warnings", type: "function", detail: "() => PVFParseWarning[]" },
+        { label: "section.get", type: "function", detail: "(index?) => PVFScalar" },
+        { label: "section.set", type: "function", detail: "(value, index?) => void" },
+        { label: "section.append", type: "function", detail: "(value) => void" },
+      ],
+      validFor: /[\w$.-]*/,
+    };
+  };
+  const result = declarationCompletionSource(context);
+  if (result && typeof (result as Promise<CompletionResult | null>).then === "function") {
+    return (result as Promise<CompletionResult | null>).then((value) => value ?? fallback());
+  }
+  return result ?? fallback();
 }
 
 onMounted(() => {
@@ -575,6 +649,9 @@ watch(
   flex: 1 1 auto;
   max-height: 100%;
   overflow: auto;
+}
+:global(.cm-tooltip-autocomplete) {
+  z-index: 1000;
 }
 .annotation-image-tooltip {
   position: fixed;

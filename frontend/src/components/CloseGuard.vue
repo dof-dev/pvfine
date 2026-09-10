@@ -6,6 +6,7 @@ import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore } from "../stores/fileSets";
 import { useVersionStore } from "../stores/version";
+import { useScriptStore } from "../stores/script";
 
 type CloseAction = "close" | "quit";
 
@@ -14,6 +15,7 @@ const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
 const version = useVersionStore();
+const script = useScriptStore();
 const pendingAction = ref<CloseAction | null>(null);
 const closing = ref(false);
 
@@ -22,6 +24,7 @@ const hasUnsavedChanges = computed(
     archive.modifiedCount > 0 ||
     editor.dirtyCount > 0 ||
     fileSets.dirty ||
+    script.dirty ||
     version.status.changedFiles > 0 ||
     version.status.needsSave
 );

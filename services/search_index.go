@@ -429,6 +429,7 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	}
 	c.batchRevision++
 	c.batchPlan = nil
+	c.invalidateScriptLocked()
 	versioned := c.versionRepo != nil
 	if c.editorText == nil {
 		c.editorText = make(map[int32]string)

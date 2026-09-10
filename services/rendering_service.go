@@ -55,6 +55,7 @@ func (s *RenderingService) ReloadRules() (RenderingReloadResult, error) {
 	s.c.editorAnnotation = editorAnnotationCache{}
 	s.c.batchRevision++
 	s.c.batchPlan = nil
+	s.c.invalidateScriptLocked()
 	s.c.mu.Unlock()
 
 	result := RenderingReloadResult{RuleCount: len(engine.Document().Rules)}

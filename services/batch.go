@@ -260,6 +260,7 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	}
 	s.c.batchRevision++
 	s.c.batchPlan = nil
+	s.c.invalidateScriptLocked()
 	s.c.editorAnnotation = editorAnnotationCache{}
 	s.c.annotationRelations = make(map[string]map[string]*relationTarget)
 	s.c.invalidateAdvancedSearchLocked()

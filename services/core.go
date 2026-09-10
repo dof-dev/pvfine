@@ -91,6 +91,8 @@ type core struct {
 	indexGen             uint64
 	batchRevision        uint64
 	batchPlan            *batchPlan
+	scriptPlan           *scriptPlan
+	scriptCancel         context.CancelFunc
 	versionRepo          *pvfversion.Repository
 	versionHead          pvfversion.Commit
 	versionHeadSnapshot  pvfversion.Snapshot
@@ -208,6 +210,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
+	c.invalidateScriptLocked()
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
 	refreshArchiveIndexMetadataLocked(c, changedIndexes)
@@ -254,6 +257,7 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
+	c.invalidateScriptLocked()
 	directories := make([]string, 0, len(children))
 	for path := range children {
 		if path != "" {
@@ -307,6 +311,7 @@ func (c *core) closeArchive() {
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
+	c.invalidateScriptLocked()
 	c.archive = nil
 	c.annotationRelations = nil
 	c.editorText = nil

@@ -22,13 +22,16 @@ import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useVersionStore } from "../stores/version";
+import { useScriptStore } from "../stores/script";
 import EditorLayout from "./EditorLayout.vue";
+import ScriptWorkbench from "./ScriptWorkbench.vue";
 import type { ResolvedThemeId } from "../theme";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
 const version = useVersionStore();
+const script = useScriptStore();
 const message = useMessage();
 
 const openingRecent = ref("");
@@ -150,8 +153,31 @@ function isCancel(e: any): boolean {
       </div>
     </div>
 
+    <div class="workspace-tabs" role="tablist" aria-label="工作区">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="!script.workspaceVisible"
+        class="workspace-tab"
+        :class="{ 'workspace-tab--active': !script.workspaceVisible }"
+        @click="script.hideWorkspace"
+      >
+        归档编辑
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="script.workspaceVisible"
+        class="workspace-tab"
+        :class="{ 'workspace-tab--active': script.workspaceVisible }"
+        @click="script.showWorkspace"
+      >
+        脚本工作区
+      </button>
+    </div>
+
     <!-- 无标签时 -->
-    <div v-if="editor.tabs.length === 0" class="editor-empty">
+    <div v-if="!script.workspaceVisible && editor.tabs.length === 0" class="editor-empty">
       <!-- 归档已打开，但当前视口无打开的文件 -->
       <div v-if="archive.open" class="empty-archive-panel">
         <div class="empty-archive-icon-wrap">
@@ -300,9 +326,10 @@ function isCancel(e: any): boolean {
       </div>
     </div>
 
-    <div v-else class="editor-workspace">
+    <div v-else-if="!script.workspaceVisible" class="editor-workspace">
       <EditorLayout :node="editor.layout" :theme-id="props.themeId" />
     </div>
+    <ScriptWorkbench v-else :theme-id="props.themeId" @close="script.hideWorkspace" />
   </div>
 </template>
 
@@ -315,6 +342,36 @@ function isCancel(e: any): boolean {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 4px 10px 0;
+  background: var(--pvf-surface-subtle);
+  border-bottom: 1px solid var(--pvf-border-normal);
+  flex-shrink: 0;
+}
+.workspace-tab {
+  height: 29px;
+  padding: 0 12px;
+  color: var(--pvf-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+.workspace-tab:hover {
+  color: var(--pvf-text-primary);
+  background: var(--pvf-surface-hover);
+}
+.workspace-tab--active {
+  color: var(--pvf-primary);
+  font-weight: 600;
+  border-bottom-color: var(--pvf-primary);
 }
 
 /* 全屏拖拽覆盖层 */

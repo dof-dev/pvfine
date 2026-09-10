@@ -10,6 +10,7 @@ import {
   Stop24Regular,
   Search24Regular,
   BookmarkMultiple24Regular,
+  Code24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
   DocumentSync24Regular,
@@ -30,6 +31,7 @@ import { useSidebarStore } from "../stores/sidebar";
 import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
+import { useScriptStore } from "../stores/script";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -38,6 +40,7 @@ const sidebar = useSidebarStore();
 const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
+const script = useScriptStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -124,6 +127,10 @@ function openBookmarks(): void {
   sidebar.show("bookmarks");
 }
 
+function openScripts(): void {
+  script.showWorkspace();
+}
+
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -190,6 +197,15 @@ function isCancel(e: any): boolean {
     <div class="tb-sep" />
 
     <div class="tb-group" role="group" aria-label="编辑器">
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton quaternary @click="openScripts">
+            <template #icon><NIcon><Code24Regular /></NIcon></template>
+            脚本
+          </NButton>
+        </template>
+        打开 JavaScript 脚本工作区
+      </NTooltip>
       <NTooltip trigger="hover">
         <template #trigger>
           <NButton quaternary :disabled="!archive.open" @click="advancedSearch.open">
