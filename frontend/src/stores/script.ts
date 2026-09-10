@@ -175,6 +175,10 @@ export const useScriptStore = defineStore("script", () => {
     if (planId.value) stale.value = true;
   }
 
+  function clearLogs(): void {
+    logs.value = [];
+  }
+
   async function saveScript(name = currentName.value): Promise<void> {
     if (saving.value) return;
     saving.value = true;
@@ -439,6 +443,7 @@ export const useScriptStore = defineStore("script", () => {
     newScript,
     loadScript,
     updateSource,
+    clearLogs,
     saveScript,
     openDirectory,
     compile,

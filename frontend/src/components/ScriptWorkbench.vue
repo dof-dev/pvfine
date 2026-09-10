@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import {
   NAlert,
+  NBadge,
   NButton,
   NEmpty,
   NIcon,
@@ -22,7 +23,12 @@ import {
   Code24Regular,
   Dismiss24Regular,
   DocumentText24Regular,
+  Eraser24Regular,
   FolderOpen24Regular,
+  PanelBottomContract20Regular,
+  PanelBottomExpand20Regular,
+  PanelRightContract20Regular,
+  PanelRightExpand20Regular,
   Save24Regular,
   Stop24Regular,
 } from "@vicons/fluent";
@@ -30,7 +36,7 @@ import CodeEditor from "./CodeEditor.vue";
 import { useScriptStore } from "../stores/script";
 import { useEditorStore } from "../stores/editor";
 import { useSettingsStore } from "../stores/settings";
-import type { BatchDiffLine } from "../../bindings/pvfine/services/models";
+import type { BatchDiffLine, ScriptDiagnostic } from "../../bindings/pvfine/services/models";
 import type { ResolvedThemeId } from "../theme";
 
 defineProps<{
@@ -47,6 +53,25 @@ const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
 const scriptLibraryVisible = ref(false);
+const scriptEditor = ref<{ revealPosition: (line: number, column?: number) => void } | null>(null);
+const scriptMain = ref<HTMLDivElement | null>(null);
+const scriptEditorPanel = ref<HTMLElement | null>(null);
+const diffVisible = ref(true);
+const diffWidth = ref(38);
+const diffResizing = ref(false);
+const consoleTab = ref<"logs" | "diagnostics">("logs");
+const consoleCollapsed = ref(false);
+const consoleHeight = ref(175);
+const consoleResizing = ref(false);
+let diffResizeMove: ((event: PointerEvent) => void) | null = null;
+let diffResizeEnd: (() => void) | null = null;
+let consoleResizeMove: ((event: PointerEvent) => void) | null = null;
+let consoleResizeEnd: (() => void) | null = null;
+
+const minDiffWidth = 25;
+const maxDiffWidth = 70;
+const minConsoleHeight = 120;
+const minEditorHeight = 120;
 
 const progressPercent = computed(() => {
   if (!script.progress.total) return 0;
@@ -69,6 +94,111 @@ const statusType = computed<"default" | "success" | "warning" | "error" | "info"
   if (script.hasPreview) return "success";
   return "default";
 });
+
+const runSummary = computed(() => {
+  const result = script.runResult;
+  if (!result || result.status !== "completed") return "";
+  return `耗时 ${formatDuration(result.durationMs)}，扫描 ${formatCount(result.scannedFiles)} 个文件，产生 ${formatCount(result.modifiedFiles)} 个变更`;
+});
+
+function formatCount(value: number): string {
+  return Math.max(0, Math.trunc(Number(value) || 0)).toLocaleString("zh-CN");
+}
+
+function formatDuration(value: number): string {
+  return `${Math.max(0, Math.round(Number(value) || 0)).toLocaleString("zh-CN")}ms`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function toggleDiff(): void {
+  diffVisible.value = !diffVisible.value;
+}
+
+function toggleConsole(): void {
+  consoleCollapsed.value = !consoleCollapsed.value;
+}
+
+function onDiffResizeStart(): void {
+  if (!diffVisible.value || diffResizing.value || !scriptMain.value) return;
+  const rect = scriptMain.value.getBoundingClientRect();
+  if (rect.width <= 0) return;
+
+  diffResizing.value = true;
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  diffResizeMove = (event: PointerEvent) => {
+    const nextWidth = ((rect.right - event.clientX) / rect.width) * 100;
+    diffWidth.value = clamp(nextWidth, minDiffWidth, maxDiffWidth);
+  };
+  diffResizeEnd = () => onDiffResizeEnd();
+  window.addEventListener("pointermove", diffResizeMove);
+  window.addEventListener("pointerup", diffResizeEnd);
+  window.addEventListener("pointercancel", diffResizeEnd);
+}
+
+function onDiffResizeEnd(): void {
+  if (!diffResizing.value) return;
+  diffResizing.value = false;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  if (diffResizeMove) window.removeEventListener("pointermove", diffResizeMove);
+  if (diffResizeEnd) {
+    window.removeEventListener("pointerup", diffResizeEnd);
+    window.removeEventListener("pointercancel", diffResizeEnd);
+  }
+  diffResizeMove = null;
+  diffResizeEnd = null;
+}
+
+function onConsoleResizeStart(event: PointerEvent): void {
+  if (consoleCollapsed.value || consoleResizing.value || !scriptEditorPanel.value) return;
+  const rect = scriptEditorPanel.value.getBoundingClientRect();
+  if (rect.height <= 0) return;
+  const startY = event.clientY;
+  const startHeight = consoleHeight.value;
+
+  consoleResizing.value = true;
+  document.body.style.cursor = "row-resize";
+  document.body.style.userSelect = "none";
+  consoleResizeMove = (event: PointerEvent) => {
+    const maxHeight = Math.max(
+      minConsoleHeight,
+      rect.height - 34 - minEditorHeight - 5,
+    );
+    consoleHeight.value = clamp(
+      startHeight - (event.clientY - startY),
+      minConsoleHeight,
+      maxHeight,
+    );
+  };
+  consoleResizeEnd = () => onConsoleResizeEnd();
+  window.addEventListener("pointermove", consoleResizeMove);
+  window.addEventListener("pointerup", consoleResizeEnd);
+  window.addEventListener("pointercancel", consoleResizeEnd);
+}
+
+function onConsoleResizeEnd(): void {
+  if (!consoleResizing.value) return;
+  consoleResizing.value = false;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  if (consoleResizeMove) window.removeEventListener("pointermove", consoleResizeMove);
+  if (consoleResizeEnd) {
+    window.removeEventListener("pointerup", consoleResizeEnd);
+    window.removeEventListener("pointercancel", consoleResizeEnd);
+  }
+  consoleResizeMove = null;
+  consoleResizeEnd = null;
+}
+
+function focusDiagnostic(diagnostic: ScriptDiagnostic): void {
+  if (!diagnostic.line || diagnostic.line < 1) return;
+  consoleTab.value = "diagnostics";
+  scriptEditor.value?.revealPosition(diagnostic.line, diagnostic.column ?? 1);
+}
 
 function isSelected(fileIndex: number): boolean {
   return script.selectedIndexes.has(fileIndex);
@@ -151,7 +281,10 @@ async function onCheck(): Promise<void> {
   try {
     const result = await script.compile();
     if (result.valid) message.success("脚本语法检查通过");
-    else message.error("脚本存在语法错误，请查看下方诊断");
+    else {
+      consoleTab.value = "diagnostics";
+      message.error("脚本存在语法错误，请查看下方诊断");
+    }
   } catch (error: any) {
     message.error(`检查失败: ${error?.message ?? error}`);
   }
@@ -159,6 +292,7 @@ async function onCheck(): Promise<void> {
 
 async function onRun(): Promise<void> {
   try {
+    consoleTab.value = "logs";
     await script.run();
     if (script.runResult?.status === "completed") {
       message.success(`运行完成，产生 ${script.modifiedFiles} 个预览变更`);
@@ -193,6 +327,11 @@ async function onOpenDirectory(): Promise<void> {
     message.error(`打开目录失败: ${error?.message ?? error}`);
   }
 }
+
+onBeforeUnmount(() => {
+  onDiffResizeEnd();
+  onConsoleResizeEnd();
+});
 </script>
 
 <template>
@@ -236,15 +375,53 @@ async function onOpenDirectory(): Promise<void> {
         </NButton>
       </div>
 
-      <div class="script-main">
-        <section class="script-editor-panel">
+      <div ref="scriptMain" class="script-main">
+        <section ref="scriptEditorPanel" class="script-editor-panel">
           <div class="script-editor-heading">
             <span>{{ script.currentName }}</span>
             <NTag v-if="script.dirty" size="tiny" type="warning" :bordered="false">未保存</NTag>
             <NTag size="tiny" :type="statusType" :bordered="false">{{ statusLabel }}</NTag>
+            <NText v-if="runSummary" depth="3" class="script-run-summary" :title="runSummary">
+              {{ runSummary }}
+            </NText>
+            <div class="script-editor-heading-actions">
+              <NButton
+                quaternary
+                size="tiny"
+                class="script-layout-button"
+                :title="diffVisible ? '隐藏 Diff 面板' : '展开 Diff 面板'"
+                :aria-label="diffVisible ? '隐藏 Diff 面板' : '展开 Diff 面板'"
+                @click="toggleDiff"
+              >
+                <template #icon>
+                  <NIcon>
+                    <PanelRightContract20Regular v-if="diffVisible" />
+                    <PanelRightExpand20Regular v-else />
+                  </NIcon>
+                </template>
+                {{ diffVisible ? "隐藏 Diff" : "展开 Diff" }}
+              </NButton>
+              <NButton
+                quaternary
+                size="tiny"
+                class="script-layout-button"
+                :title="consoleCollapsed ? '展开控制台' : '折叠控制台'"
+                :aria-label="consoleCollapsed ? '展开控制台' : '折叠控制台'"
+                @click="toggleConsole"
+              >
+                <template #icon>
+                  <NIcon>
+                    <PanelBottomExpand20Regular v-if="consoleCollapsed" />
+                    <PanelBottomContract20Regular v-else />
+                  </NIcon>
+                </template>
+                {{ consoleCollapsed ? "展开控制台" : "折叠控制台" }}
+              </NButton>
+            </div>
           </div>
           <div class="script-editor-host">
             <CodeEditor
+              ref="scriptEditor"
               :doc="script.source"
               language="javascript"
               :theme-id="themeId"
@@ -252,7 +429,20 @@ async function onOpenDirectory(): Promise<void> {
               @change="script.updateSource"
             />
           </div>
-          <div class="script-bottom-panel">
+          <div
+            v-if="!consoleCollapsed"
+            class="script-console-resizer"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="调整控制台高度"
+            tabindex="0"
+            @pointerdown.prevent="onConsoleResizeStart"
+          />
+          <div
+            v-if="!consoleCollapsed"
+            class="script-bottom-panel"
+            :style="{ height: `${consoleHeight}px` }"
+          >
             <div v-if="script.progress.total || script.running" class="script-progress-row">
               <NProgress type="line" :percentage="progressPercent" :show-indicator="false" />
               <span>{{ script.progress.done }} / {{ script.progress.total || "?" }}</span>
@@ -260,24 +450,91 @@ async function onOpenDirectory(): Promise<void> {
                 {{ script.progress.currentPath || script.progress.message || "执行中" }}
               </NText>
             </div>
-            <div v-if="script.diagnostics.length" class="script-diagnostics">
-              <div v-for="(diagnostic, index) in script.diagnostics" :key="index" class="script-diagnostic">
-                <NTag size="tiny" type="error" :bordered="false">{{ diagnostic.kind }}</NTag>
-                <span>{{ diagnostic.message }}</span>
-                <NText v-if="diagnostic.line" depth="3">第 {{ diagnostic.line }} 行{{ diagnostic.column ? `，第 ${diagnostic.column} 列` : "" }}</NText>
+            <div class="script-console-heading">
+              <div class="script-console-tabs" role="tablist" aria-label="脚本控制台">
+                <button
+                  type="button"
+                  role="tab"
+                  class="script-console-tab"
+                  :class="{ 'script-console-tab--active': consoleTab === 'logs' }"
+                  :aria-selected="consoleTab === 'logs'"
+                  @click="consoleTab = 'logs'"
+                >
+                  运行日志
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="script-console-tab"
+                  :class="{ 'script-console-tab--active': consoleTab === 'diagnostics' }"
+                  :aria-selected="consoleTab === 'diagnostics'"
+                  @click="consoleTab = 'diagnostics'"
+                >
+                  <span>问题诊断</span>
+                  <NBadge
+                    v-if="script.diagnostics.length"
+                    :value="script.diagnostics.length"
+                    :max="99"
+                    type="error"
+                  />
+                </button>
               </div>
+              <NButton
+                v-if="consoleTab === 'logs'"
+                quaternary
+                size="tiny"
+                class="script-clear-logs"
+                title="清空日志"
+                aria-label="清空日志"
+                :disabled="script.logs.length === 0"
+                @click="script.clearLogs"
+              >
+                <template #icon><NIcon><Eraser24Regular /></NIcon></template>
+                清空日志
+              </NButton>
             </div>
-            <NScrollbar class="script-log-scroll">
+            <NScrollbar v-if="consoleTab === 'logs'" class="script-console-scroll">
               <div v-if="script.logs.length === 0" class="script-log-empty">运行日志会显示在这里</div>
               <div v-for="(log, index) in script.logs" :key="index" class="script-log-line" :class="`script-log-line--${log.level}`">
                 <span class="script-log-level">{{ log.level }}</span>
                 <span>{{ log.message }}</span>
               </div>
             </NScrollbar>
+            <NScrollbar v-else class="script-console-scroll">
+              <div v-if="script.diagnostics.length === 0" class="script-log-empty">检查脚本后，问题诊断会显示在这里</div>
+              <button
+                v-for="(diagnostic, index) in script.diagnostics"
+                :key="index"
+                type="button"
+                class="script-diagnostic"
+                :class="{ 'script-diagnostic--clickable': !!diagnostic.line }"
+                :disabled="!diagnostic.line"
+                @click="focusDiagnostic(diagnostic)"
+              >
+                <NTag size="tiny" type="error" :bordered="false">{{ diagnostic.kind }}</NTag>
+                <span class="script-diagnostic-message">{{ diagnostic.message }}</span>
+                <NText v-if="diagnostic.line" depth="3">
+                  第 {{ diagnostic.line }} 行{{ diagnostic.column ? `，第 ${diagnostic.column} 列` : "" }}
+                </NText>
+              </button>
+            </NScrollbar>
           </div>
         </section>
 
-        <aside class="script-preview-panel">
+        <div
+          v-if="diffVisible"
+          class="script-diff-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整 Diff 面板宽度"
+          :aria-valuenow="Math.round(diffWidth)"
+          aria-valuemin="25"
+          aria-valuemax="70"
+          tabindex="0"
+          @pointerdown.prevent="onDiffResizeStart"
+        />
+
+        <aside v-if="diffVisible" class="script-preview-panel" :style="{ flex: `0 0 ${diffWidth}%` }">
           <div class="script-panel-heading">
             <div class="script-preview-title">
               <span>预览 diff</span>
@@ -430,13 +687,25 @@ async function onOpenDirectory(): Promise<void> {
 .script-preview-panel {
   display: flex;
   flex-direction: column;
+  flex: 0 0 38%;
   min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
   padding: 10px;
   background: var(--pvf-surface-subtle);
 }
+.script-diff-resizer {
+  flex: 0 0 5px;
+  z-index: 5;
+  cursor: col-resize;
+  background: var(--pvf-surface-inset);
+}
+.script-diff-resizer:hover,
+.script-diff-resizer:focus-visible {
+  background: var(--pvf-effect-split-hover);
+  outline: none;
+}
 .script-preview-panel {
-  width: 38%;
   min-width: 300px;
   border-left: 1px solid var(--pvf-border-normal);
 }
@@ -570,9 +839,9 @@ async function onOpenDirectory(): Promise<void> {
 }
 .script-editor-panel {
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
   flex-direction: column;
-  min-width: 0;
+  min-width: 240px;
   min-height: 0;
   overflow: hidden;
 }
@@ -580,6 +849,7 @@ async function onOpenDirectory(): Promise<void> {
   gap: 7px;
   min-height: 34px;
   padding: 0 12px;
+  flex-shrink: 0;
   color: var(--pvf-text-secondary);
   border-bottom: 1px solid var(--pvf-border-subtle);
 }
@@ -589,6 +859,23 @@ async function onOpenDirectory(): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.script-run-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.script-editor-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin-left: auto;
+}
+.script-layout-button {
+  white-space: nowrap;
+}
 .script-editor-host {
   display: flex;
   flex: 1 1 0;
@@ -596,11 +883,22 @@ async function onOpenDirectory(): Promise<void> {
   min-height: 0;
   overflow: hidden;
 }
+.script-console-resizer {
+  flex: 0 0 5px;
+  z-index: 5;
+  cursor: row-resize;
+  background: var(--pvf-surface-inset);
+}
+.script-console-resizer:hover,
+.script-console-resizer:focus-visible {
+  background: var(--pvf-effect-split-hover);
+  outline: none;
+}
 .script-bottom-panel {
   display: flex;
-  flex: 0 1 175px;
+  flex: 0 0 auto;
   flex-direction: column;
-  height: 175px;
+  box-sizing: border-box;
   min-height: 120px;
   padding: 6px 10px;
   overflow: hidden;
@@ -620,22 +918,76 @@ async function onOpenDirectory(): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.script-diagnostics {
-  max-height: 60px;
-  overflow: auto;
-  margin-bottom: 4px;
+.script-console-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--pvf-border-subtle);
+}
+.script-console-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 26px;
+}
+.script-console-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--pvf-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+.script-console-tab:hover {
+  color: var(--pvf-text-primary);
+  background: var(--pvf-surface-hover);
+}
+.script-console-tab--active {
+  color: var(--pvf-primary);
+  font-weight: 600;
+  border-bottom-color: var(--pvf-primary);
+}
+.script-clear-logs {
+  margin-right: -4px;
+}
+.script-console-scroll {
+  flex: 1 1 0;
+  min-height: 0;
 }
 .script-diagnostic {
   display: flex;
+  width: 100%;
   align-items: baseline;
   gap: 6px;
   padding: 2px 0;
   color: var(--pvf-error);
+  font: inherit;
   font-size: 11px;
+  text-align: left;
+  background: transparent;
+  border: 0;
 }
-.script-log-scroll {
+.script-diagnostic--clickable {
+  cursor: pointer;
+}
+.script-diagnostic--clickable:hover {
+  background: var(--pvf-surface-hover);
+}
+.script-diagnostic:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+.script-diagnostic-message {
+  min-width: 0;
   flex: 1;
-  min-height: 0;
+  overflow-wrap: anywhere;
 }
 .script-log-line {
   display: flex;

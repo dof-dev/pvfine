@@ -73,6 +73,7 @@ interface AnnotationDisplay {
 }
 
 const setAnnotations = StateEffect.define<AnnotationDisplay>();
+const setDiagnosticLine = StateEffect.define<number | null>();
 
 const javascriptHighlighting = syntaxHighlighting(
   HighlightStyle.define([
@@ -361,6 +362,26 @@ const annotationField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+const diagnosticLineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(decorations, transaction) {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setDiagnosticLine)) continue;
+      if (effect.value === null) {
+        next = Decoration.none;
+        continue;
+      }
+      const line = transaction.state.doc.line(effect.value);
+      next = Decoration.set([
+        Decoration.line({ class: "cm-diagnostic-line" }).range(line.from),
+      ]);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 function createEditorTheme(themeId: ResolvedThemeId) {
   return EditorView.theme(
     {
@@ -432,6 +453,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
     annotationDisplayField,
     annotationField,
+    diagnosticLineField,
     indentUnit.of("\t"),
     isJavaScript ? javascript() : pvfLanguage.extension,
     isJavaScript
@@ -485,6 +507,24 @@ function scriptCompletionSource(
   return result ?? fallback();
 }
 
+function revealPosition(lineNumber: number, columnNumber = 1): void {
+  if (!view) return;
+  const line = Math.max(1, Math.min(view.state.doc.lines, Math.trunc(lineNumber)));
+  const column = Math.max(1, Math.trunc(columnNumber));
+  const lineInfo = view.state.doc.line(line);
+  const position = Math.min(lineInfo.to, lineInfo.from + column - 1);
+  view.dispatch({
+    selection: { anchor: position },
+    effects: [
+      setDiagnosticLine.of(line),
+      EditorView.scrollIntoView(position, { y: "center" }),
+    ],
+  });
+  view.focus();
+}
+
+defineExpose({ revealPosition });
+
 onMounted(() => {
   view = new EditorView({
     state: EditorState.create({ doc: props.doc, extensions: makeExtensions(props.themeId) }),
@@ -504,7 +544,10 @@ watch(
     if (!view) return;
     const current = view.state.doc.toString();
     if (doc !== current) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: doc } });
+      view.dispatch({
+        changes: { from: 0, to: current.length, insert: doc },
+        effects: setDiagnosticLine.of(null),
+      });
     }
   }
 );
@@ -644,6 +687,10 @@ watch(
   cursor: pointer;
   text-decoration: underline dotted var(--pvf-editor-annotation-link);
   text-underline-offset: 2px;
+}
+.code-editor :deep(.cm-diagnostic-line) {
+  background: var(--pvf-error-surface);
+  box-shadow: inset 3px 0 0 var(--pvf-error);
 }
 .code-editor :deep(.cm-scroller) {
   flex: 1 1 auto;
