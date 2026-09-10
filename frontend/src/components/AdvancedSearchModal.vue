@@ -16,12 +16,15 @@ import {
   NText,
   useMessage,
   type DataTableColumns,
+  type InputInst,
 } from "naive-ui";
-import { Add24Regular, Search24Regular } from "@vicons/fluent";
+import { Add24Regular, Folder20Regular, History16Regular, Search24Regular } from "@vicons/fluent";
 import { ArchiveService } from "../../bindings/pvfine/services";
 import {
   useAdvancedSearchStore,
   type AdvancedSearchItem,
+  type AdvancedSearchMode,
+  type AdvancedStringMatch,
 } from "../stores/advancedSearch";
 import type {
   AdvancedSearchDetail,
@@ -34,11 +37,101 @@ const search = useAdvancedSearchStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
 const message = useMessage();
+const queryInputRef = ref<InputInst | null>(null);
 const expandedRowKeys = ref<string[]>([]);
 const directoryOptions = ref<string[]>([]);
 const directorySuggesting = ref(false);
 const addingResults = ref(false);
 let directoryRequest = 0;
+
+const isMac = typeof navigator !== "undefined" && /macintosh|mac os x/i.test(navigator.userAgent);
+const modifierKey = computed(() => (isMac ? "⌘" : "Ctrl"));
+
+interface PresetChip {
+  label: string;
+  value: string;
+  desc: string;
+}
+
+interface HistoryItem {
+  query: string;
+  mode: AdvancedSearchMode;
+  stringMatch?: AdvancedStringMatch;
+}
+
+const HISTORY_KEY = "pvfine_search_history";
+
+function readSearchHistory(): HistoryItem[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item) =>
+        item &&
+        typeof item.query === "string" &&
+        item.query.trim().length > 0 &&
+        (item.mode === "string" || item.mode === "binary")
+    );
+  } catch {
+    return [];
+  }
+}
+
+const searchHistory = ref<HistoryItem[]>(readSearchHistory());
+
+function addSearchHistory(query: string, mode: AdvancedSearchMode, stringMatch?: AdvancedStringMatch): void {
+  const text = query.trim();
+  if (!text) return;
+  const current = searchHistory.value.filter((item) => item.query !== text);
+  const next: HistoryItem[] = [{ query: text, mode, stringMatch }, ...current].slice(0, 8);
+  searchHistory.value = next;
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+function clearSearchHistory(): void {
+  searchHistory.value = [];
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+  } catch {}
+}
+
+const presetChips = computed<PresetChip[]>(() => {
+  if (search.regexEnabled) {
+    return [
+      { label: "[name]", value: "\\[name\\]", desc: "正则匹配: [name] 名称标签" },
+      { label: "[price]", value: "\\[price\\]", desc: "正则匹配: [price] 价格标签" },
+      { label: "[rarity]", value: "\\[rarity\\]", desc: "正则匹配: [rarity] 装备品级标签" },
+      { label: "[equipment type]", value: "\\[equipment type\\]", desc: "正则匹配: [equipment type] 装备部位" },
+      { label: "[minimum level]", value: "\\[minimum level\\]", desc: "正则匹配: [minimum level] 装备等级" },
+      { label: "[explain]", value: "\\[explain\\]", desc: "正则匹配: [explain] 说明文本" },
+      { label: "[anti evil]", value: "\\[anti evil\\]", desc: "正则匹配: [anti evil] 抗魔值" },
+    ];
+  }
+  if (search.mode === "binary") {
+    return [
+      { label: "[name]", value: "[name]\n`", desc: "二进制脚本片段: [name]" },
+      { label: "[price]", value: "[price]\n", desc: "二进制脚本片段: [price]" },
+      { label: "[rarity]", value: "[rarity]\n", desc: "二进制脚本片段: [rarity]" },
+      { label: "[equipment type]", value: "[equipment type]\n`", desc: "二进制脚本片段: [equipment type]" },
+      { label: "[minimum level]", value: "[minimum level]\n", desc: "二进制脚本片段: [minimum level]" },
+      { label: "[explain]", value: "[explain]\n`", desc: "二进制脚本片段: [explain]" },
+      { label: "[anti evil]", value: "[anti evil]\n", desc: "二进制脚本片段: [anti evil]" },
+    ];
+  }
+  return [
+    { label: "[name]", value: "[name]", desc: "字符串关键词: [name] 装备/道具名称" },
+    { label: "[price]", value: "[price]", desc: "字符串关键词: [price] 商店价格" },
+    { label: "[rarity]", value: "[rarity]", desc: "字符串关键词: [rarity] 装备品级" },
+    { label: "[equipment type]", value: "[equipment type]", desc: "字符串关键词: [equipment type] 装备部位" },
+    { label: "[minimum level]", value: "[minimum level]", desc: "字符串关键词: [minimum level] 佩戴等级" },
+    { label: "[explain]", value: "[explain]", desc: "字符串关键词: [explain] 装备说明" },
+    { label: "[anti evil]", value: "[anti evil]", desc: "字符串关键词: [anti evil] 抗魔值" },
+  ];
+});
 
 const modeOptions = [
   { label: "字符串", value: "string" },
@@ -243,10 +336,47 @@ async function addAllResults(): Promise<void> {
   }
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
-  event.preventDefault();
+function doSearch(): void {
+  if (search.query.trim()) {
+    addSearchHistory(search.query, search.mode, search.stringMatch);
+  }
   void search.search();
+}
+
+function applyPreset(chip: PresetChip): void {
+  search.query = chip.value;
+  queryInputRef.value?.focus();
+}
+
+function applyHistory(item: HistoryItem): void {
+  search.mode = item.mode;
+  if (item.stringMatch) {
+    search.stringMatch = item.stringMatch;
+  }
+  search.query = item.query;
+  doSearch();
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  const isTextarea = search.mode === "binary" || search.regexEnabled;
+  if (event.key === "Enter") {
+    if (isTextarea) {
+      if (event.metaKey || event.ctrlKey) {
+        event.preventDefault();
+        doSearch();
+      }
+    } else {
+      event.preventDefault();
+      doSearch();
+    }
+  }
+}
+
+function onScopeKeydown(event: KeyboardEvent): void {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    doSearch();
+  }
 }
 </script>
 
@@ -262,38 +392,103 @@ function onKeydown(event: KeyboardEvent): void {
   >
     <div class="advanced-search-modal">
       <div class="advanced-search-toolbar">
-        <NRadioGroup v-model:value="search.mode" size="small">
-          <NRadioButton v-for="option in modeOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </NRadioButton>
-        </NRadioGroup>
+        <div class="advanced-search-modes">
+          <NRadioGroup v-model:value="search.mode" size="small">
+            <NRadioButton v-for="option in modeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </NRadioButton>
+          </NRadioGroup>
 
-        <NRadioGroup v-if="search.mode === 'string'" v-model:value="search.stringMatch" size="small">
-          <NRadioButton v-for="option in stringMatchOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </NRadioButton>
-        </NRadioGroup>
+          <NRadioGroup v-if="search.mode === 'string'" v-model:value="search.stringMatch" size="small">
+            <NRadioButton v-for="option in stringMatchOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </NRadioButton>
+          </NRadioGroup>
+        </div>
+
+        <div class="advanced-search-shortcut-hint">
+          <span class="shortcut-tip-label">快捷键:</span>
+          <kbd class="shortcut-key">{{ modifierKey }}</kbd>
+          <span class="shortcut-plus">+</span>
+          <kbd class="shortcut-key">Enter</kbd>
+          <span class="shortcut-action">触发搜索</span>
+        </div>
       </div>
 
-      <div class="advanced-search-inputs">
+      <div class="advanced-search-query-row">
         <NInput
+          ref="queryInputRef"
           v-model:value="search.query"
           :type="search.mode === 'binary' || search.regexEnabled ? 'textarea' : 'text'"
-          :autosize="search.mode === 'binary' || search.regexEnabled ? { minRows: 2, maxRows: 6 } : false"
+          :autosize="search.mode === 'binary' || search.regexEnabled ? { minRows: 2, maxRows: 5 } : false"
           :placeholder="queryPlaceholder"
           clearable
+          class="advanced-search-query-input"
           @keydown="onKeydown"
         />
+      </div>
+
+      <div class="advanced-search-chips-container">
+        <div class="advanced-search-chips-row">
+          <span class="chips-row-label">常用预设:</span>
+          <div class="chips-scroll">
+            <button
+              v-for="chip in presetChips"
+              :key="chip.label"
+              class="search-chip search-chip-preset"
+              type="button"
+              :title="chip.desc"
+              @click="applyPreset(chip)"
+            >
+              {{ chip.label }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="searchHistory.length > 0" class="advanced-search-chips-row history-row">
+          <span class="chips-row-label">
+            <NIcon :component="History16Regular" class="chips-history-icon" />
+            历史:
+          </span>
+          <div class="chips-scroll">
+            <button
+              v-for="item in searchHistory"
+              :key="item.query"
+              class="search-chip search-chip-history"
+              type="button"
+              :title="`填入历史: ${item.query} (${item.mode === 'binary' ? '二进制' : item.stringMatch === 'regex' ? '正则' : '普通文本'})`"
+              @click="applyHistory(item)"
+            >
+              {{ item.query }}
+            </button>
+            <button
+              class="search-chip-clear"
+              type="button"
+              title="清空搜索历史"
+              @click="clearSearchHistory"
+            >
+              清空
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="advanced-search-scope-row">
         <NAutoComplete
           :value="search.scopePath"
           :options="directoryOptions"
-          placeholder="目录范围，可选，例如 equipment/character"
+          placeholder="目录范围（可选，留空搜索全归档），例如 equipment/character"
           clearable
           :loading="directorySuggesting"
           @update:value="onScopePathUpdate"
           @select="onScopePathSelect"
           @focus="suggestDirectories(search.scopePath)"
-        />
+          @keydown="onScopeKeydown"
+        >
+          <template #prefix>
+            <NIcon :component="Folder20Regular" class="scope-prefix-icon" />
+          </template>
+        </NAutoComplete>
       </div>
 
       <NAlert v-if="search.stale" type="warning" :show-icon="false" class="advanced-search-alert">
@@ -345,9 +540,9 @@ function onKeydown(event: KeyboardEvent): void {
           <NButton v-if="search.nextCursor >= 0" quaternary :loading="search.searching" @click="search.loadMore">
             加载更多
           </NButton>
-          <NButton type="primary" :loading="search.searching" @click="search.search">
+          <NButton type="primary" :loading="search.searching" @click="doSearch">
             <template #icon><NIcon><Search24Regular /></NIcon></template>
-            搜索
+            搜索 ({{ modifierKey }}+↵)
           </NButton>
         </div>
       </div>
@@ -373,10 +568,116 @@ function onKeydown(event: KeyboardEvent): void {
   justify-content: space-between;
   gap: 12px;
 }
-.advanced-search-inputs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+.advanced-search-modes {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+.advanced-search-shortcut-hint {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--pvf-text-muted);
+}
+.shortcut-tip-label {
+  color: var(--pvf-text-muted);
+}
+.shortcut-key {
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--pvf-surface-subtle);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 4px;
+  color: var(--pvf-text-secondary);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+}
+.shortcut-plus {
+  color: var(--pvf-text-faint);
+  font-size: 10px;
+}
+.shortcut-action {
+  margin-left: 2px;
+  color: var(--pvf-text-muted);
+}
+.advanced-search-query-row,
+.advanced-search-scope-row {
+  width: 100%;
+}
+.advanced-search-chips-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 2px 0;
+}
+.advanced-search-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.chips-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pvf-text-muted);
+  flex-shrink: 0;
+}
+.chips-history-icon {
+  color: var(--pvf-text-muted);
+}
+.chips-scroll {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.search-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--pvf-text-secondary);
+  background: var(--pvf-surface-subtle);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.search-chip:hover {
+  color: var(--pvf-primary-hover);
+  background: var(--pvf-surface-hover);
+  border-color: var(--pvf-primary-base);
+}
+.search-chip-history {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-chip-clear {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--pvf-text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+.search-chip-clear:hover {
+  color: var(--pvf-error-hover);
+}
+.scope-prefix-icon {
+  color: var(--pvf-text-muted);
 }
 .advanced-search-meta {
   justify-content: space-between;
@@ -452,12 +753,10 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 @media (max-width: 720px) {
-  .advanced-search-inputs {
-    grid-template-columns: 1fr;
-  }
   .advanced-search-toolbar {
     align-items: flex-start;
     flex-direction: column;
+    gap: 8px;
   }
 }
 </style>

@@ -129,8 +129,15 @@ export const useBatchStore = defineStore("batch", () => {
     visible.value = false;
   }
 
-  function addOperation(): void {
-    operations.value.push(newOperation());
+  function addOperation(initial?: Partial<StructuredOperation>): BatchOperationForm {
+    const base = newOperation();
+    const op: BatchOperationForm = {
+      ...base,
+      ...initial,
+      id: base.id,
+    };
+    operations.value.push(op);
+    return op;
   }
 
   function removeOperation(id: number): void {
