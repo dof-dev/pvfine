@@ -11,12 +11,14 @@ import {
   Search24Regular,
   BookmarkMultiple24Regular,
   Code24Regular,
+  DocumentText24Regular,
   PanelRight24Regular,
   PanelRightContract24Regular,
   DocumentSync24Regular,
   Settings24Regular,
 } from "@vicons/fluent";
 import {
+  NBadge,
   NButton,
   NIcon,
   NTooltip,
@@ -46,6 +48,26 @@ const dialog = useDialog();
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
+const versionChangeCount = computed(() => {
+  if (!archive.open) return 0;
+  if (version.enabled) {
+    return version.status.changedFiles;
+  }
+  return archive.modifiedCount;
+});
+const versionTooltip = computed(() => {
+  if (!archive.open) return "管理工作区版本、提交和历史";
+  if (version.enabled) {
+    if (version.status.changedFiles > 0) {
+      return `版本控制 (${version.status.branch})：${version.status.changedFiles} 个变更待提交`;
+    }
+    return `版本控制 (${version.status.branch})：工作区无变更`;
+  }
+  if (archive.modifiedCount > 0) {
+    return `版本控制未启用（当前有 ${archive.modifiedCount} 个未保存修改）`;
+  }
+  return "管理工作区版本、提交和历史";
+});
 watch(
   () => archive.unpackMessage,
   (msg) => {
@@ -127,9 +149,6 @@ function openBookmarks(): void {
   sidebar.show("bookmarks");
 }
 
-function openScripts(): void {
-  script.showWorkspace();
-}
 
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
@@ -151,12 +170,21 @@ function isCancel(e: any): boolean {
 
       <NTooltip trigger="hover">
         <template #trigger>
-          <NButton quaternary :disabled="!archive.open" @click="version.open">
-            <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
-            版本
-          </NButton>
+          <NBadge
+            :value="versionChangeCount"
+            :max="99"
+            :show="versionChangeCount > 0"
+            :type="version.enabled ? 'info' : 'warning'"
+            class="tb-version-badge"
+            :offset="[-4, 4]"
+          >
+            <NButton quaternary :disabled="!archive.open" @click="version.open">
+              <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+              版本
+            </NButton>
+          </NBadge>
         </template>
-        管理工作区版本、提交和历史
+        {{ versionTooltip }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -196,16 +224,46 @@ function isCancel(e: any): boolean {
 
     <div class="tb-sep" />
 
-    <div class="tb-group" role="group" aria-label="编辑器">
-      <NTooltip trigger="hover">
-        <template #trigger>
-          <NButton quaternary @click="openScripts">
-            <template #icon><NIcon><Code24Regular /></NIcon></template>
-            脚本
-          </NButton>
-        </template>
-        打开 JavaScript 脚本工作区
-      </NTooltip>
+    <div class="tb-group" role="group" aria-label="工作区视图">
+      <div class="workspace-switch" role="tablist" aria-label="工作区模式">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="!script.workspaceVisible"
+          class="switch-item"
+          :class="{ 'switch-item--active': !script.workspaceVisible }"
+          title="切回归档编辑"
+          @click="script.hideWorkspace"
+        >
+          <NIcon :size="15"><DocumentText24Regular /></NIcon>
+          <span>归档编辑</span>
+        </button>
+        <NTooltip trigger="hover" :disabled="archive.open">
+          <template #trigger>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="script.workspaceVisible"
+              :disabled="!archive.open"
+              class="switch-item"
+              :class="{
+                'switch-item--active': script.workspaceVisible,
+                'switch-item--disabled': !archive.open,
+              }"
+              :title="archive.open ? '切换到脚本工作区' : ''"
+              @click="archive.open && script.showWorkspace()"
+            >
+              <NIcon :size="15"><Code24Regular /></NIcon>
+              <span>脚本工作区</span>
+              <span v-if="script.running" class="switch-badge switch-badge--running" title="脚本运行中" />
+              <span v-else-if="script.hasPreview" class="switch-badge switch-badge--success" title="有待应用的预览" />
+              <span v-else-if="script.dirty" class="switch-badge switch-badge--warning" title="脚本未保存" />
+            </button>
+          </template>
+          需先打开 PVF 归档
+        </NTooltip>
+      </div>
+
       <NTooltip trigger="hover">
         <template #trigger>
           <NButton quaternary :disabled="!archive.open" @click="advancedSearch.open">
@@ -268,7 +326,7 @@ function isCancel(e: any): boolean {
 
     <NTooltip trigger="hover">
       <template #trigger>
-        <NButton quaternary aria-label="设置" @click="settings.open">
+        <NButton quaternary aria-label="设置" @click="settings.open()">
           <template #icon><NIcon><Settings24Regular /></NIcon></template>
         </NButton>
       </template>
@@ -305,5 +363,96 @@ function isCancel(e: any): boolean {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.tb-version-badge {
+  display: inline-flex;
+}
+:deep(.tb-version-badge .n-badge-sup) {
+  pointer-events: none;
+  font-size: 10px;
+  height: 15px;
+  min-width: 15px;
+  line-height: 15px;
+  padding: 0 4px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 0 0 1.5px var(--pvf-window-background-solid);
+}
+.workspace-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  gap: 2px;
+  background: var(--pvf-surface-subtle);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 6px;
+  user-select: none;
+}
+.switch-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pvf-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+  line-height: 1;
+}
+.switch-item:hover:not(.switch-item--active):not(:disabled):not(.switch-item--disabled) {
+  color: var(--pvf-text-primary);
+  background: var(--pvf-surface-hover);
+}
+.switch-item:disabled,
+.switch-item--disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.switch-item:disabled:hover,
+.switch-item--disabled:hover {
+  color: var(--pvf-text-muted);
+  background: transparent;
+}
+.switch-item--active {
+  color: var(--pvf-primary);
+  background: var(--pvf-surface-card);
+  border-color: var(--pvf-border-subtle);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.switch-badge {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.switch-badge--running {
+  background: var(--pvf-primary);
+  animation: pulse-badge 1.2s infinite ease-in-out;
+}
+.switch-badge--success {
+  background: var(--pvf-success, #18a058);
+}
+.switch-badge--warning {
+  background: var(--pvf-warning, #f0a020);
+}
+@keyframes pulse-badge {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
 }
 </style>

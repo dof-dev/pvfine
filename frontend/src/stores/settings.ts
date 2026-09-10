@@ -6,6 +6,7 @@ import type { ThemeMode } from "../theme";
 
 export type AnnotationTagPlacement = "after-target" | "line-end" | "hidden";
 export type ExplorerOpenMode = "single-click" | "double-click";
+export type SettingsTab = "general" | "editor" | "npk" | "system";
 export type { ThemeMode } from "../theme";
 
 const defaultSettings: AppSettings = {
@@ -19,6 +20,7 @@ const defaultSettings: AppSettings = {
 
 export const useSettingsStore = defineStore("settings", () => {
   const visible = ref(false);
+  const activeTab = ref<SettingsTab>("general");
   const loaded = ref(false);
   const saving = ref(false);
   const annotationTagPlacement = ref<AnnotationTagPlacement>("after-target");
@@ -138,13 +140,19 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
-  function open() {
+  function open(tab?: SettingsTab) {
+    if (tab && typeof tab === "string") {
+      activeTab.value = tab;
+    } else {
+      activeTab.value = "general";
+    }
     visible.value = true;
     void load();
   }
 
   return {
     visible,
+    activeTab,
     loaded,
     saving,
     annotationTagPlacement,

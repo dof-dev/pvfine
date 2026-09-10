@@ -52,7 +52,12 @@ const explorer = useExplorerStore();
 const images = useImageStore();
 const message = useMessage();
 
-const activeTab = ref<TabKey>("general");
+const activeTab = computed<TabKey>({
+  get: () => settings.activeTab,
+  set: (val) => {
+    settings.activeTab = val;
+  },
+});
 const checkingUpdates = ref(false);
 const reloadingAnnotations = ref(false);
 const reloadingRendering = ref(false);

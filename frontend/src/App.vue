@@ -114,10 +114,17 @@ async function onKeydown(e: KeyboardEvent) {
     return;
   }
   const key = e.key.toLowerCase();
-  if (key === "enter" && version.canCommit) {
-    e.preventDefault();
-    await editor.flushPending();
-    void version.commit();
+  if (key === "enter") {
+    if (script.workspaceVisible) {
+      if (script.canRun) {
+        e.preventDefault();
+        void script.run();
+      }
+    } else if (version.canCommit) {
+      e.preventDefault();
+      await editor.flushPending();
+      void version.commit();
+    }
   } else if (key === "o") {
     e.preventDefault();
     if (!archive.loading) await archive.openDialog();

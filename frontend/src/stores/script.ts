@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { Events } from "@wailsio/runtime";
 import { ScriptService } from "../../bindings/pvfine/services";
@@ -112,6 +112,7 @@ export const useScriptStore = defineStore("script", () => {
   }
 
   function showWorkspace(): void {
+    if (!archive.open) return;
     workspaceVisible.value = true;
     void refreshFiles();
   }
@@ -403,7 +404,20 @@ export const useScriptStore = defineStore("script", () => {
   Events.On("archive:script-applied", markStale);
   Events.On("archive:reloaded", markStale);
   Events.On("archive:opened", () => markStale());
-  Events.On("archive:closed", () => markStale());
+  Events.On("archive:closed", () => {
+    markStale();
+    workspaceVisible.value = false;
+  });
+
+  watch(
+    () => archive.open,
+    (isOpen) => {
+      if (!isOpen) {
+        workspaceVisible.value = false;
+      }
+    },
+    { immediate: true },
+  );
 
   return {
     workspaceVisible,
