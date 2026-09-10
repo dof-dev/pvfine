@@ -401,7 +401,7 @@ function onDrop(event: DragEvent): void {
           >
             <ImageThumbnail v-if="tab.icon" :reference="tab.icon" :size="16" />
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
-            {{ tab.title }}
+            <span class="tab-title">{{ tab.title }}</span>
             <NTooltip>
               <template #trigger>
                 <NButton
@@ -657,6 +657,14 @@ function onDrop(event: DragEvent): void {
   align-items: center;
   gap: 6px;
   max-width: 260px;
+  min-width: 0;
+  overflow: hidden;
+}
+.tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tab-label--dragging {
   opacity: 0.45;
@@ -676,6 +684,7 @@ function onDrop(event: DragEvent): void {
 .tab-close {
   padding: 0 2px;
   height: auto;
+  flex-shrink: 0;
 }
 .editor-info-bar {
   flex: 0 0 auto;
