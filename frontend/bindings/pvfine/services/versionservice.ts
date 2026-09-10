@@ -40,6 +40,15 @@ export function Diff(commitID: string, path: string): $CancellablePromise<$model
 }
 
 /**
+ * DiffWorking returns the current worktree change for one path relative to
+ * HEAD. The current after-state is read from the in-memory archive, so the
+ * call does not require saving the packed PVF artifact first.
+ */
+export function DiffWorking(path: string): $CancellablePromise<$models.VersionFileDiff | null> {
+    return $Call.ByID(851505177, path);
+}
+
+/**
  * Discard restores the current HEAD into the in-memory working archive.
  */
 export function Discard(): $CancellablePromise<$models.VersionStatus | null> {
@@ -89,6 +98,15 @@ export function ListCommitChanges(commitID: string, cursor: number, limit: numbe
  */
 export function Remove(): $CancellablePromise<$models.VersionStatus | null> {
     return $Call.ByID(4079566109);
+}
+
+/**
+ * RestorePath restores one changed path to the current HEAD. It only
+ * materializes the selected path and records the operation in the existing
+ * in-memory undo stack.
+ */
+export function RestorePath(path: string): $CancellablePromise<$models.VersionStatus | null> {
+    return $Call.ByID(835923498, path);
 }
 
 /**

@@ -205,6 +205,54 @@ func TestVersionServiceStatusTracksIncrementalRevert(t *testing.T) {
 	}
 }
 
+func TestVersionServiceDiffWorkingAndRestorePath(t *testing.T) {
+	c, _, index := versionServiceFixture(t)
+	versions := NewVersionService(c)
+	if _, err := versions.Initialize(); err != nil {
+		t.Fatal(err)
+	}
+	original, err := c.archive.Text(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := "[name]\n`工作区临时修改`\n[grade]\n8"
+	if err := NewEditorService(c).SetText(index, updated); err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := versions.DiffWorking("equipment/character/common/amulet/1008.equ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !diff.TextAvailable || !strings.Contains(diff.BeforeText, "烈火之心项链") || !strings.Contains(diff.AfterText, "工作区临时修改") {
+		t.Fatalf("working diff = %#v", diff)
+	}
+
+	status, err := versions.RestorePath("equipment/character/common/amulet/1008.equ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.ChangedFiles != 0 || status.PendingChangeSets != 2 {
+		t.Fatalf("restored status = %#v", status)
+	}
+	restored, err := c.archive.Text(index)
+	if err != nil || restored != original {
+		t.Fatalf("restored text = %q err=%v", restored, err)
+	}
+
+	if _, err := versions.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	current := versions.Status()
+	if current.ChangedFiles != 1 || current.PendingChangeSets != 1 {
+		t.Fatalf("undo restored status = %#v", current)
+	}
+	undone, err := c.archive.Text(index)
+	if err != nil || !strings.Contains(undone, "工作区临时修改") {
+		t.Fatalf("undo restored text = %q err=%v", undone, err)
+	}
+}
+
 func TestVersionServiceRemoveDeletesOnlySidecar(t *testing.T) {
 	c, path, _ := versionServiceFixture(t)
 	versions := NewVersionService(c)

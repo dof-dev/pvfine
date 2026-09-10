@@ -963,6 +963,65 @@ func (s *VersionService) Checkout(commitID string) (*VersionStatus, error) {
 	return &status, nil
 }
 
+func versionFileDiffDTO(change pvfversion.FileChange) *VersionFileDiff {
+	return &VersionFileDiff{
+		Path:       change.DisplayPath,
+		Operation:  string(change.Operation),
+		BeforeHash: change.BeforeHash,
+		AfterHash:  change.AfterHash,
+		BeforeType: change.BeforeType,
+		AfterType:  change.AfterType,
+	}
+}
+
+func appendVersionDiffText(result *VersionFileDiff, content pvfversion.Content) {
+	if content.DataType != pvf.TypeScript && content.DataType != pvf.TypeUnicode {
+		return
+	}
+	if result.BeforeHash == content.Hash {
+		result.BeforeText = string(content.Raw)
+	} else if result.AfterHash == content.Hash {
+		result.AfterText = string(content.Raw)
+	}
+	result.TextAvailable = true
+}
+
+func (s *VersionService) versionBaseArchiveLocked() (*pvf.Archive, error) {
+	if s.c.versionBaseArchive != nil {
+		return s.c.versionBaseArchive, nil
+	}
+	if s.c.versionRepo == nil {
+		return nil, ErrVersionNotEnabled
+	}
+	return pvf.Open(s.c.versionRepo.BasePath())
+}
+
+func (s *VersionService) fillVersionCommitDiffLocked(
+	result *VersionFileDiff,
+	change pvfversion.FileChange,
+	base *pvf.Archive,
+) error {
+	if change.BeforeHash != "" {
+		before, err := readVersionContent(s.c.versionRepo, base, pvfversion.Entry{
+			Path: change.DisplayPath, DataType: change.BeforeType, Hash: change.BeforeHash,
+		})
+		if err != nil {
+			return err
+		}
+		appendVersionDiffText(result, before)
+	}
+	if change.AfterHash != "" {
+		after, err := readVersionContent(s.c.versionRepo, base, pvfversion.Entry{
+			Path: change.DisplayPath, DataType: change.AfterType, Hash: change.AfterHash,
+		})
+		if err != nil {
+			return err
+		}
+		appendVersionDiffText(result, after)
+	}
+	return nil
+}
+
 // Diff returns a single commit change, including logical text where possible.
 func (s *VersionService) Diff(commitID, path string) (*VersionFileDiff, error) {
 	commitID = strings.TrimSpace(commitID)
@@ -995,15 +1054,39 @@ func (s *VersionService) Diff(commitID, path string) (*VersionFileDiff, error) {
 	if change == nil {
 		return nil, fmt.Errorf("提交中没有文件变更: %s", path)
 	}
-	result := &VersionFileDiff{
-		Path:       change.DisplayPath,
-		Operation:  string(change.Operation),
-		BeforeHash: change.BeforeHash,
-		AfterHash:  change.AfterHash,
-		BeforeType: change.BeforeType,
-		AfterType:  change.AfterType,
+	result := versionFileDiffDTO(*change)
+	base, err := s.versionBaseArchiveLocked()
+	if err != nil {
+		return nil, err
 	}
-	base, err := pvf.Open(s.c.versionRepo.BasePath())
+	if err := s.fillVersionCommitDiffLocked(result, *change, base); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DiffWorking returns the current worktree change for one path relative to
+// HEAD. The current after-state is read from the in-memory archive, so the
+// call does not require saving the packed PVF artifact first.
+func (s *VersionService) DiffWorking(path string) (*VersionFileDiff, error) {
+	path = pvfversion.CanonicalPath(path)
+	if path == "" {
+		return nil, errors.New("文件路径不能为空")
+	}
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		return nil, err
+	}
+	if s.c.versionRepo == nil {
+		return nil, ErrVersionNotEnabled
+	}
+	change, ok := s.c.versionChangeMap[path]
+	if !ok {
+		return nil, fmt.Errorf("当前工作区没有文件变更: %s", path)
+	}
+	result := versionFileDiffDTO(change)
+	base, err := s.versionBaseArchiveLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -1014,24 +1097,91 @@ func (s *VersionService) Diff(commitID, path string) (*VersionFileDiff, error) {
 		if err != nil {
 			return nil, err
 		}
-		if before.DataType == pvf.TypeScript || before.DataType == pvf.TypeUnicode {
-			result.BeforeText = string(before.Raw)
-			result.TextAvailable = true
-		}
+		appendVersionDiffText(result, before)
 	}
 	if change.AfterHash != "" {
-		after, err := readVersionContent(s.c.versionRepo, base, pvfversion.Entry{
-			Path: change.DisplayPath, DataType: change.AfterType, Hash: change.AfterHash,
-		})
+		afterSnapshot, err := pvfversion.ContentSnapshotFromArchive(s.c.archive, []string{path})
 		if err != nil {
 			return nil, err
 		}
-		if after.DataType == pvf.TypeScript || after.DataType == pvf.TypeUnicode {
-			result.AfterText = string(after.Raw)
-			result.TextAvailable = true
+		after, ok := afterSnapshot[path]
+		if !ok || after.Hash != change.AfterHash || after.DataType != change.AfterType {
+			return nil, fmt.Errorf("当前工作区内容已变化,请刷新后重试: %s", path)
 		}
+		appendVersionDiffText(result, after)
 	}
 	return result, nil
+}
+
+// RestorePath restores one changed path to the current HEAD. It only
+// materializes the selected path and records the operation in the existing
+// in-memory undo stack.
+func (s *VersionService) RestorePath(path string) (*VersionStatus, error) {
+	path = pvfversion.CanonicalPath(path)
+	if path == "" {
+		return nil, errors.New("文件路径不能为空")
+	}
+	s.c.mu.Lock()
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	if s.c.versionRepo == nil {
+		s.c.mu.Unlock()
+		return nil, ErrVersionNotEnabled
+	}
+	change, ok := s.c.versionChangeMap[path]
+	if !ok {
+		s.c.mu.Unlock()
+		return nil, fmt.Errorf("当前工作区没有文件变更: %s", path)
+	}
+	before, err := pvfversion.ContentSnapshotFromArchive(s.c.archive, []string{path})
+	if err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	desired := make(pvfversion.ContentSnapshot)
+	if entry, exists := s.c.versionHeadSnapshot[path]; exists {
+		base, baseErr := s.versionBaseArchiveLocked()
+		if baseErr != nil {
+			s.c.mu.Unlock()
+			return nil, baseErr
+		}
+		content, contentErr := readVersionContent(s.c.versionRepo, base, entry)
+		if contentErr != nil {
+			s.c.mu.Unlock()
+			return nil, contentErr
+		}
+		desired[path] = content
+	}
+	if len(before) == 0 && len(desired) == 0 {
+		s.c.mu.Unlock()
+		return nil, fmt.Errorf("文件已经恢复到 HEAD: %s", path)
+	}
+	if err := applyVersionContentPathsLocked(s.c, []string{path}, desired); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	if content, exists := desired[path]; exists {
+		s.c.versionWorking[path] = content.Entry
+	} else {
+		delete(s.c.versionWorking, path)
+	}
+	s.c.refreshVersionChangeLocked(path)
+	s.c.refreshVersionArtifactDirtyLocked(path)
+	s.c.sortVersionChangesLocked()
+	s.c.versionUndo = append(s.c.versionUndo, versionUndoRecord{
+		Label:  fmt.Sprintf("还原 %s", change.DisplayPath),
+		Before: pvfversion.CloneContentSnapshot(before),
+		After:  pvfversion.CloneContentSnapshot(desired),
+	})
+	status := s.c.versionStatusLocked()
+	info := s.c.archive.Info()
+	s.c.mu.Unlock()
+	s.c.startSearchIndex()
+	emitEvent("archive:reloaded", info)
+	s.emitVersionChanged("restored")
+	return &status, nil
 }
 
 func (s *VersionService) materializeLocked(target pvfversion.Snapshot, viewCommit string) error {

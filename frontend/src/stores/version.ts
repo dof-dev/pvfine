@@ -5,6 +5,7 @@ import { VersionService } from "../../bindings/pvfine/services";
 import type {
   VersionChange,
   VersionCommit,
+  VersionFileDiff,
   VersionStatus,
 } from "../../bindings/pvfine/services/models";
 
@@ -37,6 +38,10 @@ export const useVersionStore = defineStore("version", () => {
   const exportingCommitID = ref("");
   const error = ref("");
   let refreshToken = 0;
+  let repoEpoch = 0;
+  let commitChangesGeneration = 0;
+  const commitChangesCache = new Map<string, VersionChange[]>();
+  const inFlightCommitRequests = new Map<string, Promise<VersionChange[]>>();
 
   const enabled = computed(() => status.value.enabled);
   const busy = computed(
@@ -54,10 +59,14 @@ export const useVersionStore = defineStore("version", () => {
   );
 
   function clearVersionData(): void {
+    repoEpoch++;
+    commitChangesGeneration++;
     changes.value = [];
     history.value = [];
     expandedCommitID.value = "";
     commitChanges.value = [];
+    commitChangesCache.clear();
+    inFlightCommitRequests.clear();
   }
 
   function errorMessage(value: any): string {
@@ -172,6 +181,10 @@ export const useVersionStore = defineStore("version", () => {
     try {
       const result = await VersionService.Commit(commitMessage.value.trim());
       commitMessage.value = "";
+      repoEpoch++;
+      commitChangesGeneration++;
+      commitChangesCache.clear();
+      inFlightCommitRequests.clear();
       await refresh();
       return result;
     } catch (value: any) {
@@ -233,6 +246,10 @@ export const useVersionStore = defineStore("version", () => {
     try {
       const next = await VersionService.Remove();
       applyStatus(next);
+      repoEpoch++;
+      commitChangesGeneration++;
+      commitChangesCache.clear();
+      inFlightCommitRequests.clear();
       changes.value = [];
       history.value = [];
       expandedCommitID.value = "";
@@ -262,26 +279,104 @@ export const useVersionStore = defineStore("version", () => {
     }
   }
 
-  async function toggleCommitChanges(commit: VersionCommit): Promise<void> {
-    if (expandedCommitID.value === commit.id) {
-      expandedCommitID.value = "";
-      commitChanges.value = [];
-      return;
-    }
+  async function restorePath(path: string): Promise<void> {
     loading.value = true;
     error.value = "";
     try {
-      const page = await VersionService.ListCommitChanges(commit.id, 0, 500);
-      expandedCommitID.value = commit.id;
-      commitChanges.value = (page?.changes ?? []).filter(
-        (item): item is VersionChange => !!item
-      );
+      const next = await VersionService.RestorePath(path);
+      applyStatus(next);
+      await refreshLists(false);
     } catch (value: any) {
       error.value = errorMessage(value);
       throw value;
     } finally {
       loading.value = false;
     }
+  }
+
+  async function diffWorking(path: string): Promise<VersionFileDiff | null> {
+    error.value = "";
+    try {
+      return (await VersionService.DiffWorking(path)) ?? null;
+    } catch (value: any) {
+      error.value = errorMessage(value);
+      throw value;
+    }
+  }
+
+  async function diffCommit(
+    commitID: string,
+    path: string
+  ): Promise<VersionFileDiff | null> {
+    error.value = "";
+    try {
+      return (await VersionService.Diff(commitID, path)) ?? null;
+    } catch (value: any) {
+      error.value = errorMessage(value);
+      throw value;
+    }
+  }
+
+  async function loadCommitChanges(commitID: string): Promise<VersionChange[]> {
+    const epoch = repoEpoch;
+    const generation = ++commitChangesGeneration;
+
+    const cached = commitChangesCache.get(commitID);
+    if (cached) {
+      if (epoch === repoEpoch && generation === commitChangesGeneration) {
+        expandedCommitID.value = commitID;
+        commitChanges.value = cached;
+      }
+      return cached;
+    }
+
+    const inFlight = inFlightCommitRequests.get(commitID);
+    if (inFlight) {
+      const items = await inFlight;
+      if (epoch === repoEpoch && generation === commitChangesGeneration) {
+        expandedCommitID.value = commitID;
+        commitChanges.value = items;
+      }
+      return items;
+    }
+
+    error.value = "";
+    const promise = (async () => {
+      try {
+        const page = await VersionService.ListCommitChanges(commitID, 0, 500);
+        const items = (page?.changes ?? []).filter(
+          (item): item is VersionChange => !!item
+        );
+        if (epoch === repoEpoch) {
+          commitChangesCache.set(commitID, items);
+        }
+        return items;
+      } catch (value: any) {
+        if (epoch === repoEpoch && generation === commitChangesGeneration) {
+          error.value = errorMessage(value);
+        }
+        throw value;
+      } finally {
+        inFlightCommitRequests.delete(commitID);
+      }
+    })();
+
+    inFlightCommitRequests.set(commitID, promise);
+    const result = await promise;
+    if (epoch === repoEpoch && generation === commitChangesGeneration) {
+      expandedCommitID.value = commitID;
+      commitChanges.value = result;
+    }
+    return result;
+  }
+
+  async function toggleCommitChanges(commit: VersionCommit): Promise<void> {
+    if (expandedCommitID.value === commit.id) {
+      expandedCommitID.value = "";
+      commitChanges.value = [];
+      return;
+    }
+    await loadCommitChanges(commit.id);
   }
 
   function eventData(event: any): any {
@@ -349,5 +444,9 @@ export const useVersionStore = defineStore("version", () => {
     remove,
     exportCommit,
     toggleCommitChanges,
+    restorePath,
+    diffWorking,
+    diffCommit,
+    loadCommitChanges,
   };
 });
