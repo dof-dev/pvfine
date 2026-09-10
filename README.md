@@ -35,6 +35,7 @@
 - **轻量本地版本控制**：基于 SQLite 与 CAS 对象存储构建旁路版本库，支持工作区修改检测、快照提交对比与安全检出回退。
 - **NPK 与贴图解析**：原生支持 NPK 资源包读取、DXT 纹理分块解码与编辑器内嵌预览。
 - **智能标注与 LST 跳转**：规则驱动关联 LST 列表，代码内嵌标注 Tag，支持跨脚本一键导航跳转。
+- **JavaScript 脚本工作区**：内置 Goja 沙箱按脚本批量改写归档，事务隔离、预览确认后选择性应用。
 - **安全原子保存**：增量分块打包，未修改保存保证原文件 **100% 字节级一致**，写回全程采用临时文件加原子重命名（Atomic Rename）与自动备份。
 
 ---
@@ -49,13 +50,13 @@
 - **树状目录懒加载**：分层动态展开，实时显示各目录下的子节点统计数量。
 - **修改状态动态标记**：直观标记已修改文件（Dirty 状态）与变动目录，修改范围一目了然。
 - **游标分页检索（Cursor Pagination）**：支持在百万级路径中进行全量不区分大小写的模糊搜索与精确匹配，滚动按需加载，输入防抖平滑无顿挫。
-- **便捷文件操作**：支持单击/双击打开行为自定义、复制相对/绝对文件路径、快速定位并高亮当前编辑文件。
+- **便捷文件操作**：支持单击/双击打开行为自定义、复制相对/绝对文件路径、快速定位并高亮当前编辑文件；已注册 `.pvf` 文件关联，可从系统双击或拖拽文件直接打开归档。
 
 ### 📝 结构化反编译与专业级编辑
 - **脚本反编译（DataType 1）**：
   - 深度解析 5-byte Token 流，无损反编译为语义清晰的脚本代码。
   - **层级感知缩进**：自动根据代码段落（`[tag]` 至 `[/tag]`）计算嵌套缩进深度。
-  - **专用排版格式化规则**：针对 `skill data up`（每行 7 个 token）、`skill levelup`（每行 3 个 token）、`.lst` 列表（每行 2 个 token）等特定配置应用整洁换行排版。
+  - **可配置渲染规则**：内置 `skill data up`（7 token/行）、`skill levelup`（3 token/行）、`.lst`（2 token/行）等换行排版规则；也可通过 `rendering.json` 按扩展名、glob 与 section 自定义 `offset` 及每行 token 数，设置面板支持热重载。
   - **完整语法支持**：支持行内串 `` `...` ``、块串标记 `{5=`...`}` 与 `{7=`...`}`，支持单行注释 `#`。
 - **本地化文本编码修复（DataType 3）**：
   - 针对韩服转制特有的「EUC-KR 字节被逐字节按 CP437 字体映射进 UTF-16」的历史遗留乱码，提供内置自动识别与还原修复（还原为标准的 CP949 / EUC-KR 文本）。
@@ -87,9 +88,14 @@
 - **文件集持久化（FileSets）**：支持将跨目录的相关文件编组收藏，配置自动持久化保存，支持一键批量导出选中文件集。
 - **最近打开记录**：自动追踪最近编辑与访问的历史文件，快速重新载入。
 
-### ⚡ 脚本批处理与外部资源导入
+### 🧩 JavaScript 脚本工作区
+- **沙箱化脚本引擎**：进程内集成 Goja 运行时，无需 Node 环境即可执行 `.pvf.js`；提供 `pvf.files` / `find` / `glob` 文件遍历、`text()` 文本读写与 `parse()` 结构化 Token 文档 API。
+- **事务隔离与预览确认**：运行阶段的写入全部落在隔离事务中，成功后生成按文件分页的可审阅 Diff 预览；只有点击「应用选中」才会写入工作区 Overlay，且仍需手动保存归档。
+- **安全边界**：沙箱不注册 `require`、`process`、网络、本地文件与 shell 能力；单次运行上限 5 分钟，同时仅允许一个运行实例，停止、超时、切换归档或运行异常均自动回滚。
+- **脚本内联编辑**：编辑面板内提供 JavaScript 语法高亮、脚本 API 类型声明与代码补全，脚本文件统一存放于用户配置目录下的 `pvfine/scripts/`。
+
+### ⚡ 批处理与外部资源导入
 - **Token 级批处理引擎**：支持针对 5-byte Token 树和 Section 节点的批量修改规则执行，提供变更数量统计与可视化的 Diff 差异对比预览，确认无误后再安全应用。
-- **沙箱 JavaScript 工作区**：使用 Goja 运行 `.pvf.js`，通过 `pvf.files/find/glob`、文本接口和结构化 Token 文档 API 生成可审阅预览；脚本异常、取消或超时自动回滚，应用后仍需手动保存 PVF。
 - **外部资源一键导入**：支持从本地文件系统批量导入文件与目录至归档指定目录，智能识别脚本/原始二进制，提供冲突与覆盖预览。
 
 ### 🛡️ 增量打包、原子落盘与退出防护
@@ -111,12 +117,12 @@
 | 快捷键 (macOS) | 快捷键 (Win / Linux) | 功能说明 |
 |:---|:---|:---|
 | <kbd>Cmd</kbd> + <kbd>O</kbd> | <kbd>Ctrl</kbd> + <kbd>O</kbd> | 打开 PVF 归档文件 |
-| <kbd>Cmd</kbd> + <kbd>S</kbd> | <kbd>Ctrl</kbd> + <kbd>S</kbd> | 保存全部修改至原归档（附备份确认） |
+| <kbd>Cmd</kbd> + <kbd>S</kbd> | <kbd>Ctrl</kbd> + <kbd>S</kbd> | 保存全部修改至原归档（附备份确认）；脚本工作区内保存脚本 |
 | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | 另存为新 PVF 文件 |
 | <kbd>Cmd</kbd> + <kbd>W</kbd> | <kbd>Ctrl</kbd> + <kbd>W</kbd> | 关闭当前编辑器标签页 |
 | <kbd>Cmd</kbd> + <kbd>\</kbd> | <kbd>Ctrl</kbd> + <kbd>\</kbd> | 左右拆分编辑器（分栏分屏） |
 | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>\</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>\</kbd> | 上下拆分编辑器（多行分屏） |
-| <kbd>Cmd</kbd> + <kbd>Enter</kbd> | <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | 快速提交当前版本（Version Commit） |
+| <kbd>Cmd</kbd> + <kbd>Enter</kbd> | <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | 提交当前版本快照；脚本工作区内运行脚本预览 |
 | <kbd>Cmd</kbd> + <kbd>Click</kbd> | <kbd>Ctrl</kbd> + <kbd>Click</kbd> | 单击标注标签快速跳转引用脚本 |
 | <kbd>Cmd</kbd> + <kbd>F</kbd> | <kbd>Ctrl</kbd> + <kbd>F</kbd> | 编辑器内查找与替换 |
 
@@ -129,7 +135,7 @@
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                      Frontend (Vue 3 + Naive UI)                       │
-│  - ToolBar: 归档生命周期 / 导入 / 解包 / 搜索 / 版本 / 侧栏切换         │
+│  - ToolBar: 归档生命周期 / 导入 / 解包 / 搜索 / 版本 / 侧栏切换        │
 │  - Explorer: 虚拟树形懒加载 / 修改标记 / 路径复制 / 游标分页搜索       │
 │  - CodeEditor: CodeMirror 6 / Vim 模式 / LST 标注与贴图 / 分屏协同     │
 │  - Sidebars & Modals: 嵌套书签簿 / 文件集 / 版本面板 / 批处理 / 设置   │
@@ -144,7 +150,8 @@
 │  - AnnotationService: 规则引擎绑定、LST 索引构建与关联计算             │
 │  - ImageService: NPK 资源索引、DXT 图像解码与缩略图缓存                │
 │  - BatchService: 批处理规则变换、语法树扫描与 Diff 差异生成            │
-│  - ScriptService: Goja 沙箱执行、结构化脚本预览与选择性应用             │
+│  - ScriptService: Goja 沙箱执行、结构化脚本预览与选择性应用            │
+│  - RenderingService: 渲染规则校验、热重载与编辑器排版配置              │
 │  - BookmarkService & FileSetService: 嵌套书签簿与文件集持久化          │
 │  - SettingsService: 全局用户配置 (主题、打开方式、Vim、备份等)         │
 │  - Core: 读写锁守卫的共享并发状态模型                                  │
@@ -153,6 +160,8 @@
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                              Core Engines                              │
 │  - internal/pvf: 头部/GRPI分块/Token双向反编译/字符串池/差异重打包     │
+│  - internal/script: Goja 沙箱运行时与事务化 PVF 宿主 API               │
+│  - internal/rendering: 渲染规则编译与编辑器展示格式解析                │
 │  - internal/npk: NPK 容器读取、IMG 图像帧解析与 DXT1/3/5 解码          │
 │  - internal/annotations: 规则加载、LST 映射、装备/道具联合索引         │
 │  - internal/version: SQLite 版本库管理与 SHA-256 CAS 对象存储          │
@@ -248,7 +257,7 @@ npm run dev
 
 ### 运行测试与基准测试
 
-运行核心内核与服务层单元测试（涵盖 PVF、NPK、标注引擎、版本控制与应用服务）：
+运行核心内核与服务层单元测试（涵盖 PVF、NPK、标注引擎、脚本沙箱、渲染规则、版本控制与应用服务）：
 
 ```bash
 go test ./...
@@ -320,7 +329,9 @@ wails3 task package
 │   │   └── main.ts           # 前端入口
 │   └── bindings/             # Wails 自动生成的 TypeScript 服务端点绑定
 ├── docs/                     # 技术规格文档
-│   └── FORMAT.md             # S4A21 PVF 二进制格式逆向分析规格与数学算法
+│   ├── FORMAT.md             # S4A21 PVF 二进制格式逆向分析规格与数学算法
+│   ├── 脚本工作区设计.md     # Goja 沙箱 API、事务边界与预览应用流程
+│   └── 渲染规则设计.md       # 渲染规则 JSON 结构与匹配优先级
 ├── scripts/                  # 工程脚本（基准测试、版本更新注入等）
 │   ├── benchmark.sh          # 真实资源性能基准测试脚本
 │   └── set-build-version.js  # 跨平台构建版本注入
