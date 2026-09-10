@@ -39,10 +39,11 @@ type Entry struct {
 // Snapshot is keyed by a canonical, case-insensitive PVF path.
 type Snapshot map[string]Entry
 
-// Content is an entry together with its logical payload.  Script and Unicode
-// files use rendered text because their raw token bytes refer to PVF string
-// pools; unknown types retain their raw bytes. It is used by the in-memory
-// undo stack, while committed content is wrapped and stored in ObjectStore.
+// Content is an entry together with its logical payload. Script and Unicode
+// files use stable canonical rendered text because script token bytes refer to
+// PVF string pools; unknown types retain their raw bytes. It is used by the
+// in-memory undo stack, while committed content is wrapped and stored in
+// ObjectStore.
 type Content struct {
 	Entry
 	Raw []byte
@@ -137,7 +138,7 @@ func contentFromArchive(a *pvf.Archive, index int32) (Content, error) {
 	switch file.DataType {
 	case pvf.TypeScript, pvf.TypeUnicode:
 		var text string
-		text, err = a.Text(index)
+		text, err = a.CanonicalText(index)
 		data = []byte(text)
 	default:
 		var raw []byte

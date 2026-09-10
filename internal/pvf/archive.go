@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"pvfine/internal/rendering"
 )
 
 // Header is the decrypted 48-byte archive header (packed, little-endian).
@@ -60,6 +62,12 @@ type Archive struct {
 	pathIndex       map[string]int32
 	structuralDirty bool // file entries were added or removed since the last save
 	removedSpans    map[int32][]removedFileSpan
+
+	// scriptRenderer controls the user-facing decompiled layout. The
+	// canonical renderer is kept stable so version content hashes do not
+	// depend on presentation-only configuration.
+	scriptRenderer          *rendering.Engine
+	canonicalScriptRenderer *rendering.Engine
 }
 
 // Open reads and parses the archive at path.
@@ -82,13 +90,16 @@ func Parse(data []byte) (*Archive, error) {
 	if len(data) < headerSize {
 		return nil, ErrTruncated
 	}
+	renderer := defaultScriptRenderer()
 	a := &Archive{
-		data:         data,
-		resolveCache: map[int32]string{},
-		chunkCache:   map[int32][]byte{},
-		overlay:      map[int32][]byte{},
-		pathIndex:    map[string]int32{},
-		removedSpans: make(map[int32][]removedFileSpan),
+		data:                    data,
+		resolveCache:            map[int32]string{},
+		chunkCache:              map[int32][]byte{},
+		overlay:                 map[int32][]byte{},
+		pathIndex:               map[string]int32{},
+		removedSpans:            make(map[int32][]removedFileSpan),
+		scriptRenderer:          renderer,
+		canonicalScriptRenderer: renderer,
 	}
 
 	var raw [headerSize]byte
@@ -184,17 +195,25 @@ func Parse(data []byte) (*Archive, error) {
 
 // New returns an empty archive ready for AddFile + SaveTo.
 func New() *Archive {
+	renderer := defaultScriptRenderer()
 	return &Archive{
-		hdr:          Header{Signature: MagicSignature},
-		strA:         []byte{0},
-		strW:         []byte{0, 0},
-		poolsDirty:   true,
-		resolveCache: map[int32]string{},
-		chunkCache:   map[int32][]byte{},
-		overlay:      map[int32][]byte{},
-		pathIndex:    map[string]int32{},
-		removedSpans: make(map[int32][]removedFileSpan),
+		hdr:                     Header{Signature: MagicSignature},
+		strA:                    []byte{0},
+		strW:                    []byte{0, 0},
+		poolsDirty:              true,
+		resolveCache:            map[int32]string{},
+		chunkCache:              map[int32][]byte{},
+		overlay:                 map[int32][]byte{},
+		pathIndex:               map[string]int32{},
+		removedSpans:            make(map[int32][]removedFileSpan),
+		scriptRenderer:          renderer,
+		canonicalScriptRenderer: renderer,
 	}
+}
+
+func defaultScriptRenderer() *rendering.Engine {
+	engine, _ := rendering.LoadDefault()
+	return engine
 }
 
 func decodeHeader(b [headerSize]byte) Header {

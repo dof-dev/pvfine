@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "description": "pvfine built-in script rendering rules",
+  "rules": [
+    {
+      "id": "file.lst",
+      "match": {
+        "extensions": [
+          ".lst"
+        ]
+      },
+      "target": {
+        "kind": "file"
+      },
+      "format": {
+        "tokensPerLine": 2
+      }
+    },
+    {
+      "id": "section.skill-data-up",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "skill data up"
+      },
+      "format": {
+        "tokensPerLine": 7
+      }
+    },
+    {
+      "id": "section.skill-levelup",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "skill levelup"
+      },
+      "format": {
+        "tokensPerLine": 3
+      }
+    },
+    {
+      "id": "section.skill",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "skill"
+      },
+      "format": {
+        "tokensPerLine": 7,
+        "offset": 1
+      }
+    },
+    {
+      "id": "section.level info",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "level info"
+      },
+      "format": {
+        "tokensPerLine": 1,
+        "offset": 1,
+        "tokensPerLineIndex": 0
+      }
+    }
+  ]
+}

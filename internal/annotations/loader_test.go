@@ -62,6 +62,72 @@ func TestValidateRejectsInvalidRuleFields(t *testing.T) {
 	}
 }
 
+func TestValidateTokenGroupingFields(t *testing.T) {
+	dynamicIndex := 0
+	valid := Rule{
+		ID: "records",
+		Target: TargetSpec{
+			Kind: "token", Section: "records", Index: intPtr(1),
+			Offset: 1, RecordTokens: 3, TokensPerLineIndex: &dynamicIndex,
+		},
+		Annotation: AnnotationSpec{Title: "记录", Type: "text"},
+	}
+	if err := Validate(Document{Version: 1, Rules: []Rule{valid}}); err != nil {
+		t.Fatalf("valid grouping target rejected: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*Rule)
+		want string
+	}{
+		{
+			name: "negative offset",
+			edit: func(rule *Rule) { rule.Target.Offset = -1 },
+			want: "offset 不能为负数",
+		},
+		{
+			name: "negative dynamic index",
+			edit: func(rule *Rule) {
+				index := -1
+				rule.Target.TokensPerLineIndex = &index
+			},
+			want: "tokensPerLineIndex 不能为负数",
+		},
+		{
+			name: "missing fallback",
+			edit: func(rule *Rule) { rule.Target.RecordTokens = 0 },
+			want: "需要配置正数 recordTokens",
+		},
+		{
+			name: "range target",
+			edit: func(rule *Rule) {
+				rule.Target.Index = nil
+				rule.Target.Range = &TokenRange{Start: 0, EndExclusive: 1}
+			},
+			want: "需要配合单个 index 使用",
+		},
+		{
+			name: "non-token target",
+			edit: func(rule *Rule) {
+				rule.Target.Kind = "section"
+				rule.Target.Section = "records"
+			},
+			want: "只允许用于 token 标注",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rule := valid
+			test.edit(&rule)
+			err := Validate(Document{Version: 1, Rules: []Rule{rule}})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestRuleGroupRoundTrip(t *testing.T) {
 	for _, group := range []string{"", "装备"} {
 		document := Document{Version: 1, Rules: []Rule{{

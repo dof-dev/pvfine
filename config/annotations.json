@@ -194,6 +194,23 @@
       "group": "skill"
     },
     {
+      "id": "skill.enchant.skill",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "skill",
+        "index": 1,
+        "recordTokens": 7,
+        "offset": 1
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skill"
+    },
+    {
       "id": "global.input",
       "match": {},
       "target": {

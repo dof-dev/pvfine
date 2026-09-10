@@ -238,10 +238,16 @@ func Validate(document Document) error {
 
 		switch rule.Target.Kind {
 		case "path":
+			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+				problems = append(problems, prefix+" 的 offset/tokensPerLineIndex 只允许用于 token 标注")
+			}
 			if rule.Annotation.Type != "text" {
 				problems = append(problems, prefix+" 的 path 标注只支持 text 类型")
 			}
 		case "section":
+			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+				problems = append(problems, prefix+" 的 offset/tokensPerLineIndex 只允许用于 token 标注")
+			}
 			if strings.TrimSpace(rule.Target.Section) == "" {
 				problems = append(problems, prefix+".target.section 不能为空")
 			}
@@ -261,6 +267,12 @@ func Validate(document Document) error {
 			if rule.Target.Index != nil && *rule.Target.Index < 0 {
 				problems = append(problems, prefix+".target.index 不能为负数")
 			}
+			if rule.Target.Offset < 0 {
+				problems = append(problems, prefix+".target.offset 不能为负数")
+			}
+			if rule.Target.TokensPerLineIndex != nil && *rule.Target.TokensPerLineIndex < 0 {
+				problems = append(problems, prefix+".target.tokensPerLineIndex 不能为负数")
+			}
 			if rule.Target.RecordTokens < 0 {
 				problems = append(problems, prefix+".target.recordTokens 不能为负数")
 			}
@@ -275,6 +287,14 @@ func Validate(document Document) error {
 				}
 				if rule.Target.ContextIndex != nil && (*rule.Target.ContextIndex < 0 || *rule.Target.ContextIndex >= rule.Target.RecordTokens) {
 					problems = append(problems, prefix+".target.contextIndex 必须位于 recordTokens 范围内")
+				}
+			}
+			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+				if rule.Target.RecordTokens <= 0 {
+					problems = append(problems, prefix+".target.offset/tokensPerLineIndex 需要配置正数 recordTokens 作为回退值")
+				}
+				if rule.Target.Index == nil || rule.Target.Range != nil {
+					problems = append(problems, prefix+".target.offset/tokensPerLineIndex 需要配合单个 index 使用")
 				}
 			}
 			if rule.Target.Range != nil {

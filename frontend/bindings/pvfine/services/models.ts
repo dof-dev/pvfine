@@ -308,6 +308,13 @@ export interface IndexStatus {
 }
 
 /**
+ * RenderingReloadResult describes the renderer that was activated.
+ */
+export interface RenderingReloadResult {
+    "ruleCount": number;
+}
+
+/**
  * SearchHit is one searchable file/list record.
  */
 export interface SearchHit {

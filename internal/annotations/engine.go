@@ -413,20 +413,62 @@ func repeatedTokenAnchors(rule Rule, view pvf.ScriptView, contextIndex *int) []e
 	anchors := make([]editorAnchor, 0)
 	for _, sectionID := range sectionOrder {
 		tokens := ranges[sectionID]
-		for start := 0; start+rule.Target.RecordTokens <= len(tokens); start += rule.Target.RecordTokens {
-			target := tokens[start+*rule.Target.Index]
+		recordTokens := repeatedRecordTokens(rule.Target, tokens)
+		if recordTokens <= 0 {
+			continue
+		}
+		for start := rule.Target.Offset; start <= len(tokens); {
+			if recordTokens > len(tokens)-start {
+				break
+			}
+			targetOffset := *rule.Target.Index
+			if targetOffset < 0 || targetOffset >= recordTokens || targetOffset >= len(tokens)-start {
+				start += recordTokens
+				continue
+			}
+			target := tokens[start+targetOffset]
 			anchor := editorAnchor{start: target.Start, end: target.End, value: target.Value}
 			if rule.Annotation.Type == "image" && rule.Target.ImagePathToken != nil {
-				anchor.imagePathValue = tokens[start+*rule.Target.ImagePathToken].Value
+				imagePathOffset := *rule.Target.ImagePathToken
+				if imagePathOffset < 0 || imagePathOffset >= recordTokens || imagePathOffset >= len(tokens)-start {
+					start += recordTokens
+					continue
+				}
+				anchor.imagePathValue = tokens[start+imagePathOffset].Value
 				anchor.imageIndexValue = target.Value
 			}
 			if contextIndex != nil {
-				anchor.context = tokens[start+*contextIndex].Value
+				contextOffset := *contextIndex
+				if contextOffset < 0 || contextOffset >= recordTokens || contextOffset >= len(tokens)-start {
+					start += recordTokens
+					continue
+				}
+				anchor.context = tokens[start+contextOffset].Value
 			}
 			anchors = append(anchors, anchor)
+			start += recordTokens
 		}
 	}
 	return anchors
+}
+
+// repeatedRecordTokens returns the fixed record width unless a section token
+// supplies a valid positive override. The dynamic index is relative to the
+// section's direct token sequence, just like rendering rules.
+func repeatedRecordTokens(target TargetSpec, tokens []pvf.ScriptElement) int {
+	recordTokens := target.RecordTokens
+	if target.TokensPerLineIndex == nil {
+		return recordTokens
+	}
+	index := *target.TokensPerLineIndex
+	if index < 0 || index >= len(tokens) {
+		return recordTokens
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(tokens[index].Value))
+	if err != nil || value <= 0 {
+		return recordTokens
+	}
+	return value
 }
 
 func annotationItem(rule Rule, value, imageIndexValue, context string, resolver ContextResolver) matchedItem {

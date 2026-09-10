@@ -574,6 +574,32 @@ export const useEditorStore = defineStore("editor", () => {
     );
   }
 
+  /** 重新读取当前 renderer 生成的文本,但保留已修改标签的脏基线。 */
+  async function refreshRenderedText() {
+    await flushPending();
+    await Promise.all(
+      tabs.value.map(async (tab) => {
+        const meta = await EditorService.GetFile(tab.index);
+        const current = tabs.value.find((item) => item.index === tab.index);
+        if (!current || !meta) return;
+        current.path = meta.path;
+        current.title = meta.path.split("/").pop() ?? meta.path;
+        current.dataType = meta.dataType;
+        current.size = meta.size;
+        current.editable = meta.editable;
+        current.tags = cleanTreeTags(meta.tags);
+        current.icon = meta.icon ?? null;
+        current.fieldImage = meta.fieldImage ?? null;
+        current.text = meta.text;
+        current.modified = meta.modified;
+        if (!meta.modified) current.original = meta.text;
+        current.annotations = (meta.annotations ?? []).filter(
+          (annotation): annotation is EditorAnnotation => !!annotation
+        );
+      })
+    );
+  }
+
   /** 批处理写入 overlay 后刷新已经打开的标签,但保留原始文本基准。 */
   async function refreshBatchFiles(indexes: number[]) {
     const uniqueIndexes = [...new Set(indexes)];
@@ -738,6 +764,7 @@ export const useEditorStore = defineStore("editor", () => {
     saveAs,
     flushPending,
     refreshAnnotations,
+    refreshRenderedText,
     refreshBatchFiles,
     refreshAfterArchiveChange,
   };

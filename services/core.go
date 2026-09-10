@@ -16,6 +16,7 @@ import (
 
 	annotationrules "pvfine/internal/annotations"
 	"pvfine/internal/pvf"
+	renderingrules "pvfine/internal/rendering"
 	pvfversion "pvfine/internal/version"
 )
 
@@ -70,6 +71,8 @@ type core struct {
 	archive              *pvf.Archive
 	annotationEngine     *annotationrules.Engine
 	annotationErr        error
+	renderingEngine      *renderingrules.Engine
+	renderingErr         error
 	annotationRelations  map[string]map[string]*relationTarget
 	editorText           map[int32]string
 	editorAnnotation     editorAnnotationCache
@@ -126,8 +129,15 @@ func newCore() *core { return makeCore() }
 func NewCore() *core { return makeCore() }
 
 func makeCore() *core {
-	engine, err := annotationrules.LoadDefault()
-	return &core{annotationEngine: engine, annotationErr: err, visualsByFile: make(map[int32]fileVisuals)}
+	annotationEngine, annotationErr := annotationrules.LoadDefault()
+	renderingEngine, renderingErr := renderingrules.LoadDefault()
+	return &core{
+		annotationEngine: annotationEngine,
+		annotationErr:    annotationErr,
+		renderingEngine:  renderingEngine,
+		renderingErr:     renderingErr,
+		visualsByFile:    make(map[int32]fileVisuals),
+	}
 }
 
 func archiveChangeKind(a *pvf.Archive, index int32) string {
@@ -145,6 +155,9 @@ func archiveChangeKind(a *pvf.Archive, index int32) string {
 func (c *core) setArchive(a *pvf.Archive) error {
 	if c.annotationErr != nil {
 		return c.annotationErr
+	}
+	if c.renderingErr != nil {
+		return c.renderingErr
 	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
@@ -195,6 +208,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
+	c.bindRenderingEngineLocked(a)
 	c.archive = a
 	refreshArchiveIndexMetadataLocked(c, changedIndexes)
 	c.searchRecords = nil
@@ -247,6 +261,7 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 		}
 	}
 	sort.Strings(directories)
+	c.bindRenderingEngineLocked(a)
 	c.archive = a
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorText = make(map[int32]string)
@@ -267,6 +282,15 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
 	c.unpackRunning.Store(false)
+}
+
+// bindRenderingEngineLocked applies the current user-facing renderer to an
+// archive that is about to become active. The caller must hold c.mu.
+func (c *core) bindRenderingEngineLocked(a *pvf.Archive) {
+	if a == nil {
+		return
+	}
+	a.SetScriptRenderer(c.renderingEngine)
 }
 
 func (c *core) closeArchive() {

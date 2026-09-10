@@ -8,6 +8,7 @@ import * as BookmarkService from "./bookmarkservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
+import * as RenderingService from "./renderingservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
 import * as VersionService from "./versionservice.js";
@@ -19,6 +20,7 @@ export {
     EditorService,
     FileSetService,
     ImageService,
+    RenderingService,
     SettingsService,
     UpdateService,
     VersionService
@@ -53,6 +55,7 @@ export type {
     ImportPreviewEntry,
     ImportResult,
     IndexStatus,
+    RenderingReloadResult,
     SearchHit,
     SearchResult,
     StoredFileSet,

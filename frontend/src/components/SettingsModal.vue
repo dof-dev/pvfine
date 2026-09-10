@@ -33,7 +33,7 @@ import {
   NTooltip,
   useMessage,
 } from "naive-ui";
-import { AnnotationService, UpdateService } from "../../bindings/pvfine/services";
+import { AnnotationService, RenderingService, UpdateService } from "../../bindings/pvfine/services";
 import {
   useSettingsStore,
   type AnnotationTagPlacement,
@@ -55,6 +55,7 @@ const message = useMessage();
 const activeTab = ref<TabKey>("general");
 const checkingUpdates = ref(false);
 const reloadingAnnotations = ref(false);
+const reloadingRendering = ref(false);
 const selectingNPK = ref(false);
 const rebuildingNPK = ref(false);
 
@@ -125,6 +126,21 @@ async function onReloadAnnotations() {
     message.error(`重载标注规则失败: ${error?.message ?? error}`);
   } finally {
     reloadingAnnotations.value = false;
+  }
+}
+
+async function onReloadRendering() {
+  if (reloadingRendering.value) return;
+  reloadingRendering.value = true;
+  try {
+    await editor.flushPending();
+    const result = await RenderingService.ReloadRules();
+    await editor.refreshRenderedText();
+    message.success(`已重载 ${result.ruleCount} 条渲染规则`);
+  } catch (error: any) {
+    message.error(`重载渲染规则失败: ${error?.message ?? error}`);
+  } finally {
+    reloadingRendering.value = false;
   }
 }
 
@@ -654,7 +670,7 @@ async function copyNPKDirectory(): Promise<void> {
           <section class="settings-group">
             <div class="group-header">
               <div class="group-title">维护与热重载</div>
-              <div class="group-subtitle">快速维护本地标注规则定义并检测应用程序更新</div>
+              <div class="group-subtitle">快速维护本地标注与脚本渲染规则，并检测应用程序更新</div>
             </div>
 
             <div class="settings-card">
@@ -673,6 +689,30 @@ async function copyNPKDirectory(): Promise<void> {
                     :loading="reloadingAnnotations"
                     aria-label="重载标注规则"
                     @click="onReloadAnnotations"
+                  >
+                    <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+                    立即重载
+                  </NButton>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">渲染规则热重载</div>
+                  <div class="setting-item-desc">从磁盘重新加载脚本展示格式，并刷新当前编辑器中的未修改文件。</div>
+                </div>
+                <div class="setting-item-control">
+                  <NButton
+                    size="small"
+                    secondary
+                    :loading="reloadingRendering"
+                    aria-label="重载渲染规则"
+                    @click="onReloadRendering"
                   >
                     <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
                     立即重载

@@ -40,13 +40,21 @@ type MatchSpec struct {
 }
 
 type TargetSpec struct {
-	Kind           string      `json:"kind"`
-	Section        string      `json:"section,omitempty"`
-	Index          *int        `json:"index,omitempty"`
-	Range          *TokenRange `json:"range,omitempty"`
-	RecordTokens   int         `json:"recordTokens,omitempty"`
-	ContextIndex   *int        `json:"contextIndex,omitempty"`
-	ImagePathToken *int        `json:"imagePathToken,omitempty"`
+	Kind    string      `json:"kind"`
+	Section string      `json:"section,omitempty"`
+	Index   *int        `json:"index,omitempty"`
+	Range   *TokenRange `json:"range,omitempty"`
+	// Offset skips the first Offset direct tokens in a section before
+	// repeated records are matched. It mirrors rendering rules where a
+	// section header is kept outside the repeated token groups.
+	Offset       int `json:"offset,omitempty"`
+	RecordTokens int `json:"recordTokens,omitempty"`
+	// TokensPerLineIndex is a zero-based direct token index whose positive
+	// integer value overrides RecordTokens for that section. RecordTokens is
+	// retained as the fallback when the token is missing or invalid.
+	TokensPerLineIndex *int `json:"tokensPerLineIndex,omitempty"`
+	ContextIndex       *int `json:"contextIndex,omitempty"`
+	ImagePathToken     *int `json:"imagePathToken,omitempty"`
 	// ImageIndexToken is kept only to migrate rules written by the previous
 	// schema, where target.index pointed to the IMG path and this field pointed
 	// to the numeric image index.

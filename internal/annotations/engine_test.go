@@ -180,6 +180,49 @@ func TestAnnotateContextualReferenceByRepeatedRecord(t *testing.T) {
 	}
 }
 
+func TestAnnotateRepeatedTokenWithOffset(t *testing.T) {
+	engine := testEngine(t, Rule{
+		ID: "records.offset",
+		Target: TargetSpec{
+			Kind: "token", Section: "records", Index: intPtr(0),
+			Offset: 1, RecordTokens: 2,
+		},
+		Annotation: AnnotationSpec{Title: "记录", Type: "text"},
+	})
+	text := "[records]\n10 100 200 300 400 500\n[/records]"
+	results := engine.Annotate("a.equ", pvf.ParseScriptView(text), nil)
+	if len(results) != 2 {
+		t.Fatalf("results = %#v", results)
+	}
+	for i, want := range []string{"100", "300"} {
+		if got := text[results[i].Start:results[i].End]; got != want {
+			t.Fatalf("result[%d] = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestAnnotateRepeatedTokenUsesDynamicRecordWidth(t *testing.T) {
+	dynamicIndex := 0
+	engine := testEngine(t, Rule{
+		ID: "records.dynamic",
+		Target: TargetSpec{
+			Kind: "token", Section: "records", Index: intPtr(1),
+			Offset: 1, RecordTokens: 3, TokensPerLineIndex: &dynamicIndex,
+		},
+		Annotation: AnnotationSpec{Title: "记录", Type: "text"},
+	})
+	text := "[records]\n2 100 200 300 400 500\n[/records]"
+	results := engine.Annotate("a.equ", pvf.ParseScriptView(text), nil)
+	if len(results) != 2 {
+		t.Fatalf("results = %#v", results)
+	}
+	for i, want := range []string{"200", "400"} {
+		if got := text[results[i].Start:results[i].End]; got != want {
+			t.Fatalf("result[%d] = %q, want %q", i, got, want)
+		}
+	}
+}
+
 func TestAnnotatePathSupportsRecursiveGlobAndDirectories(t *testing.T) {
 	engine := testEngine(t, Rule{
 		ID: "path", Match: MatchSpec{Glob: "equipment/**"}, Target: TargetSpec{Kind: "path"},
