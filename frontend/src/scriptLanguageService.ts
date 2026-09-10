@@ -7,6 +7,47 @@ import scriptApiDeclaration from "./script-api.d.ts?raw";
 
 const scriptFileName = "/pvfine/active-script.pvf.js";
 const declarationFileName = "/pvfine/script-api.d.ts";
+const runtimeDeclarationFileName = "/pvfine/script-runtime.d.ts";
+
+// The language service intentionally does not load TypeScript's bundled lib.d.ts:
+// the script editor must only see the in-memory PVF API. Keep the small part of
+// the standard type surface needed for the documented `for...of pvf.glob(...)`
+// pattern available in memory, otherwise TypeScript widens the loop variable to
+// `any` and loses the PVFFile -> PVFDocument relationship.
+const runtimeDeclaration = `
+interface IteratorResult<T> {
+\tdone: boolean;
+\tvalue: T;
+}
+
+interface Iterator<T> {
+\tnext(...args: any[]): IteratorResult<T>;
+}
+
+interface Iterable<T> {
+\t[Symbol.iterator](): Iterator<T>;
+}
+
+interface IterableIterator<T> extends Iterator<T>, Iterable<T> {}
+
+interface Array<T> {
+\treadonly length: number;
+\t[n: number]: T;
+\t[Symbol.iterator](): IterableIterator<T>;
+}
+
+interface ReadonlyArray<T> {
+\treadonly length: number;
+\t[n: number]: T;
+\t[Symbol.iterator](): IterableIterator<T>;
+}
+
+interface SymbolConstructor {
+\treadonly iterator: unique symbol;
+}
+
+declare const Symbol: SymbolConstructor;
+`;
 
 type TypeScriptModule = typeof import("typescript");
 
@@ -22,13 +63,14 @@ interface CompletionRequest {
 
 /**
  * A small in-memory TypeScript Language Service host for the script editor.
- * It never reads from disk: the active JS source and script-api.d.ts are the
- * only files visible to TypeScript.
+ * It never reads from disk: the active JS source and the two in-memory
+ * declaration files are the only files visible to TypeScript.
  */
 class ScriptDeclarationLanguageService {
   private readonly files = new Map<string, VirtualFile>([
     [scriptFileName, { text: "", version: 0 }],
     [declarationFileName, { text: scriptApiDeclaration, version: 1 }],
+    [runtimeDeclarationFileName, { text: runtimeDeclaration, version: 1 }],
   ]);
 
   private typescript: TypeScriptModule | null = null;
@@ -126,7 +168,11 @@ class ScriptDeclarationLanguageService {
         module: typescript.ModuleKind.ESNext,
         strict: false,
       }),
-      getScriptFileNames: () => [scriptFileName, declarationFileName],
+      getScriptFileNames: () => [
+        scriptFileName,
+        declarationFileName,
+        runtimeDeclarationFileName,
+      ],
       getScriptVersion: (fileName) => String(this.files.get(fileName)?.version ?? 0),
       getScriptSnapshot: (fileName) => {
         const file = this.files.get(fileName);
