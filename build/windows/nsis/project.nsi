@@ -22,7 +22,7 @@ Unicode true
 ## !define INFO_PROJECTNAME    "pvfine" # Default "pvfine"
 ## !define INFO_COMPANYNAME    "dof-dev" # Default "dof-dev"
 ## !define INFO_PRODUCTNAME    "pvfine" # Default "pvfine"
-## !define INFO_PRODUCTVERSION "0.2.0" # Default "0.2.0"
+## !define INFO_PRODUCTVERSION "0.3.0" # Default "0.3.0"
 ## !define INFO_COPYRIGHT      "© 2026, dof-dev" # Default "© 2026, dof-dev"
 ###
 ## !define PRODUCT_EXECUTABLE  "pvfine.exe" # Default "${INFO_PROJECTNAME}.exe"

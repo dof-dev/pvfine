@@ -10,7 +10,7 @@
   <Identity 
     Name="com.dofdev.pvfine"
     Publisher="CN=dof-dev"
-    Version="0.2.0.0"
+    Version="0.3.0.0"
     ProcessorArchitecture="arm64" />
   
   <Properties>
