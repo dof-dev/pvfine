@@ -13,6 +13,11 @@ export const useSidebarStore = defineStore("sidebar", () => {
     visible.value = true;
   }
 
+  /** 仅切换当前面板，不改变侧栏的展开状态。 */
+  function setPanel(panel: SidebarPanel): void {
+    activePanel.value = panel;
+  }
+
   function toggle(): void {
     visible.value = !visible.value;
   }
@@ -21,5 +26,5 @@ export const useSidebarStore = defineStore("sidebar", () => {
     visible.value = false;
   }
 
-  return { visible, activePanel, show, toggle, close };
+  return { visible, activePanel, show, setPanel, toggle, close };
 });

@@ -10,6 +10,8 @@ import {
   Edit24Regular,
   ArrowExportLtr24Regular,
   BookmarkMultiple24Regular,
+  PanelRight24Regular,
+  PanelRightContract24Regular,
   Save24Regular,
 } from "@vicons/fluent";
 import {
@@ -30,7 +32,7 @@ import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 import { useBatchStore } from "../stores/batch";
-import { useSidebarStore } from "../stores/sidebar";
+import { useSidebarStore, type SidebarPanel } from "../stores/sidebar";
 import { useSettingsStore } from "../stores/settings";
 import BookmarkSidebar from "./BookmarkSidebar.vue";
 import ImageThumbnail from "./ImageThumbnail.vue";
@@ -252,6 +254,12 @@ function isCancel(error: any): boolean {
   return String(error?.message ?? error).toLowerCase().includes("cancel");
 }
 
+/** 点击图标栏：收起时展开到目标面板，已展开时只切换面板。 */
+function selectPanel(panel: SidebarPanel): void {
+  if (!sidebar.visible) sidebar.show(panel);
+  else sidebar.setPanel(panel);
+}
+
 watch(
   () => fileSets.sessionId,
   () => {
@@ -267,256 +275,339 @@ watch(
 </script>
 
 <template>
-  <aside class="file-set-sidebar">
-    <div class="collection-switcher">
-      <NButton
-        quaternary
-        size="small"
-        :type="sidebar.activePanel === 'filesets' ? 'primary' : 'default'"
-        @click="sidebar.show('filesets')"
-      >
-        <template #icon><NIcon><Collections24Regular /></NIcon></template>
-        文件集
-      </NButton>
-      <NButton
-        quaternary
-        size="small"
-        :type="sidebar.activePanel === 'bookmarks' ? 'primary' : 'default'"
-        @click="sidebar.show('bookmarks')"
-      >
-        <template #icon><NIcon><BookmarkMultiple24Regular /></NIcon></template>
-        书签
-      </NButton>
-    </div>
-
-    <template v-if="sidebar.activePanel === 'filesets'">
-    <div class="fileset-heading">
-      <div class="fileset-title">
-        <NIcon :size="16"><Collections24Regular /></NIcon>
-        <span>文件集</span>
-        <NTag size="tiny" :bordered="false">{{ activeEntries.length }}</NTag>
-      </div>
-      <div class="fileset-actions">
-        <NTooltip>
-          <template #trigger>
-            <NButton quaternary circle size="tiny" aria-label="新建文件集" @click="openCreate">
-              <template #icon><NIcon><Add24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          新建文件集
-        </NTooltip>
-        <NTooltip>
-          <template #trigger>
-            <NButton
-              quaternary
-              circle
-              size="tiny"
-              aria-label="重命名文件集"
-              :disabled="!fileSets.loaded || !fileSets.activeSet"
-              @click="openRename"
-            >
-              <template #icon><NIcon><Edit24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          重命名文件集
-        </NTooltip>
-        <NTooltip>
-          <template #trigger>
-            <NButton
-              quaternary
-              circle
-              size="tiny"
-              aria-label="保存文件集"
-              :loading="fileSets.saving"
-              :disabled="!fileSets.dirty"
-              @click="saveFileSets"
-            >
-              <template #icon><NIcon><Save24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          保存文件集到硬盘
-        </NTooltip>
-        <NTooltip>
-          <template #trigger>
-            <NButton
-              quaternary
-              circle
-              size="tiny"
-              aria-label="删除文件集"
-              :disabled="!fileSets.activeSet"
-              @click="deleteCurrent"
-            >
-              <template #icon><NIcon><Delete24Regular /></NIcon></template>
-            </NButton>
-          </template>
-          删除当前文件集
-        </NTooltip>
-      </div>
-    </div>
-
-    <div class="fileset-switcher">
-      <NSelect
-        v-model:value="fileSets.activeSetId"
-        size="small"
-        :options="setOptions"
-        placeholder="选择文件集"
-      />
-      <NTooltip>
-        <template #trigger>
-          <NButton
-            quaternary
-            circle
-            size="small"
-            aria-label="导出当前文件集"
-            :loading="exporting"
-            :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
-            @click="exportCurrent"
-          >
-            <template #icon><NIcon><ArrowExportLtr24Regular /></NIcon></template>
-          </NButton>
-        </template>
-        导出当前文件集
-      </NTooltip>
-      <NTooltip>
-        <template #trigger>
-          <NButton
-            quaternary
-            circle
-            size="small"
-            aria-label="批量处理当前文件集"
-            :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
-            @click="openBatch"
-          >
-            <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
-          </NButton>
-        </template>
-        批量处理当前文件集
-      </NTooltip>
-      <NTooltip>
-        <template #trigger>
-          <NButton
-            quaternary
-            circle
-            size="small"
-            aria-label="清空当前文件集"
-            :disabled="activeEntries.length === 0"
-            @click="clearCurrent"
-          >
-            <template #icon><NIcon><DeleteDismiss24Regular /></NIcon></template>
-          </NButton>
-        </template>
-        清空当前文件集
-      </NTooltip>
-    </div>
-
-    <div v-if="activeEntries.length === 0" class="fileset-empty">
-      <NEmpty description="暂无文件" size="small" />
-    </div>
-    <div v-else class="fileset-entries">
-      <div
-        v-for="entry in activeEntries"
-        :key="entry.path"
-        :class="['fileset-entry', { 'fileset-entry--missing': entry.fileIndex < 0 }]"
-        :title="entry.path"
-        @click="onEntryClick($event, entry)"
-        @dblclick="onEntryDblclick($event, entry)"
-      >
-        <ImageThumbnail
-          class="fileset-entry-icon"
-          :reference="entry.icon"
-          :size="16"
-          :show-fallback="true"
-        />
-        <div class="fileset-entry-main">
-          <div class="fileset-entry-name-line">
-            <span class="fileset-entry-name">{{ entry.name }}</span>
-            <NTag
-              v-for="id in entry.ids"
-              :key="id"
-              size="tiny"
-              type="info"
-              :bordered="false"
-              class="fileset-entry-id"
-            >
-              {{ id }}
-            </NTag>
-            <NTag
-              v-if="entry.fileIndex < 0"
-              size="tiny"
-              type="warning"
-              :bordered="false"
-              class="fileset-entry-missing"
-            >
-              {{
-                fileSets.resolving
-                  ? "正在匹配"
-                  : archive.open
-                    ? "当前归档不存在"
-                    : "未打开归档"
-              }}
-            </NTag>
+  <aside class="file-set-sidebar" :class="{ 'file-set-sidebar--collapsed': !sidebar.visible }">
+    <div v-show="sidebar.visible" class="sidebar-content">
+      <template v-if="sidebar.activePanel === 'filesets'">
+        <div class="fileset-heading">
+          <div class="fileset-title">
+            <NIcon :size="16"><Collections24Regular /></NIcon>
+            <span>文件集</span>
+            <NTag size="tiny" :bordered="false">{{ activeEntries.length }}</NTag>
           </div>
-          <span class="fileset-entry-path">{{ entry.path }}</span>
+          <div class="fileset-actions">
+            <NTooltip>
+              <template #trigger>
+                <NButton quaternary circle size="tiny" aria-label="新建文件集" @click="openCreate">
+                  <template #icon><NIcon><Add24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              新建文件集
+            </NTooltip>
+            <NTooltip>
+              <template #trigger>
+                <NButton
+                  quaternary
+                  circle
+                  size="tiny"
+                  aria-label="重命名文件集"
+                  :disabled="!fileSets.loaded || !fileSets.activeSet"
+                  @click="openRename"
+                >
+                  <template #icon><NIcon><Edit24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              重命名文件集
+            </NTooltip>
+            <NTooltip>
+              <template #trigger>
+                <NButton
+                  quaternary
+                  circle
+                  size="tiny"
+                  aria-label="保存文件集"
+                  :loading="fileSets.saving"
+                  :disabled="!fileSets.dirty"
+                  @click="saveFileSets"
+                >
+                  <template #icon><NIcon><Save24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              保存文件集到硬盘
+            </NTooltip>
+            <NTooltip>
+              <template #trigger>
+                <NButton
+                  quaternary
+                  circle
+                  size="tiny"
+                  aria-label="删除文件集"
+                  :disabled="!fileSets.activeSet"
+                  @click="deleteCurrent"
+                >
+                  <template #icon><NIcon><Delete24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              删除当前文件集
+            </NTooltip>
+          </div>
         </div>
-        <NTooltip>
-          <template #trigger>
-            <NButton
-              quaternary
-              circle
-              size="tiny"
-              class="fileset-entry-remove"
-              aria-label="移除文件"
-              @click.stop="fileSets.removeEntry(entry.path)"
-            >
-              <template #icon><NIcon :size="14"><Dismiss24Regular /></NIcon></template>
-            </NButton>
+
+        <div class="fileset-switcher">
+          <NSelect
+            v-model:value="fileSets.activeSetId"
+            size="small"
+            :options="setOptions"
+            placeholder="选择文件集"
+          />
+          <NTooltip>
+            <template #trigger>
+              <NButton
+                quaternary
+                circle
+                size="small"
+                aria-label="导出当前文件集"
+                :loading="exporting"
+                :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
+                @click="exportCurrent"
+              >
+                <template #icon><NIcon><ArrowExportLtr24Regular /></NIcon></template>
+              </NButton>
+            </template>
+            导出当前文件集
+          </NTooltip>
+          <NTooltip>
+            <template #trigger>
+              <NButton
+                quaternary
+                circle
+                size="small"
+                aria-label="批量处理当前文件集"
+                :disabled="!archive.open || fileSets.resolving || activeEntries.length === 0"
+                @click="openBatch"
+              >
+                <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+              </NButton>
+            </template>
+            批量处理当前文件集
+          </NTooltip>
+          <NTooltip>
+            <template #trigger>
+              <NButton
+                quaternary
+                circle
+                size="small"
+                aria-label="清空当前文件集"
+                :disabled="activeEntries.length === 0"
+                @click="clearCurrent"
+              >
+                <template #icon><NIcon><DeleteDismiss24Regular /></NIcon></template>
+              </NButton>
+            </template>
+            清空当前文件集
+          </NTooltip>
+        </div>
+
+        <div v-if="activeEntries.length === 0" class="fileset-empty">
+          <NEmpty description="暂无文件" size="small" />
+        </div>
+        <div v-else class="fileset-entries">
+          <div
+            v-for="entry in activeEntries"
+            :key="entry.path"
+            :class="['fileset-entry', { 'fileset-entry--missing': entry.fileIndex < 0 }]"
+            :title="entry.path"
+            @click="onEntryClick($event, entry)"
+            @dblclick="onEntryDblclick($event, entry)"
+          >
+            <ImageThumbnail
+              class="fileset-entry-icon"
+              :reference="entry.icon"
+              :size="16"
+              :show-fallback="true"
+            />
+            <div class="fileset-entry-main">
+              <div class="fileset-entry-name-line">
+                <span class="fileset-entry-name">{{ entry.name }}</span>
+                <NTag
+                  v-for="id in entry.ids"
+                  :key="id"
+                  size="tiny"
+                  type="info"
+                  :bordered="false"
+                  class="fileset-entry-id"
+                >
+                  {{ id }}
+                </NTag>
+                <NTag
+                  v-if="entry.fileIndex < 0"
+                  size="tiny"
+                  type="warning"
+                  :bordered="false"
+                  class="fileset-entry-missing"
+                >
+                  {{
+                    fileSets.resolving
+                      ? "正在匹配"
+                      : archive.open
+                        ? "当前归档不存在"
+                        : "未打开归档"
+                  }}
+                </NTag>
+              </div>
+              <span class="fileset-entry-path">{{ entry.path }}</span>
+            </div>
+            <NTooltip>
+              <template #trigger>
+                <NButton
+                  quaternary
+                  circle
+                  size="tiny"
+                  class="fileset-entry-remove"
+                  aria-label="移除文件"
+                  @click.stop="fileSets.removeEntry(entry.path)"
+                >
+                  <template #icon><NIcon :size="14"><Dismiss24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              从文件集移除
+            </NTooltip>
+          </div>
+        </div>
+
+        <NModal
+          :show="namingVisible"
+          preset="card"
+          :title="namingTitle"
+          :style="{ width: 'min(360px, calc(100vw - 48px))' }"
+          :mask-closable="false"
+          @update:show="(show) => !show && closeNaming()"
+        >
+          <NInput
+            v-model:value="namingValue"
+            autofocus
+            placeholder="输入文件集名称"
+            :status="namingError ? 'error' : undefined"
+            @keydown.enter.prevent="submitNaming"
+          />
+          <NText v-if="namingError" type="error" class="fileset-name-error">
+            {{ namingError }}
+          </NText>
+          <template #footer>
+            <div class="fileset-modal-footer">
+              <NButton quaternary @click="closeNaming">取消</NButton>
+              <NButton type="primary" @click="submitNaming">确定</NButton>
+            </div>
           </template>
-          从文件集移除
-        </NTooltip>
-      </div>
+        </NModal>
+      </template>
+
+      <BookmarkSidebar v-else />
     </div>
 
-    <NModal
-      :show="namingVisible"
-      preset="card"
-      :title="namingTitle"
-      :style="{ width: 'min(360px, calc(100vw - 48px))' }"
-      :mask-closable="false"
-      @update:show="(show) => !show && closeNaming()"
-    >
-      <NInput
-        v-model:value="namingValue"
-        autofocus
-        placeholder="输入文件集名称"
-        :status="namingError ? 'error' : undefined"
-        @keydown.enter.prevent="submitNaming"
-      />
-      <NText v-if="namingError" type="error" class="fileset-name-error">
-        {{ namingError }}
-      </NText>
-      <template #footer>
-        <div class="fileset-modal-footer">
-          <NButton quaternary @click="closeNaming">取消</NButton>
-          <NButton type="primary" @click="submitNaming">确定</NButton>
-        </div>
-      </template>
-    </NModal>
-    </template>
+    <div class="sidebar-rail" role="tablist" aria-orientation="vertical" aria-label="侧栏面板">
+      <NTooltip placement="left">
+        <template #trigger>
+          <button
+            type="button"
+            role="tab"
+            class="sidebar-rail-item"
+            :class="{ 'sidebar-rail-item--active': sidebar.activePanel === 'filesets' }"
+            aria-label="文件集"
+            :aria-selected="sidebar.activePanel === 'filesets'"
+            @click="selectPanel('filesets')"
+          >
+            <NIcon :size="18"><Collections24Regular /></NIcon>
+          </button>
+        </template>
+        文件集
+      </NTooltip>
+      <NTooltip placement="left">
+        <template #trigger>
+          <button
+            type="button"
+            role="tab"
+            class="sidebar-rail-item"
+            :class="{ 'sidebar-rail-item--active': sidebar.activePanel === 'bookmarks' }"
+            aria-label="书签"
+            :aria-selected="sidebar.activePanel === 'bookmarks'"
+            @click="selectPanel('bookmarks')"
+          >
+            <NIcon :size="18"><BookmarkMultiple24Regular /></NIcon>
+          </button>
+        </template>
+        书签
+      </NTooltip>
 
-    <BookmarkSidebar v-else />
+      <div class="sidebar-rail-spacer" />
+
+      <NTooltip placement="left">
+        <template #trigger>
+          <button
+            type="button"
+            class="sidebar-rail-item"
+            :aria-label="sidebar.visible ? '收起侧栏' : '展开侧栏'"
+            @click="sidebar.toggle"
+          >
+            <NIcon :size="18">
+              <PanelRightContract24Regular v-if="sidebar.visible" />
+              <PanelRight24Regular v-else />
+            </NIcon>
+          </button>
+        </template>
+        {{ sidebar.visible ? "收起侧栏" : "展开侧栏" }}
+      </NTooltip>
+    </div>
   </aside>
 </template>
 
 <style scoped>
 .file-set-sidebar {
   display: flex;
-  flex: 0 0 300px;
-  flex-direction: column;
-  width: 300px;
+  flex: 0 0 332px;
+  flex-direction: row;
+  width: 332px;
   min-width: 0;
   min-height: 0;
   border-left: 1px solid var(--pvf-border-normal);
   background: transparent;
+}
+.file-set-sidebar--collapsed {
+  flex-basis: 32px;
+  width: 32px;
+}
+.sidebar-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+.sidebar-rail {
+  display: flex;
+  flex: 0 0 32px;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  border-left: 1px solid var(--pvf-border-subtle);
+}
+.sidebar-rail-spacer {
+  flex: 1;
+}
+.sidebar-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pvf-text-secondary);
+  cursor: pointer;
+}
+.sidebar-rail-item:hover {
+  background: var(--pvf-surface-hover);
+  color: var(--pvf-text-primary);
+}
+.sidebar-rail-item--active {
+  background: var(--pvf-surface-selected);
+  color: var(--pvf-primary);
+}
+.sidebar-rail-item:focus-visible {
+  outline: 2px solid var(--pvf-effect-focus-ring);
+  outline-offset: -1px;
 }
 .fileset-heading,
 .fileset-switcher,
@@ -527,17 +618,6 @@ watch(
 .fileset-modal-footer {
   display: flex;
   align-items: center;
-}
-.collection-switcher {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--pvf-border-subtle);
-}
-.collection-switcher > .n-button {
-  flex: 1;
 }
 .fileset-heading {
   justify-content: space-between;

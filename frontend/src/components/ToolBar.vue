@@ -9,11 +9,8 @@ import {
   FolderArrowUp24Regular,
   Stop24Regular,
   Search24Regular,
-  BookmarkMultiple24Regular,
   Code24Regular,
   DocumentText24Regular,
-  PanelRight24Regular,
-  PanelRightContract24Regular,
   DocumentSync24Regular,
   Settings24Regular,
 } from "@vicons/fluent";
@@ -29,7 +26,6 @@ import {
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
-import { useSidebarStore } from "../stores/sidebar";
 import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
@@ -38,7 +34,6 @@ import { useScriptStore } from "../stores/script";
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
-const sidebar = useSidebarStore();
 const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
@@ -144,11 +139,6 @@ function onUnpack() {
 function onCancelUnpack() {
   archive.cancelUnpack();
 }
-
-function openBookmarks(): void {
-  sidebar.show("bookmarks");
-}
-
 
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
@@ -305,24 +295,6 @@ function isCancel(e: any): boolean {
     </div>
 
     <div class="tb-spacer" />
-
-    <div class="tb-group" role="group" aria-label="视图">
-      <NTooltip>
-        <template #trigger>
-          <NButton quaternary aria-label="切换侧栏" @click="sidebar.toggle">
-            <template #icon>
-              <NIcon>
-                <PanelRightContract24Regular v-if="sidebar.visible" />
-                <PanelRight24Regular v-else />
-              </NIcon>
-            </template>
-          </NButton>
-        </template>
-        {{ sidebar.visible ? "收起侧栏" : "显示侧栏" }}
-      </NTooltip>
-    </div>
-
-    <div class="tb-sep" />
 
     <NTooltip trigger="hover">
       <template #trigger>

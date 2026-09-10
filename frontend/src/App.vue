@@ -21,7 +21,6 @@ import CloseGuard from "./components/CloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
-import { useSidebarStore } from "./stores/sidebar";
 import { useBookmarkStore } from "./stores/bookmarks";
 import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
@@ -37,7 +36,6 @@ import {
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
-const sidebar = useSidebarStore();
 const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
 const version = useVersionStore();
@@ -165,7 +163,7 @@ async function onKeydown(e: KeyboardEvent) {
             <div class="editor-pane">
               <EditorTabs :theme-id="activeTheme.id" />
             </div>
-            <FileSetSidebar v-if="sidebar.visible" />
+            <FileSetSidebar />
           </div>
           <StatusBar />
         </div>
