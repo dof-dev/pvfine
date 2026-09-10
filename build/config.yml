@@ -48,6 +48,11 @@ dev_mode:
 # File Associations
 # More information at: https://v3.wails.io/noit/done/yet
 fileAssociations:
+  - ext: pvf
+    name: PVF
+    description: PVF 归档文件
+    iconName: icon
+    role: Editor
 #  - ext: wails
 #    name: Wails
 #    description: Wails Application File

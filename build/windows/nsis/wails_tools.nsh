@@ -228,12 +228,18 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
 
 !macro wails.associateFiles
     ; Create file associations
-    
+
+    !insertmacro APP_ASSOCIATE "pvf" "PVF" "PVF 归档文件" "$INSTDIR\icon.ico" "Open with ${INFO_PRODUCTNAME}" "$INSTDIR\${PRODUCT_EXECUTABLE} $\"%1$\""
+    File "..\icon.ico"
+
 !macroend
 
 !macro wails.unassociateFiles
     ; Delete app associations
-    
+
+    !insertmacro APP_UNASSOCIATE "pvf" "PVF"
+    Delete "$INSTDIR\icon.ico"
+
 !macroend
 
 !macro CUSTOM_PROTOCOL_ASSOCIATE PROTOCOL DESCRIPTION ICON COMMAND

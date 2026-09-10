@@ -134,7 +134,7 @@ async function onKeydown(e: KeyboardEvent) {
     <NMessageProvider placement="bottom-right">
       <NDialogProvider>
         <CloseGuard />
-        <div class="app-root" :class="{ 'app-root--mac': isMac }">
+        <div class="app-root" data-file-drop-target :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />
           <BatchProcessModal />

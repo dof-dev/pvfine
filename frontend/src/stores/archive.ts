@@ -77,6 +77,11 @@ export const useArchiveStore = defineStore("archive", () => {
     persistRecentArchives();
   }
 
+  function removeRecentArchive(path: string): void {
+    recentArchives.value = recentArchives.value.filter((item) => item !== path);
+    persistRecentArchives();
+  }
+
   function readIndexStatus(data: any): IndexStatus {
     return {
       state: String(data?.state ?? "idle"),
@@ -229,6 +234,12 @@ export const useArchiveStore = defineStore("archive", () => {
     unpacking.value = false;
     unpackMessage.value = data?.message ?? "";
   });
+  Events.On("archive:open-path", (event: any) => {
+    const path = typeof event === "string" ? event : event?.data;
+    if (typeof path === "string" && path.trim()) {
+      void openPath(path.trim());
+    }
+  });
 
   return {
     recentArchives,
@@ -246,6 +257,7 @@ export const useArchiveStore = defineStore("archive", () => {
     openDialog,
     openPath,
     clearRecentArchives,
+    removeRecentArchive,
     close,
     refreshInfo,
     unpackDialog,

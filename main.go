@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -74,8 +75,9 @@ func main() {
 	settingsService := services.NewSettingsService()
 
 	app := application.New(application.Options{
-		Name:        "pvfine",
-		Description: "PVF 归档编辑器",
+		Name:             "pvfine",
+		Description:      "PVF 归档编辑器",
+		FileAssociations: []string{".pvf"},
 		Services: []application.Service{
 			application.NewService(services.NewArchiveService(core)),
 			application.NewService(services.NewEditorService(core, settingsService)),
@@ -119,9 +121,10 @@ func main() {
 	menu.AddRole(application.EditMenu)
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "pvfine — PVF 归档编辑器",
-		Width:  1440,
-		Height: 900,
+		Title:          "pvfine — PVF 归档编辑器",
+		Width:          1440,
+		Height:         900,
+		EnableFileDrop: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropLiquidGlass,
@@ -130,7 +133,52 @@ func main() {
 		BackgroundColour: application.NewRGB(24, 26, 32),
 		URL:              "/",
 	})
+	var openPathMu sync.Mutex
+	pendingOpenPath := ""
+	openPathReady := false
+	emitPVFOpenPath := func(path string) {
+		if !strings.HasSuffix(strings.ToLower(path), ".pvf") {
+			return
+		}
+		openPathMu.Lock()
+		if !openPathReady {
+			pendingOpenPath = path
+			openPathMu.Unlock()
+			return
+		}
+		openPathMu.Unlock()
+		app.Event.Emit("archive:open-path", path)
+	}
+	window.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		openPathMu.Lock()
+		openPathReady = true
+		path := pendingOpenPath
+		pendingOpenPath = ""
+		openPathMu.Unlock()
+		if path != "" {
+			app.Event.Emit("archive:open-path", path)
+		}
+	})
 	window.RegisterHook(events.Common.WindowClosing, closeCoordinator.handleWindowClosing)
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		ctx := event.Context()
+		if ctx == nil {
+			return
+		}
+		for _, file := range ctx.DroppedFiles() {
+			if strings.HasSuffix(strings.ToLower(file), ".pvf") {
+				emitPVFOpenPath(file)
+				break
+			}
+		}
+	})
+	app.Event.OnApplicationEvent(events.Common.ApplicationOpenedWithFile, func(event *application.ApplicationEvent) {
+		if event == nil || event.Context() == nil {
+			return
+		}
+		path := event.Context().Filename()
+		emitPVFOpenPath(path)
+	})
 
 	if updaterEnabled {
 		startBackgroundUpdateCheck(app)
