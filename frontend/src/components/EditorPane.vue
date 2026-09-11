@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { Clipboard } from "@wailsio/runtime";
 import {
   NButton,
@@ -18,6 +18,8 @@ import {
   BookmarkAdd24Regular,
   Dismiss16Regular,
   DocumentSearch24Regular,
+  Eye24Regular,
+  EyeOff24Regular,
   SplitHorizontal24Regular,
   SplitVertical24Regular,
 } from "@vicons/fluent";
@@ -33,6 +35,9 @@ import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 import ImageThumbnail from "./ImageThumbnail.vue";
+import PreviewHost from "./previews/PreviewHost.vue";
+import { getPreviewProvider } from "../previews/registry";
+import type { PreviewFile } from "../previews/types";
 import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
@@ -54,6 +59,7 @@ const revealingFile = ref(false);
 const bookmarking = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
+const previewVisibility = reactive(new Map<number, boolean>());
 const tabContextMenu = ref({
   show: false,
   x: 0,
@@ -106,6 +112,35 @@ const activeBookmarked = computed(
 );
 const canBookmarkActiveFile = computed(
   () => archive.open && bookmarks.loaded && !!activeTab.value && !bookmarking.value
+);
+function previewFile(tab: EditorTab): PreviewFile {
+  return { path: tab.path, text: tab.text, editable: tab.editable };
+}
+
+function previewProviderFor(tab: EditorTab) {
+  return getPreviewProvider(previewFile(tab));
+}
+
+function isPreviewOpen(index: number): boolean {
+  return previewVisibility.get(index) ?? true;
+}
+
+function togglePreview(index: number): void {
+  previewVisibility.set(index, !isPreviewOpen(index));
+}
+
+function closePreview(index: number): void {
+  previewVisibility.set(index, false);
+}
+
+watch(
+  activeTab,
+  (tab) => {
+    if (tab && previewProviderFor(tab) && !previewVisibility.has(tab.index)) {
+      previewVisibility.set(tab.index, true);
+    }
+  },
+  { immediate: true },
 );
 
 function activatePane(): void {
@@ -504,6 +539,24 @@ function onDrop(event: DragEvent): void {
               </template>
               上下分屏 (Cmd/Ctrl+Shift+\)
             </NTooltip>
+
+            <NTooltip v-if="previewProviderFor(tab)" trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :type="isPreviewOpen(tab.index) ? 'primary' : 'default'"
+                  aria-label="切换文件预览"
+                  @click="togglePreview(tab.index)"
+                >
+                  <template #icon>
+                    <NIcon><EyeOff24Regular v-if="isPreviewOpen(tab.index)" /><Eye24Regular v-else /></NIcon>
+                  </template>
+                  预览
+                </NButton>
+              </template>
+              {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
+            </NTooltip>
           </div>
         </div>
 
@@ -522,6 +575,13 @@ function onDrop(event: DragEvent): void {
             :theme-id="props.themeId"
             @change="(text: string) => editor.updateContent(tab.index, text)"
             @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
+          />
+          <PreviewHost
+            v-if="previewProviderFor(tab)"
+            :file="previewFile(tab)"
+            :active="editor.activePaneId === paneId && activeTab?.index === tab.index"
+            :open="isPreviewOpen(tab.index)"
+            @close="closePreview(tab.index)"
           />
         </div>
       </NTabPane>
@@ -727,6 +787,7 @@ function onDrop(event: DragEvent): void {
   gap: 2px;
 }
 .pane-body {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;

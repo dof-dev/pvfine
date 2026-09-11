@@ -12,6 +12,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -23,6 +24,11 @@ import (
 )
 
 const imageIndexVersion = 1
+
+// NPK packages are independent scan units. Keep the pool bounded so a large
+// resource directory does not create one goroutine and file descriptor per
+// package or overwhelm slower disks with unbounded random reads.
+const maxImageScanWorkers = 8
 
 var (
 	errImageDirectoryMissing = errors.New("NPK 目录不存在或不是目录")
@@ -79,6 +85,15 @@ type imageSnapshot struct {
 type imageCacheEntry struct {
 	data  ImageData
 	bytes int
+}
+
+type imageScanResult struct {
+	index      int
+	npkFiles   int
+	imgFiles   int
+	imageCount int
+	skipped    int
+	records    []*imageRecord
 }
 
 // ImageService owns the NPK/IMG metadata snapshot and on-demand PNG cache.
@@ -335,51 +350,31 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 	records := make([]*imageRecord, 0)
 	duplicates := 0
 	skipped := 0
+	npkCount := 0
 	imgCount := 0
 	imageCount := 0
-	for fileIndex, item := range manifest {
-		if ctx.Err() != nil {
+	scanResults, err := scanImageNPKs(ctx, directory, manifest, 0, func(result imageScanResult, done int) {
+		npkCount += result.npkFiles
+		imgCount += result.imgFiles
+		imageCount += result.imageCount
+		skipped += result.skipped
+		status.Done = done
+		status.NPKFiles = npkCount
+		status.IMGFiles = imgCount
+		status.ImageCount = imageCount
+		status.Skipped = skipped
+		status.BuildDurationMs = elapsedMilliseconds(startedAt)
+		s.publishProgress(directory, generation, status)
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
 			return
 		}
-		npkPath := filepath.Join(directory, filepath.FromSlash(item.Relative))
-		npkFile, err := npk.Open(npkPath)
-		if err != nil {
-			skipped++
-			status.Done = fileIndex + 1
-			status.Skipped = skipped
-			status.BuildDurationMs = elapsedMilliseconds(startedAt)
-			s.publishProgress(directory, generation, status)
-			continue
-		}
-		reader, err := os.Open(npkPath)
-		if err != nil {
-			skipped++
-			status.Done = fileIndex + 1
-			status.Skipped = skipped
-			status.BuildDurationMs = elapsedMilliseconds(startedAt)
-			s.publishProgress(directory, generation, status)
-			continue
-		}
-		for _, entry := range npkFile.Entries {
-			if ctx.Err() != nil {
-				_ = reader.Close()
-				return
-			}
-			if !strings.EqualFold(filepath.Ext(entry.Name), ".img") {
-				continue
-			}
-			img, parseErr := npk.ParseIMGAt(reader, entry.Offset, entry.Size)
-			if parseErr != nil {
-				skipped++
-				continue
-			}
-			imgCount++
-			imageCount += len(img.Images)
-			record := &imageRecord{path: normalizeImagePath(entry.Name), npkRelative: item.Relative, offset: entry.Offset, size: entry.Size, img: img}
-			if record.path == "" {
-				skipped++
-				continue
-			}
+		s.failBuild(directory, generation, startedAt, err)
+		return
+	}
+	for _, result := range scanResults {
+		for _, record := range result.records {
 			if _, exists := byPath[record.path]; exists {
 				duplicates++
 				continue
@@ -392,16 +387,15 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 			}
 			records = append(records, record)
 		}
-		_ = reader.Close()
-		status.Done = fileIndex + 1
-		status.NPKFiles = fileIndex + 1
-		status.IMGFiles = imgCount
-		status.ImageCount = imageCount
-		status.Skipped = skipped
-		status.Duplicates = duplicates
-		status.BuildDurationMs = elapsedMilliseconds(startedAt)
-		s.publishProgress(directory, generation, status)
 	}
+	status.NPKFiles = len(manifest)
+	status.IMGFiles = imgCount
+	status.ImageCount = imageCount
+	status.Skipped = skipped
+	status.Duplicates = duplicates
+	status.Done = len(manifest)
+	status.BuildDurationMs = elapsedMilliseconds(startedAt)
+	s.publishProgress(directory, generation, status)
 	if len(records) == 0 {
 		s.failBuild(directory, generation, startedAt, fmt.Errorf("NPK 目录中没有可用的 IMG 文件"))
 		return
@@ -426,6 +420,142 @@ func (s *ImageService) buildIndex(ctx context.Context, directory string, generat
 	ready := s.status
 	s.mu.Unlock()
 	emitEvent("image:index-ready", ready)
+}
+
+func imageScanWorkerCount(fileCount int) int {
+	if fileCount <= 0 {
+		return 0
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 2 {
+		workers = 2
+	}
+	if workers > maxImageScanWorkers {
+		workers = maxImageScanWorkers
+	}
+	if workers > fileCount {
+		workers = fileCount
+	}
+	return workers
+}
+
+func scanImageNPKs(ctx context.Context, directory string, manifest []imageManifest, workers int, onResult func(imageScanResult, int)) ([]imageScanResult, error) {
+	if len(manifest) == 0 {
+		return []imageScanResult{}, nil
+	}
+	if workers <= 0 {
+		workers = imageScanWorkerCount(len(manifest))
+	}
+	if workers > len(manifest) {
+		workers = len(manifest)
+	}
+
+	type scanJob int
+	jobs := make(chan scanJob)
+	results := make(chan imageScanResult)
+	var group sync.WaitGroup
+	group.Add(workers)
+	for index := 0; index < workers; index++ {
+		go func() {
+			defer group.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case job, ok := <-jobs:
+					if !ok {
+						return
+					}
+					result := scanImageNPK(ctx, directory, int(job), manifest[int(job)])
+					if ctx.Err() != nil {
+						return
+					}
+					select {
+					case results <- result:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	go func() {
+		defer close(jobs)
+		for index := range manifest {
+			select {
+			case jobs <- scanJob(index):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() {
+		group.Wait()
+		close(results)
+	}()
+
+	scanned := make([]imageScanResult, len(manifest))
+	completed := 0
+	for result := range results {
+		scanned[result.index] = result
+		completed++
+		if onResult != nil {
+			onResult(result, completed)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if completed != len(manifest) {
+		return nil, fmt.Errorf("NPK 并发扫描未完成: %d/%d", completed, len(manifest))
+	}
+	return scanned, nil
+}
+
+func scanImageNPK(ctx context.Context, directory string, index int, item imageManifest) imageScanResult {
+	result := imageScanResult{index: index}
+	if ctx.Err() != nil {
+		return result
+	}
+	npkPath := filepath.Join(directory, filepath.FromSlash(item.Relative))
+	npkFile, err := npk.Open(npkPath)
+	if err != nil {
+		result.skipped++
+		return result
+	}
+	if ctx.Err() != nil {
+		return result
+	}
+	reader, err := os.Open(npkPath)
+	if err != nil {
+		result.skipped++
+		return result
+	}
+	defer reader.Close()
+	result.npkFiles = 1
+	for _, entry := range npkFile.Entries {
+		if ctx.Err() != nil {
+			return result
+		}
+		if !strings.EqualFold(filepath.Ext(entry.Name), ".img") {
+			continue
+		}
+		img, parseErr := npk.ParseIMGAt(reader, entry.Offset, entry.Size)
+		if parseErr != nil {
+			result.skipped++
+			continue
+		}
+		result.imgFiles++
+		result.imageCount += len(img.Images)
+		record := &imageRecord{path: normalizeImagePath(entry.Name), npkRelative: item.Relative, offset: entry.Offset, size: entry.Size, img: img}
+		if record.path == "" {
+			result.skipped++
+			continue
+		}
+		result.records = append(result.records, record)
+	}
+	return result
 }
 
 func (s *ImageService) publishProgress(directory string, generation uint64, status ImageIndexStatus) {

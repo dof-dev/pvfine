@@ -1,0 +1,1163 @@
+[LOOP]
+	1
+
+[SHADOW]
+	0
+
+[FRAME MAX]
+	105
+
+[FRAME000]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	0
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME001]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	1
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME002]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	2
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME003]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	3
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME004]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	4
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME005]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	5
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME006]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	6
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME007]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	7
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME008]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	8
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME009]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	9
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME010]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	10
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME011]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	11
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME012]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	12
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME013]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	13
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME014]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	14
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME015]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	15
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME016]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	16
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME017]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	17
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME018]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	18
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME019]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	19
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME020]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	20
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME021]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	21
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME022]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	22
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME023]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	23
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME024]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	24
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME025]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	25
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME026]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	26
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME027]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	27
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME028]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	28
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME029]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	29
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME030]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	30
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME031]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	31
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME032]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	32
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME033]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	33
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME034]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	34
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME035]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	35
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME036]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	36
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME037]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	37
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME038]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	38
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME039]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	39
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME040]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	40
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME041]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	41
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME042]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	42
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME043]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	43
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME044]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	44
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME045]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	45
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME046]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	46
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME047]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	47
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME048]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	48
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME049]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	49
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME050]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	50
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME051]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	51
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME052]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	52
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME053]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	53
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME054]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	54
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME055]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	55
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME056]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	56
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME057]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	57
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME058]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	58
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME059]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	59
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME060]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	60
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME061]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	61
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME062]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	62
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME063]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	63
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME064]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	64
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME065]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	65
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME066]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	66
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME067]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	67
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME068]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	68
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME069]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	69
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME070]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	70
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME071]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	71
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME072]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	72
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME073]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	73
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME074]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	74
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME075]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	75
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME076]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	76
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME077]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	77
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME078]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	78
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME079]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	79
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME080]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	80
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME081]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	81
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME082]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	82
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME083]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	83
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME084]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	84
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME085]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	85
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME086]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	86
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME087]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	87
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME088]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	88
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME089]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	89
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME090]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	90
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME091]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	91
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME092]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	92
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME093]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	93
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME094]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	94
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME095]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	95
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME096]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	96
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME097]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	97
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME098]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	98
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME099]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	99
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME0100]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	100
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	200
+
+[FRAME0101]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	101
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME0102]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	102
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME0103]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	103
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100
+
+[FRAME0104]
+
+[IMAGE]
+	`Item/Title/15_summer_2.img`	104
+
+[IMAGE POS]
+	0	0
+
+[DELAY]
+	100

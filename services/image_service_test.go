@@ -1,11 +1,86 @@
 package services
 
 import (
+	"context"
+	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestImageIndexScansNPKsConcurrentlyAndKeepsOrder(t *testing.T) {
+	root := t.TempDir()
+	writeImageTestNPK(t, filepath.Join(root, "01.npk"), "sprite/item/shared.img")
+	writeImageTestNPK(t, filepath.Join(root, "02.npk"), "sprite/item/shared.img")
+	writeImageTestNPK(t, filepath.Join(root, "03.npk"), "sprite/item/unique.img")
+
+	service := &ImageService{
+		directory:  root,
+		cachePath:  filepath.Join(t.TempDir(), "npk-image-index.json"),
+		cache:      make(map[string]imageCacheEntry),
+		generation: 1,
+	}
+	service.buildIndex(context.Background(), root, 1, time.Now())
+
+	status := service.IndexStatus()
+	if status.State != ImageIndexStateReady {
+		t.Fatalf("image index status = %#v", status)
+	}
+	if status.NPKFiles != 3 || status.IMGFiles != 3 || status.ImageCount != 3 || status.Duplicates != 1 {
+		t.Fatalf("image index counts = %#v", status)
+	}
+	if len(service.snapshot.records) != 2 {
+		t.Fatalf("image records = %d, want 2", len(service.snapshot.records))
+	}
+	if got := service.snapshot.byPath["sprite/item/shared.img"].npkRelative; got != "01.npk" {
+		t.Fatalf("duplicate winner = %q, want 01.npk", got)
+	}
+}
+
+func writeImageTestNPK(t *testing.T, path, memberName string) {
+	t.Helper()
+	const npkHeaderSize = 16 + 4 + 264
+	member := imageTestIMG()
+	data := make([]byte, 0, npkHeaderSize+len(member))
+	data = append(data, []byte("NeoplePack_Bill")...)
+	data = append(data, 0)
+	putImageTestInt32(&data, 1)
+	putImageTestInt32(&data, npkHeaderSize, len(member))
+	key := []byte("puchikon@neople dungeon and fighter " + strings.Repeat("DNF", 73) + "\x00")
+	encrypted := make([]byte, 256)
+	for index := range encrypted {
+		var value byte
+		if index < len(memberName) {
+			value = memberName[index]
+		}
+		encrypted[index] = value ^ key[index%len(key)]
+	}
+	data = append(data, encrypted...)
+	data = append(data, member...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func imageTestIMG() []byte {
+	data := make([]byte, 0, 72)
+	data = append(data, []byte("Neople Img File")...)
+	data = append(data, 0)
+	putImageTestInt32(&data, 36, 0, 2, 1)
+	putImageTestInt32(&data, 16, 5, 1, 1, 4, 0, 0, 1, 1)
+	data = append(data, 3, 2, 1, 255)
+	return data
+}
+
+func putImageTestInt32(data *[]byte, values ...int) {
+	for _, value := range values {
+		var raw [4]byte
+		binary.LittleEndian.PutUint32(raw[:], uint32(value))
+		*data = append(*data, raw[:]...)
+	}
+}
 
 func TestRealImageServiceWithImagePacks2(t *testing.T) {
 	root := os.Getenv("NPK_TESTDIR")

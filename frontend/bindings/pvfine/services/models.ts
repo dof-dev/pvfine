@@ -54,6 +54,36 @@ export interface AdvancedSearchResult {
     "scanned": number;
 }
 
+/**
+ * AniPreviewDocument is the structured preview model returned for .ani text.
+ */
+export interface AniPreviewDocument {
+    "valid": boolean;
+    "loop": boolean;
+    "shadow": boolean;
+    "frameMax": number;
+    "frames": AniPreviewFrame[] | null;
+    "issues": PreviewIssue[] | null;
+}
+
+/**
+ * AniPreviewFrame is one decoded ANI frame.
+ */
+export interface AniPreviewFrame {
+    "index": number;
+    "delayMs": number;
+    "layers": AniPreviewLayer[] | null;
+}
+
+/**
+ * AniPreviewLayer is one image layer in an ANI frame.
+ */
+export interface AniPreviewLayer {
+    "image": ImageReference;
+    "x": number;
+    "y": number;
+}
+
 export interface AnnotationReloadResult {
     "ruleCount": number;
     "relationCount": number;
@@ -305,6 +335,16 @@ export interface IndexStatus {
     "error": string;
     "openDurationMs": number;
     "buildDurationMs": number;
+}
+
+/**
+ * PreviewIssue is a recoverable problem reported by a preview parser.
+ */
+export interface PreviewIssue {
+    "severity": string;
+    "line": number;
+    "section"?: string;
+    "message": string;
 }
 
 /**

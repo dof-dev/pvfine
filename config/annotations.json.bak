@@ -194,6 +194,23 @@
       "group": "skill"
     },
     {
+      "id": "skill.enchant.skill",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "skill",
+        "index": 1,
+        "offset": 1,
+        "recordTokens": 7
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skill"
+    },
+    {
       "id": "global.input",
       "match": {},
       "target": {
@@ -229,9 +246,9 @@
       "target": {
         "kind": "token",
         "section": "icon",
-        "index": 0,
+        "index": 1,
         "recordTokens": 2,
-        "imageIndexToken": 1
+        "imagePathToken": 0
       },
       "annotation": {
         "title": "图标",
@@ -246,9 +263,9 @@
       "target": {
         "kind": "token",
         "section": "field image",
-        "index": 0,
+        "index": 1,
         "recordTokens": 2,
-        "imageIndexToken": 1
+        "imagePathToken": 0
       },
       "annotation": {
         "title": "图标",
@@ -263,9 +280,9 @@
       "target": {
         "kind": "token",
         "section": "icon mark",
-        "index": 0,
+        "index": 1,
         "recordTokens": 2,
-        "imageIndexToken": 1
+        "imagePathToken": 0
       },
       "annotation": {
         "title": "图标",
@@ -273,6 +290,26 @@
         "inlineImage": true
       },
       "group": "global"
+    },
+    {
+      "id": "ani.image",
+      "match": {
+        "extensions": [
+          ".ani"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "IMAGE",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "image"
+      },
+      "group": "ani"
     }
   ]
 }

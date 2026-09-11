@@ -8,6 +8,7 @@ import * as BookmarkService from "./bookmarkservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
+import * as PreviewService from "./previewservice.js";
 import * as RenderingService from "./renderingservice.js";
 import * as ScriptService from "./scriptservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -21,6 +22,7 @@ export {
     EditorService,
     FileSetService,
     ImageService,
+    PreviewService,
     RenderingService,
     ScriptService,
     SettingsService,
@@ -33,6 +35,9 @@ export type {
     AdvancedSearchHit,
     AdvancedSearchIndexStatus,
     AdvancedSearchResult,
+    AniPreviewDocument,
+    AniPreviewFrame,
+    AniPreviewLayer,
     AnnotationReloadResult,
     AppSettings,
     ArchiveInfo,
@@ -57,6 +62,7 @@ export type {
     ImportPreviewEntry,
     ImportResult,
     IndexStatus,
+    PreviewIssue,
     RenderingReloadResult,
     ScriptApplyResult,
     ScriptCompileResult,

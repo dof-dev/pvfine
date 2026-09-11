@@ -200,8 +200,8 @@
         "kind": "token",
         "section": "skill",
         "index": 1,
-        "recordTokens": 7,
-        "offset": 1
+        "offset": 1,
+        "recordTokens": 7
       },
       "annotation": {
         "title": "技能",
@@ -290,6 +290,27 @@
         "inlineImage": true
       },
       "group": "global"
+    },
+    {
+      "id": "ani.image",
+      "match": {
+        "extensions": [
+          ".ani"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "IMAGE",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "ani"
     }
   ]
 }
