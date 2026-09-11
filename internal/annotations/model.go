@@ -1,9 +1,12 @@
 package annotations
 
+import "strings"
+
 type Document struct {
 	Version     int                     `json:"version"`
 	Description string                  `json:"description,omitempty"`
 	Relations   map[string]RelationSpec `json:"relations,omitempty"`
+	Fields      []FieldDefinition       `json:"fields,omitempty"`
 	Rules       []Rule                  `json:"rules"`
 }
 
@@ -28,10 +31,64 @@ type RelationSpec struct {
 type Rule struct {
 	ID          string         `json:"id"`
 	Description string         `json:"description,omitempty"`
+	Field       string         `json:"field,omitempty"`
 	Match       MatchSpec      `json:"match"`
 	Target      TargetSpec     `json:"target"`
 	Annotation  AnnotationSpec `json:"annotation"`
 	Group       string         `json:"group,omitempty"`
+}
+
+// FieldDefinition is a reusable field description shared by annotation rules
+// and structured previews. A field may optionally expose a PreviewSpec; fields
+// without it are still useful to annotations and remain out of previews.
+type FieldDefinition struct {
+	ID         string         `json:"id"`
+	Match      MatchSpec      `json:"match"`
+	Target     TargetSpec     `json:"target"`
+	Annotation AnnotationSpec `json:"annotation"`
+	Preview    *PreviewSpec   `json:"preview,omitempty"`
+}
+
+// PreviewSpec describes how a shared field participates in a preview. The
+// parser deliberately treats Group, Role and Format as opaque strings so new
+// preview providers can add roles without changing the annotation schema.
+type PreviewSpec struct {
+	// Provider is the backwards-compatible single-provider form.
+	Provider string `json:"provider,omitempty"`
+	// Providers allows one shared field to feed multiple preview components.
+	Providers []string `json:"providers,omitempty"`
+	Role      string   `json:"role"`
+	Group     string   `json:"group"`
+	Order     int      `json:"order"`
+	Format    string   `json:"format"`
+	Label     string   `json:"label,omitempty"`
+}
+
+func (preview *PreviewSpec) providerNames() []string {
+	if preview == nil {
+		return nil
+	}
+	result := make([]string, 0, len(preview.Providers)+1)
+	if provider := strings.TrimSpace(preview.Provider); provider != "" {
+		result = append(result, provider)
+	}
+	for _, provider := range preview.Providers {
+		provider = strings.TrimSpace(provider)
+		if provider == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range result {
+			if strings.EqualFold(existing, provider) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			result = append(result, provider)
+		}
+	}
+	return result
 }
 
 type MatchSpec struct {

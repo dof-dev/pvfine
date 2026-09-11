@@ -1,6 +1,7 @@
 import type { Component } from "vue";
 
 export interface PreviewFile {
+  index: number;
   path: string;
   text: string;
   editable: boolean;
@@ -16,4 +17,5 @@ export interface PreviewProvider {
   label: string;
   matches: (file: PreviewFile) => boolean;
   component: Component;
+  chrome?: "default" | "game-tooltip";
 }

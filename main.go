@@ -86,7 +86,7 @@ func main() {
 			application.NewService(services.NewVersionService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewRenderingService(core)),
-			application.NewService(services.NewPreviewService()),
+			application.NewService(services.NewPreviewService(core)),
 			application.NewService(services.NewImageService(core, settingsService)),
 			application.NewService(settingsService),
 			application.NewService(services.NewFileSetService()),

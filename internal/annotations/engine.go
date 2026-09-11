@@ -51,15 +51,95 @@ func Compile(document Document) (*Engine, error) {
 	if err := Validate(document); err != nil {
 		return nil, err
 	}
-	rules := make([]compiledRule, 0, len(document.Rules))
-	for _, rule := range document.Rules {
+	rules := make([]compiledRule, 0, len(document.Rules)+len(document.Fields))
+	appendRule := func(rule Rule) {
 		extensions := make(map[string]struct{}, len(rule.Match.Extensions))
 		for _, extension := range rule.Match.Extensions {
 			extensions[strings.ToLower(extension)] = struct{}{}
 		}
 		rules = append(rules, compiledRule{rule: rule, extensions: extensions})
 	}
+	resolvedRules := make([]Rule, 0, len(document.Rules))
+	for _, originalRule := range document.Rules {
+		rule, err := resolveFieldRule(originalRule, document.Fields)
+		if err != nil {
+			return nil, err
+		}
+		resolvedRules = append(resolvedRules, rule)
+		appendRule(rule)
+	}
+	// A shared field is itself an annotation definition. Explicit rules may
+	// still reference a field to override its presentation; in that case the
+	// explicit rule takes precedence and the implicit copy is skipped.
+	for _, field := range document.Fields {
+		fieldRule := Rule{
+			ID:         "field:" + field.ID,
+			Match:      field.Match,
+			Target:     field.Target,
+			Annotation: field.Annotation,
+			Group:      "field",
+		}
+		covered := false
+		for _, rule := range resolvedRules {
+			if rule.Field == field.ID || annotationRuleCoversField(rule, fieldRule) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			appendRule(fieldRule)
+		}
+	}
 	return &Engine{document: document, rules: rules}, nil
+}
+
+func annotationRuleCoversField(rule, field Rule) bool {
+	if rule.Annotation.Type != field.Annotation.Type || rule.Annotation.Title != field.Annotation.Title ||
+		rule.Annotation.Relation != field.Annotation.Relation || !sameTarget(rule.Target, field.Target) {
+		return false
+	}
+	return len(rule.Match.Extensions) == 0 && strings.TrimSpace(rule.Match.Glob) == "" || sameMatch(rule.Match, field.Match)
+}
+
+func sameMatch(left, right MatchSpec) bool {
+	if !strings.EqualFold(strings.TrimSpace(left.Glob), strings.TrimSpace(right.Glob)) || len(left.Extensions) != len(right.Extensions) {
+		return false
+	}
+	used := make([]bool, len(right.Extensions))
+	for _, extension := range left.Extensions {
+		found := false
+		for index, candidate := range right.Extensions {
+			if !used[index] && strings.EqualFold(strings.TrimSpace(extension), strings.TrimSpace(candidate)) {
+				used[index] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func sameTarget(left, right TargetSpec) bool {
+	if left.Kind != right.Kind || !strings.EqualFold(left.Section, right.Section) || left.Offset != right.Offset ||
+		left.RecordTokens != right.RecordTokens || !sameIntPtr(left.Index, right.Index) ||
+		!sameIntPtr(left.TokensPerLineIndex, right.TokensPerLineIndex) || !sameIntPtr(left.ContextIndex, right.ContextIndex) ||
+		!sameIntPtr(left.ImagePathToken, right.ImagePathToken) {
+		return false
+	}
+	if (left.Range == nil) != (right.Range == nil) {
+		return false
+	}
+	return left.Range == nil || (left.Range.Start == right.Range.Start && left.Range.EndExclusive == right.Range.EndExclusive)
+}
+
+func sameIntPtr(left, right *int) bool {
+	if (left == nil) != (right == nil) {
+		return false
+	}
+	return left == nil || *left == *right
 }
 
 func (e *Engine) Document() Document { return e.document }

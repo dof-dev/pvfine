@@ -113,6 +113,8 @@
         <div class="pane-head">
           <div class="tabs">
             <button class="tab active" data-tab="rules">规则</button>
+            <button class="tab" data-tab="fields">共享字段</button>
+            <button class="tab" data-tab="relations">关联</button>
           </div>
           <button class="btn primary" id="addButton">新增</button>
         </div>
@@ -179,8 +181,24 @@
     }
 
     function rules() { return state.document.rules || (state.document.rules = []); }
+    function fields() { return state.document.fields || (state.document.fields = []); }
     function relationEntries() { return Object.entries(state.document.relations || (state.document.relations = {})); }
+    function previewProviderText(preview) {
+      if (!preview) return "";
+      return preview.providers?.length ? preview.providers.join(", ") : (preview.provider || "");
+    }
+    function setPreviewProviders(preview, value) {
+      const providers = value.split(",").map((item) => item.trim()).filter(Boolean);
+      if (providers.length <= 1) {
+        preview.provider = providers[0] || "";
+        delete preview.providers;
+      } else {
+        delete preview.provider;
+        preview.providers = [...new Set(providers)];
+      }
+    }
     function currentRule() { return rules()[state.selected] || null; }
+    function currentField() { return fields()[state.selected] || null; }
     function currentRelation() { return relationEntries()[state.selected] || null; }
 
     function renderAll() {
@@ -195,7 +213,9 @@
       container.replaceChildren();
       const items = state.tab === "rules"
         ? rules().map((rule, index) => ({ key: rule.id || `未命名规则 ${index + 1}`, meta: `${rule.target?.kind || "?"} · ${rule.annotation?.title || "无标题"}` }))
-        : relationEntries().map(([name, relation]) => ({ key: name, meta: relation.listPath || "未配置列表文件" }));
+        : state.tab === "fields"
+          ? fields().map((item, index) => ({ key: item.id || `未命名字段 ${index + 1}`, meta: `${previewProviderText(item.preview) || "无预览"} · ${item.annotation?.title || "无标题"}` }))
+          : relationEntries().map(([name, relation]) => ({ key: name, meta: relation.listPath || "未配置列表文件" }));
       const appendItem = (item, index) => {
         const row = document.createElement("div");
         row.className = `list-item ${index === state.selected ? "active" : ""}`;
@@ -207,14 +227,19 @@
         main.onclick = () => { state.selected = index; renderAll(); };
         const actions = document.createElement("div");
         actions.className = "item-actions";
-        if (state.tab === "rules") {
-          actions.append(actionButton("↑", "上移", () => moveRule(index, -1), index === 0));
-          actions.append(actionButton("↓", "下移", () => moveRule(index, 1), index === items.length - 1));
+        if (state.tab === "rules" || state.tab === "fields") {
+          actions.append(actionButton("↑", "上移", () => moveItem(index, -1), index === 0));
+          actions.append(actionButton("↓", "下移", () => moveItem(index, 1), index === items.length - 1));
         }
         actions.append(actionButton("×", "删除", () => removeItem(index), false));
         if (state.tab === "rules") {
           const copyButton = actionButton("⧉", "复制规则", () => copyRule(index), false);
           copyButton.setAttribute("aria-label", "复制规则");
+          actions.append(copyButton);
+        }
+        if (state.tab === "fields") {
+          const copyButton = actionButton("⧉", "复制字段", () => copyField(index), false);
+          copyButton.setAttribute("aria-label", "复制字段");
           actions.append(copyButton);
         }
         row.append(main, actions);
@@ -260,6 +285,7 @@
     function renderForm() {
       showError();
       if (state.tab === "rules") renderRuleForm(currentRule());
+      else if (state.tab === "fields") renderFieldForm(currentField());
       else renderRelationForm(currentRelation());
     }
 
@@ -267,14 +293,16 @@
       $("formTitle").textContent = "规则详情";
       const form = $("editorForm");
       if (!rule) { form.innerHTML = '<div class="preview-empty">点击“新增”创建规则</div>'; return; }
-      const target = rule.target || (rule.target = { kind: "section", section: "name" });
-      const annotation = rule.annotation || (rule.annotation = { title: "", type: "text" });
-      const match = rule.match || (rule.match = {});
+      const referencedField = rule.field ? fields().find((item) => item.id === rule.field) : null;
+      const target = rule.target || referencedField?.target || { kind: "section", section: "name" };
+      const annotation = rule.annotation || referencedField?.annotation || { title: "", type: "text" };
+      const match = rule.match || referencedField?.match || {};
       form.innerHTML = `
         <div class="section"><div class="section-title">基本信息</div>
           ${field("规则 ID", input("rule-id", rule.id || ""), "规则顺序决定冲突时显示优先级")}
           ${field("说明", textarea("rule-description", rule.description || ""))}
           ${field("分组", `<input id="rule-group" list="rule-groups" value="${escapeAttr(rule.group || "")}" /><datalist id="rule-groups">${[...new Set(rules().map(ruleGroup).filter(Boolean))].map((group) => `<option value="${escapeAttr(group)}"></option>`).join("")}</datalist>`, "输入新分组或选择已有分组；留空为未分组，不影响规则优先级")}
+          ${field("共享字段", select("rule-field", rule.field || "", [["","不引用共享字段"], ...fields().map((item) => [item.id, item.id])]), "引用后会继承字段的匹配、目标和标注元数据；下方显式填写的值仍可覆盖")}
         </div>
         <div class="section"><div class="section-title">文件匹配</div>
           ${field("文件后缀", input("match-extensions", (match.extensions || []).join(", ")), "逗号分隔，例如 .equ, .stk；留空表示不限")}
@@ -319,8 +347,16 @@
     }
 
     function bindRuleForm(rule) {
+      const referencedField = rule.field ? fields().find((item) => item.id === rule.field) : null;
+      rule.match ||= structuredClone(referencedField?.match || {});
+      rule.target ||= structuredClone(referencedField?.target || { kind: "section", section: "name" });
+      rule.annotation ||= structuredClone(referencedField?.annotation || { title: "", type: "text" });
       bind("rule-id", "input", (value) => rule.id = value);
       bind("rule-description", "input", (value) => rule.description = value);
+      bind("rule-field", "change", (value) => {
+        if (value) rule.field = value;
+        else delete rule.field;
+      });
       bind("rule-group", "change", (value) => {
         rule.group = value.trim();
         expandedGroups.add(ruleGroup(rule));
@@ -381,6 +417,149 @@
       bindChecked("annotation-inline-image", (checked) => {
         if (checked) rule.annotation.inlineImage = true;
         else delete rule.annotation.inlineImage;
+      });
+    }
+
+    function renderFieldForm(fieldDefinition) {
+      $("formTitle").textContent = "共享字段详情";
+      const form = $("editorForm");
+      if (!fieldDefinition) { form.innerHTML = '<div class="preview-empty">点击“新增”创建共享字段</div>'; return; }
+      const target = fieldDefinition.target || (fieldDefinition.target = { kind: "token", section: "name", index: 0 });
+      const annotation = fieldDefinition.annotation || (fieldDefinition.annotation = { title: "", type: "text" });
+      const match = fieldDefinition.match || (fieldDefinition.match = {});
+      const preview = fieldDefinition.preview || null;
+      form.innerHTML = `
+        <div class="section"><div class="section-title">基本信息</div>
+          ${field("字段 ID", input("field-id", fieldDefinition.id || ""), "供 rules.field 和预览 provider 引用，保存后应保持稳定")}
+        </div>
+        <div class="section"><div class="section-title">文件匹配</div>
+          ${field("文件后缀", input("field-match-extensions", (match.extensions || []).join(", ")), "逗号分隔，例如 .equ；留空表示不限")}
+          ${field("路径 Glob", input("field-match-glob", match.glob || ""), "支持 *、? 和跨目录的 **")}
+        </div>
+        <div class="section"><div class="section-title">目标位置</div>
+          ${field("目标类型", select("field-target-kind", target.kind, [["path","路径"],["section","Section"],["token","Token"]]))}
+          <div id="fieldSectionFields" class="${target.kind === "path" ? "hidden" : ""}">
+            ${field("Section 名称", input("field-target-section", target.section || ""), "大小写不敏感，所有同名 section 都会命中")}
+          </div>
+          <div id="fieldTokenFields" class="${target.kind === "token" ? "" : "hidden"}">
+            ${field("Token 选择", select("field-token-mode", target.range ? "range" : "index", [["index","单个下标"],["range","下标范围"]]))}
+            <div id="fieldTokenIndexField" class="${target.range ? "hidden" : ""}">
+              ${field(annotation.type === "image" ? "图片索引 Token 下标" : "Token 下标", numberInput("field-target-index", target.index ?? 0))}
+            </div>
+            <div id="fieldTokenRangeFields" class="${target.range ? "field-row" : "hidden"}">
+              ${field("起始下标", numberInput("field-range-start", target.range?.start ?? 0))}
+              ${field("结束下标（不含）", numberInput("field-range-end", target.range?.endExclusive ?? 1))}
+            </div>
+            <div id="fieldRecordFields" class="${target.range ? "hidden" : ""}">
+              ${field("起始偏移", numberInput("field-target-offset", target.offset ?? 0), "跳过 section 开头的直接 token")}
+              ${field("每条记录 Token 数", numberInput("field-target-record-tokens", target.recordTokens || 0), "例如 skill levelup 为 3；非重复字段留空")}
+              ${field("动态记录宽度 Token", numberInput("field-target-tokens-per-line", target.tokensPerLineIndex ?? 0), "可选；留空或 0 表示不启用")}
+              ${field("上下文 Token 下标", numberInput("field-target-context-index", target.contextIndex ?? 0), "用于 contextual relation，例如职业上下文")}
+              <div id="fieldImagePathField" class="${annotation.type === "image" ? "" : "hidden"}">
+                ${field("IMG 路径 Token 下标", numberInput("field-target-image-path-token", target.imagePathToken ?? 0), "与图片索引 Token 位于同一条记录")}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section"><div class="section-title">标注元数据</div>
+          ${field("标题", input("field-annotation-title", annotation.title || ""))}
+          ${field("标注类型", select("field-annotation-type", annotation.type, [["text","文本"],["image","图片"],["enum","枚举"],["reference","关联 ID"]]))}
+          <div id="fieldInlineImageField" class="${annotation.type === "image" ? "" : "hidden"}">
+            ${field("正文显示图片", `<label class="checkbox-control" for="field-annotation-inline-image"><input id="field-annotation-inline-image" type="checkbox" ${annotation.inlineImage ? "checked" : ""} />在标注 Tag 中显示图片</label>`)}
+          </div>
+          ${field("Tooltip 内容", textarea("field-annotation-content", annotation.content || ""))}
+          ${field("枚举映射", textarea("field-annotation-values", valuesToText(annotation.values)), "每行一个 value=名称；文本字段也可以用它提供预览显示名称")}
+          ${field("关联类型", select("field-annotation-relation", annotation.relation || "", [["","不使用关联"], ...relationEntries().map(([name]) => [name, name])]))}
+        </div>
+        <div class="section"><div class="section-title">预览元数据</div>
+          ${field("启用预览元数据", `<label class="checkbox-control" for="field-preview-enabled"><input id="field-preview-enabled" type="checkbox" ${preview ? "checked" : ""} />让预览 provider 使用这个字段</label>`, "关闭时字段仍可被 rules.field 引用，但不会出现在结构化预览中")}
+          <div id="fieldPreviewSettings" class="${preview ? "" : "hidden"}">
+            ${field("Provider", input("field-preview-provider", previewProviderText(preview)), "逗号分隔，例如 equ, stk；也可以只填写一个 provider")}
+            ${field("显示角色", input("field-preview-role", preview?.role || ""), "例如 rarity、base-attribute、skill-levelup")}
+            ${field("显示分组", input("field-preview-group", preview?.group || ""), "例如 summary、base、skills")}
+            <div class="field-row">
+              ${field("排序", numberInput("field-preview-order", preview?.order ?? 0))}
+              ${field("格式", input("field-preview-format", preview?.format || "text"), "例如 enum、range、signed-number")}
+            </div>
+            ${field("显示标签", input("field-preview-label", preview?.label || ""), "可选；为空时使用标注标题")}
+          </div>
+        </div>`;
+      bindFieldForm(fieldDefinition);
+    }
+
+    function ensureFieldPreview(fieldDefinition) {
+      fieldDefinition.preview ||= { provider: "", role: "", group: "", order: 0, format: "text" };
+      return fieldDefinition.preview;
+    }
+
+    function bindFieldForm(fieldDefinition) {
+      const target = () => fieldDefinition.target;
+      const annotation = () => fieldDefinition.annotation;
+      bind("field-id", "input", (value) => fieldDefinition.id = value);
+      bind("field-match-extensions", "input", (value) => fieldDefinition.match.extensions = value.split(",").map((item) => item.trim()).filter(Boolean));
+      bind("field-match-glob", "input", (value) => fieldDefinition.match.glob = value);
+      bind("field-target-section", "input", (value) => target().section = value);
+      bind("field-target-index", "input", (value) => target().index = number(value));
+      bind("field-range-start", "input", (value) => target().range.start = number(value));
+      bind("field-range-end", "input", (value) => target().range.endExclusive = number(value));
+      bind("field-target-offset", "input", (value) => target().offset = number(value));
+      bind("field-target-record-tokens", "input", (value) => target().recordTokens = number(value));
+      bind("field-target-tokens-per-line", "input", (value) => target().tokensPerLineIndex = number(value));
+      bind("field-target-context-index", "input", (value) => target().contextIndex = number(value));
+      bind("field-target-image-path-token", "input", (value) => target().imagePathToken = number(value));
+      bind("field-annotation-title", "input", (value) => annotation().title = value);
+      bind("field-annotation-content", "input", (value) => annotation().content = value);
+      bind("field-annotation-values", "input", (value) => annotation().values = textToValues(value));
+      bind("field-annotation-relation", "change", (value) => annotation().relation = value);
+      bind("field-preview-provider", "input", (value) => setPreviewProviders(ensureFieldPreview(fieldDefinition), value));
+      bind("field-preview-role", "input", (value) => ensureFieldPreview(fieldDefinition).role = value);
+      bind("field-preview-group", "input", (value) => ensureFieldPreview(fieldDefinition).group = value);
+      bind("field-preview-order", "input", (value) => ensureFieldPreview(fieldDefinition).order = number(value));
+      bind("field-preview-format", "input", (value) => ensureFieldPreview(fieldDefinition).format = value);
+      bind("field-preview-label", "input", (value) => ensureFieldPreview(fieldDefinition).label = value);
+      bindChecked("field-annotation-inline-image", (checked) => {
+        if (checked) annotation().inlineImage = true;
+        else delete annotation().inlineImage;
+      });
+      bindChecked("field-preview-enabled", (checked) => {
+        if (checked) ensureFieldPreview(fieldDefinition);
+        else delete fieldDefinition.preview;
+        renderAll();
+      });
+      bind("field-target-kind", "change", (value) => {
+        target().kind = value;
+        if (value === "path" || value === "section") {
+          delete target().index; delete target().range; delete target().offset;
+          delete target().recordTokens; delete target().tokensPerLineIndex;
+          delete target().contextIndex; delete target().imagePathToken;
+          if (annotation().type !== "text") annotation().type = "text";
+        }
+        if (value === "token" && target().index == null && !target().range) target().index = annotation().type === "image" ? 1 : 0;
+        renderAll();
+      });
+      bind("field-token-mode", "change", (value) => {
+        if (value === "range") {
+          delete target().index; delete target().offset; delete target().recordTokens;
+          delete target().tokensPerLineIndex; delete target().contextIndex; delete target().imagePathToken;
+          target().range = { start: 0, endExclusive: 1 };
+          annotation().type = "text";
+        } else {
+          target().index = 0; delete target().range;
+          if (annotation().type === "image") { target().recordTokens ||= 2; target().imagePathToken ??= 0; }
+        }
+        renderAll();
+      });
+      bind("field-annotation-type", "change", (value) => {
+        annotation().type = value;
+        if (value === "enum") annotation().values ||= {};
+        if (value === "reference") annotation().relation ||= "";
+        if (value !== "text" && (target().kind !== "token" || target().range)) {
+          target().kind = "token"; target().section ||= "name"; target().index = value === "image" ? 1 : 0;
+          delete target().range;
+        }
+        if (value === "image") { target().index ??= 1; target().recordTokens ||= 2; target().imagePathToken ??= target().index === 0 ? 1 : 0; }
+        if (value !== "image") { delete target().imagePathToken; delete annotation().inlineImage; }
+        renderAll();
       });
     }
 
@@ -453,6 +632,16 @@
         const index = rules().length + 1;
         rules().push({ id: `rule.${index}`, description: "", match: {}, target: { kind: "section", section: "name" }, annotation: { title: "新标注", type: "text", content: "" } });
         state.selected = rules().length - 1;
+      } else if (state.tab === "fields") {
+        const index = fields().length + 1;
+        fields().push({
+          id: `field.${index}`,
+          match: { extensions: [".equ"] },
+          target: { kind: "token", section: "name", index: 0 },
+          annotation: { title: "新字段", type: "text" },
+          preview: { provider: "", role: "", group: "", order: 0, format: "text" },
+        });
+        state.selected = fields().length - 1;
       } else {
         let index = relationEntries().length + 1;
         let name = `relation${index}`;
@@ -465,15 +654,23 @@
 
     function removeItem(index) {
       if (state.tab === "rules") rules().splice(index, 1);
+      else if (state.tab === "fields") fields().splice(index, 1);
       else delete state.document.relations[relationEntries()[index][0]];
-      state.selected = Math.max(0, Math.min(state.selected, (state.tab === "rules" ? rules().length : relationEntries().length) - 1));
+      state.selected = Math.max(0, Math.min(state.selected, itemCount() - 1));
       renderAll(); scheduleSave();
     }
 
-    function moveRule(index, delta) {
+    function itemCount() {
+      if (state.tab === "rules") return rules().length;
+      if (state.tab === "fields") return fields().length;
+      return relationEntries().length;
+    }
+
+    function moveItem(index, delta) {
+      const items = state.tab === "rules" ? rules() : fields();
       const target = index + delta;
-      if (target < 0 || target >= rules().length) return;
-      [rules()[index], rules()[target]] = [rules()[target], rules()[index]];
+      if (target < 0 || target >= items.length) return;
+      [items[index], items[target]] = [items[target], items[index]];
       state.selected = target;
       renderAll(); scheduleSave();
     }
@@ -489,6 +686,20 @@
       while (existingIDs.has(copy.id)) copy.id = `${baseID}.${suffix++}`;
       rules().push(copy);
       state.selected = rules().length - 1;
+      renderAll(); scheduleSave();
+    }
+
+    function copyField(index) {
+      const source = fields()[index];
+      if (!source) return;
+      const copy = structuredClone(source);
+      const baseID = `${source.id || "field"}.copy`;
+      const existingIDs = new Set(fields().map((item) => item.id));
+      copy.id = baseID;
+      let suffix = 2;
+      while (existingIDs.has(copy.id)) copy.id = `${baseID}.${suffix++}`;
+      fields().push(copy);
+      state.selected = fields().length - 1;
       renderAll(); scheduleSave();
     }
 
@@ -646,6 +857,7 @@
       try {
         state.document = await api("/api/rules");
         state.document.relations ||= {};
+        state.document.fields ||= [];
         state.document.rules ||= [];
         renderAll(); await refreshPreview(); setStatus("规则已载入", "ok");
       } catch (error) {

@@ -210,6 +210,53 @@ export interface EditorAnnotation {
 }
 
 /**
+ * EquipmentPreviewAttribute is one visible line in an equipment tooltip.
+ */
+export interface EquipmentPreviewAttribute {
+    "label": string;
+    "value": string;
+    "negative": boolean;
+}
+
+/**
+ * EquipmentPreviewDocument is the game-style data model rendered by the
+ * frontend. Optional sections are represented by empty strings/slices.
+ */
+export interface EquipmentPreviewDocument {
+    "icon": ImageReference | null;
+    "name": string;
+    "name2": string;
+    "rarity": number;
+    "rarityLabel": string;
+    "qualityText": string;
+    "equipmentType": string;
+    "itemGroupName": string;
+    "attachType": string;
+    "minimumLevelText": string;
+    "usableJobs": string[] | null;
+    "baseAttributes": EquipmentPreviewAttribute[] | null;
+    "fourDimensions": EquipmentPreviewAttribute[] | null;
+    "otherAttributes": EquipmentPreviewAttribute[] | null;
+    "skillLevelups": EquipmentSkillLevelup[] | null;
+    "baseExplain": string;
+    "detailExplain": string;
+    "flavorText": string;
+    "durabilityText": string;
+    "weightText": string;
+    "priceText": string;
+    "issues": PreviewIssue[] | null;
+}
+
+/**
+ * EquipmentSkillLevelup is one profession-aware skill level bonus.
+ */
+export interface EquipmentSkillLevelup {
+    "job": string;
+    "skill": string;
+    "level": number;
+}
+
+/**
  * FileMeta 返回给前端的单个文件视图。
  */
 export interface FileMeta {

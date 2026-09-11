@@ -1,22 +1,887 @@
 {
   "version": 1,
   "description": "pvfine built-in annotation rules",
-  "rules": [
+  "fields": [
     {
-      "id": "global.rarity.1",
-      "match": {},
+      "id": "equ.name",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
       "target": {
-        "kind": "section",
-        "section": "rarity"
+        "kind": "token",
+        "section": "name",
+        "index": 0
+      },
+      "annotation": {
+        "title": "名称",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "name",
+        "group": "header",
+        "order": 10,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.name2",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "name2",
+        "index": 0
+      },
+      "annotation": {
+        "title": "副名称",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "name2",
+        "group": "header",
+        "order": 11,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.icon",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "icon",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "图标",
+        "type": "image"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "icon",
+        "group": "header",
+        "order": 1,
+        "format": "image"
+      }
+    },
+    {
+      "id": "equ.rarity",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "rarity",
+        "index": 0
       },
       "annotation": {
         "title": "稀有度",
-        "type": "text"
+        "type": "enum",
+        "values": {
+          "0": "普通",
+          "1": "魔法",
+          "2": "稀有",
+          "3": "神器",
+          "4": "史诗",
+          "5": "勇者",
+          "6": "传说"
+        }
       },
-      "group": "global"
+      "preview": {
+        "provider": "equ",
+        "role": "rarity",
+        "group": "summary",
+        "order": 10,
+        "format": "enum"
+      }
     },
     {
-      "id": "global.rarity.2",
+      "id": "equ.equipment-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "equipment type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "装备类型",
+        "type": "enum",
+        "values": {
+          "[amulet]": "首饰",
+          "[armor]": "防具",
+          "[title]": "称号",
+          "[weapon]": "武器"
+        }
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "equipment-type",
+        "group": "summary",
+        "order": 20,
+        "format": "enum"
+      }
+    },
+    {
+      "id": "equ.item-group-name",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "item group name",
+        "index": 0
+      },
+      "annotation": {
+        "title": "装备小类",
+        "type": "enum",
+        "values": {
+          "armour": "防具",
+          "blade": "短剑",
+          "bracelet": "手镯",
+          "clubs": "钝器",
+          "katana": "太刀",
+          "necklace": "项链",
+          "ring": "戒指",
+          "sword": "巨剑"
+        }
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "item-group-name",
+        "group": "summary",
+        "order": 21,
+        "format": "enum"
+      }
+    },
+    {
+      "id": "equ.attach-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "attach type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "交易类型",
+        "type": "enum",
+        "values": {
+          "[account]": "账号绑定",
+          "[trade]": "不可交易"
+        }
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "attach-type",
+        "group": "summary",
+        "order": 22,
+        "format": "enum"
+      }
+    },
+    {
+      "id": "equ.minimum-level",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "minimum level",
+        "index": 0
+      },
+      "annotation": {
+        "title": "使用等级",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "minimum-level",
+        "group": "summary",
+        "order": 30,
+        "format": "level"
+      }
+    },
+    {
+      "id": "equ.usable-job",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable job"
+      },
+      "annotation": {
+        "title": "适用职业",
+        "type": "text",
+        "values": {
+          "[at fighter]": "格斗家·男",
+          "[at gunner]": "神枪手·女",
+          "[at mage]": "魔法师·nan",
+          "[at swordman]": "鬼剑士·女",
+          "[creator mage]": "缔造者",
+          "[demonic swordman]": "黑暗武士",
+          "[fighter]": "格斗家",
+          "[gunner]": "神枪手",
+          "[knight]": "守护者",
+          "[mage]": "魔法师",
+          "[priest]": "圣职者",
+          "[swordman]": "鬼剑士",
+          "[thief]": "暗夜使者"
+        }
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "usable-jobs",
+        "group": "summary",
+        "order": 31,
+        "format": "enum-list"
+      }
+    },
+    {
+      "id": "equ.equipment-physical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment physical attack"
+      },
+      "annotation": {
+        "title": "物理攻击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-attribute",
+        "group": "base",
+        "order": 10,
+        "format": "range",
+        "label": "物理攻击"
+      }
+    },
+    {
+      "id": "equ.equipment-magical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment magical attack"
+      },
+      "annotation": {
+        "title": "魔法攻击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-attribute",
+        "group": "base",
+        "order": 11,
+        "format": "range",
+        "label": "魔法攻击"
+      }
+    },
+    {
+      "id": "equ.separate-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "separate attack"
+      },
+      "annotation": {
+        "title": "独立攻击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-attribute",
+        "group": "base",
+        "order": 12,
+        "format": "range",
+        "label": "独立攻击"
+      }
+    },
+    {
+      "id": "equ.equipment-physical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment physical defense"
+      },
+      "annotation": {
+        "title": "物理防御",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-attribute",
+        "group": "base",
+        "order": 13,
+        "format": "range",
+        "label": "物理防御"
+      }
+    },
+    {
+      "id": "equ.equipment-magical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment magical defense"
+      },
+      "annotation": {
+        "title": "魔法防御",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-attribute",
+        "group": "base",
+        "order": 14,
+        "format": "range",
+        "label": "魔法防御"
+      }
+    },
+    {
+      "id": "equ.physical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "physical attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "力量",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "four-dimension",
+        "group": "four",
+        "order": 10,
+        "format": "signed-number",
+        "label": "力量"
+      }
+    },
+    {
+      "id": "equ.magical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "magical attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "智力",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "four-dimension",
+        "group": "four",
+        "order": 11,
+        "format": "signed-number",
+        "label": "智力"
+      }
+    },
+    {
+      "id": "equ.physical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "physical defense",
+        "index": 0
+      },
+      "annotation": {
+        "title": "体力",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "four-dimension",
+        "group": "four",
+        "order": 12,
+        "format": "signed-number",
+        "label": "体力"
+      }
+    },
+    {
+      "id": "equ.magical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "magical defense",
+        "index": 0
+      },
+      "annotation": {
+        "title": "精力",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "four-dimension",
+        "group": "four",
+        "order": 13,
+        "format": "signed-number",
+        "label": "精力"
+      }
+    },
+    {
+      "id": "equ.anti-evil",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "anti evil",
+        "index": 0
+      },
+      "annotation": {
+        "title": "抗魔",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 10,
+        "format": "signed-number",
+        "label": "抗魔"
+      }
+    },
+    {
+      "id": "equ.attack-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "attack speed",
+        "index": 0
+      },
+      "annotation": {
+        "title": "攻击速度",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 20,
+        "format": "percent",
+        "label": "攻击速度"
+      }
+    },
+    {
+      "id": "equ.cast-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "cast speed",
+        "index": 0
+      },
+      "annotation": {
+        "title": "施放速度",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 21,
+        "format": "percent",
+        "label": "施放速度"
+      }
+    },
+    {
+      "id": "equ.physical-critical-hit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "physical critical hit",
+        "index": 0
+      },
+      "annotation": {
+        "title": "物理暴击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 30,
+        "format": "percent",
+        "label": "物理暴击"
+      }
+    },
+    {
+      "id": "equ.magical-critical-hit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "magical critical hit",
+        "index": 0
+      },
+      "annotation": {
+        "title": "魔法暴击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 31,
+        "format": "percent",
+        "label": "魔法暴击"
+      }
+    },
+    {
+      "id": "equ.add-physical-critical-hit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "add physical critical hit",
+        "index": 0
+      },
+      "annotation": {
+        "title": "物理暴击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 32,
+        "format": "percent",
+        "label": "物理暴击"
+      }
+    },
+    {
+      "id": "equ.add-magical-critical-hit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "add magical critical hit",
+        "index": 0
+      },
+      "annotation": {
+        "title": "魔法暴击",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 33,
+        "format": "percent",
+        "label": "魔法暴击"
+      }
+    },
+    {
+      "id": "equ.stuck",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stuck",
+        "index": 0
+      },
+      "annotation": {
+        "title": "命中率",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 40,
+        "format": "percent",
+        "label": "命中率"
+      }
+    },
+    {
+      "id": "equ.skill-levelup",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "skill levelup",
+        "index": 1,
+        "recordTokens": 3,
+        "contextIndex": 0
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "reference",
+        "values": {
+          "[at swordman]": "阿修罗",
+          "[demonic swordman]": "黑暗武士",
+          "[knight]": "守护者",
+          "[swordman]": "鬼剑士"
+        },
+        "relation": "技能"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "skill-levelup",
+        "group": "skills",
+        "order": 10,
+        "format": "skill-levelup"
+      }
+    },
+    {
+      "id": "equ.basic-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "basic explain"
+      },
+      "annotation": {
+        "title": "其它效果",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-explain",
+        "group": "explain",
+        "order": 10,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.base-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "base explain"
+      },
+      "annotation": {
+        "title": "其它效果",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "base-explain",
+        "group": "explain",
+        "order": 11,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.detail-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "detail explain"
+      },
+      "annotation": {
+        "title": "详细说明",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "detail-explain",
+        "group": "explain",
+        "order": 20,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.flavor-text",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "flavor text"
+      },
+      "annotation": {
+        "title": "装备介绍",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "flavor-text",
+        "group": "flavor",
+        "order": 10,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.durability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "durability",
+        "index": 0
+      },
+      "annotation": {
+        "title": "耐久度",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "durability",
+        "group": "footer",
+        "order": 10,
+        "format": "durability"
+      }
+    },
+    {
+      "id": "equ.weight",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "weight",
+        "index": 0
+      },
+      "annotation": {
+        "title": "重量",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "weight",
+        "group": "footer",
+        "order": 20,
+        "format": "weight"
+      }
+    },
+    {
+      "id": "equ.value",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "value",
+        "index": 0
+      },
+      "annotation": {
+        "title": "售价",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "price",
+        "group": "footer",
+        "order": 30,
+        "format": "price"
+      }
+    },
+    {
+      "id": "*.rarity",
       "match": {},
       "target": {
         "kind": "token",
@@ -36,8 +901,16 @@
           "6": "传说"
         }
       },
-      "group": "global"
-    },
+      "preview": {
+        "provider": "equ",
+        "role": "rarity",
+        "group": "summary",
+        "order": 10,
+        "format": "enum"
+      }
+    }
+  ],
+  "rules": [
     {
       "id": "booster装备关联",
       "match": {
@@ -307,7 +1180,8 @@
       },
       "annotation": {
         "title": "新标注",
-        "type": "image"
+        "type": "image",
+        "inlineImage": true
       },
       "group": "ani"
     }

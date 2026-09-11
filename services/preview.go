@@ -5,7 +5,9 @@ import previewmodel "pvfine/internal/preview"
 // PreviewService parses structured preview formats from the editor's current
 // text. It intentionally does not read the archive so unsaved edits can be
 // previewed without changing the archive overlay first.
-type PreviewService struct{}
+type PreviewService struct {
+	c *core
+}
 
 // PreviewIssue is a recoverable problem reported by a preview parser.
 type PreviewIssue struct {
@@ -40,8 +42,12 @@ type AniPreviewDocument struct {
 }
 
 // NewPreviewService creates the Wails-facing preview service.
-func NewPreviewService() *PreviewService {
-	return &PreviewService{}
+func NewPreviewService(cores ...*core) *PreviewService {
+	service := &PreviewService{}
+	if len(cores) > 0 {
+		service.c = cores[0]
+	}
+	return service
 }
 
 // ParseANI parses the current editor text. Semantic and structural problems

@@ -16,11 +16,12 @@ const emit = defineEmits<{
 }>();
 
 const provider = computed(() => getPreviewProvider(props.file));
+const gameTooltip = computed(() => provider.value?.chrome === "game-tooltip");
 </script>
 
 <template>
-  <div v-if="open" class="preview-host">
-    <div class="preview-host-header">
+  <div v-if="open" class="preview-host" :class="{ 'preview-host--game-tooltip': gameTooltip }">
+    <div v-if="!gameTooltip" class="preview-host-header">
       <div class="preview-host-title">
         <span class="preview-host-title-dot" />
         <span>{{ provider?.label ?? "文件预览" }}</span>
@@ -40,7 +41,7 @@ const provider = computed(() => getPreviewProvider(props.file));
       </NTooltip>
     </div>
 
-    <div class="preview-host-body">
+    <div class="preview-host-body" :class="{ 'preview-host-body--game-tooltip': gameTooltip }">
       <component
         :is="provider.component"
         v-if="provider && file.editable"
@@ -78,6 +79,16 @@ const provider = computed(() => getPreviewProvider(props.file));
   border-radius: 8px;
   box-shadow: 0 10px 28px var(--pvf-effect-tooltip-shadow);
 }
+.preview-host--game-tooltip {
+  width: 300px;
+  flex: 0 0 300px;
+  background: rgba(0, 0, 0, 0.74);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
 .preview-host-header {
   display: flex;
   flex: 0 0 auto;
@@ -110,5 +121,8 @@ const provider = computed(() => getPreviewProvider(props.file));
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+.preview-host-body--game-tooltip {
+  overflow: auto;
 }
 </style>

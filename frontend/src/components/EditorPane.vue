@@ -114,7 +114,7 @@ const canBookmarkActiveFile = computed(
   () => archive.open && bookmarks.loaded && !!activeTab.value && !bookmarking.value
 );
 function previewFile(tab: EditorTab): PreviewFile {
-  return { path: tab.path, text: tab.text, editable: tab.editable };
+  return { index: tab.index, path: tab.path, text: tab.text, editable: tab.editable };
 }
 
 function previewProviderFor(tab: EditorTab) {

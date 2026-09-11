@@ -20,7 +20,7 @@ func TestRulesAPIWritesBackupAndRejectsInvalidRules(t *testing.T) {
 	}
 	server := &editorServer{rulesPath: rulesPath, runtimePath: runtimePath, token: "test-token"}
 
-	updated := []byte("{\"version\":1,\"description\":\"updated\",\"relations\":{},\"rules\":[]}")
+	updated := []byte(`{"version":1,"description":"updated","relations":{},"fields":[{"id":"equ.rarity","match":{"extensions":[".equ"]},"target":{"kind":"token","section":"rarity","index":0},"annotation":{"title":"稀有度","type":"enum","values":{"4":"史诗"}},"preview":{"provider":"equ","role":"rarity","group":"summary","order":10,"format":"enum"}}],"rules":[]}`)
 	request := httptest.NewRequest(http.MethodPut, "/api/rules", bytes.NewReader(updated))
 	request.Header.Set("X-Annotation-Editor-Token", "test-token")
 	response := httptest.NewRecorder()
@@ -33,7 +33,7 @@ func TestRulesAPIWritesBackupAndRejectsInvalidRules(t *testing.T) {
 		t.Fatalf("backup = %q, err = %v", backup, err)
 	}
 	written, err := os.ReadFile(rulesPath)
-	if err != nil || !bytes.Contains(written, []byte("updated")) {
+	if err != nil || !bytes.Contains(written, []byte("updated")) || !bytes.Contains(written, []byte("equ.rarity")) {
 		t.Fatalf("written = %q, err = %v", written, err)
 	}
 	runtimeRules, err := os.ReadFile(runtimePath)

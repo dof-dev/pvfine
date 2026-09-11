@@ -24,3 +24,12 @@ import * as $models from "./models.js";
 export function ParseANI(text: string): $CancellablePromise<$models.AniPreviewDocument | null> {
     return $Call.ByID(3389020806, text);
 }
+
+/**
+ * ParseEQU parses the current editor text. Archive state is only used for the
+ * file path and relation lookups; text itself always comes from the caller so
+ * unsaved changes are reflected immediately.
+ */
+export function ParseEQU(fileIndex: number, text: string): $CancellablePromise<$models.EquipmentPreviewDocument | null> {
+    return $Call.ByID(4063651793, fileIndex, text);
+}

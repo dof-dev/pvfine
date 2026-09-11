@@ -1,4 +1,5 @@
 import AniPreview from "../components/previews/AniPreview.vue";
+import EquipmentPreview from "../components/previews/EquipmentPreview.vue";
 import type { PreviewFile, PreviewProvider } from "./types";
 
 const providers: PreviewProvider[] = [
@@ -7,6 +8,13 @@ const providers: PreviewProvider[] = [
     label: "ANI 动画",
     matches: (file) => file.path.toLowerCase().endsWith(".ani"),
     component: AniPreview,
+  },
+  {
+    id: "equ",
+    label: "装备预览",
+    matches: (file) => file.path.toLowerCase().endsWith(".equ"),
+    component: EquipmentPreview,
+    chrome: "game-tooltip",
   },
 ];
 

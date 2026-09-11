@@ -215,7 +215,16 @@ func Validate(document Document) error {
 	}
 
 	seenIDs := make(map[string]bool)
-	for i, rule := range document.Rules {
+	for i, originalRule := range document.Rules {
+		rule := originalRule
+		if strings.TrimSpace(originalRule.Field) != "" {
+			resolved, err := resolveFieldRule(originalRule, document.Fields)
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("rules[%d]: %s", i, err))
+				continue
+			}
+			rule = resolved
+		}
 		prefix := fmt.Sprintf("rules[%d]", i)
 		if strings.TrimSpace(rule.ID) == "" {
 			problems = append(problems, prefix+".id 不能为空")
@@ -362,6 +371,40 @@ func Validate(document Document) error {
 		}
 	}
 
+	seenFieldIDs := make(map[string]bool, len(document.Fields))
+	for i, field := range document.Fields {
+		prefix := fmt.Sprintf("fields[%d]", i)
+		if strings.TrimSpace(field.ID) == "" {
+			problems = append(problems, prefix+".id 不能为空")
+		} else if seenFieldIDs[field.ID] {
+			problems = append(problems, prefix+".id 重复: "+field.ID)
+		}
+		seenFieldIDs[field.ID] = true
+		// Reuse the mature rule validator for the shared target and annotation
+		// schema. Fields are not rules at runtime, so this temporary document
+		// cannot recurse into the fields collection.
+		if err := Validate(Document{
+			Version: 1, Relations: document.Relations,
+			Rules: []Rule{{ID: field.ID, Match: field.Match, Target: field.Target, Annotation: field.Annotation}},
+		}); err != nil {
+			problems = append(problems, prefix+": "+err.Error())
+		}
+		if field.Preview != nil {
+			if len(field.Preview.providerNames()) == 0 {
+				problems = append(problems, prefix+".preview.provider 不能为空")
+			}
+			if strings.TrimSpace(field.Preview.Role) == "" {
+				problems = append(problems, prefix+".preview.role 不能为空")
+			}
+			if strings.TrimSpace(field.Preview.Group) == "" {
+				problems = append(problems, prefix+".preview.group 不能为空")
+			}
+			if strings.TrimSpace(field.Preview.Format) == "" {
+				problems = append(problems, prefix+".preview.format 不能为空")
+			}
+		}
+	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("标注规则校验失败:\n- %s", strings.Join(problems, "\n- "))
 	}
@@ -373,22 +416,29 @@ func Validate(document Document) error {
 // numeric image index token. Image annotations now anchor on the numeric
 // index and use imagePathToken for the associated IMG path token.
 func normalizeImageTargets(document *Document) {
-	if document == nil || len(document.Rules) == 0 {
+	if document == nil {
 		return
 	}
 	document.Rules = append([]Rule(nil), document.Rules...)
 	for i := range document.Rules {
-		target := &document.Rules[i].Target
-		if document.Rules[i].Annotation.Type != "image" || target.ImageIndexToken == nil {
-			continue
-		}
-		if target.ImagePathToken == nil {
-			pathToken := target.Index
-			target.Index = target.ImageIndexToken
-			target.ImagePathToken = pathToken
-		}
-		target.ImageIndexToken = nil
+		normalizeImageTarget(&document.Rules[i].Target, document.Rules[i].Annotation.Type)
 	}
+	document.Fields = append([]FieldDefinition(nil), document.Fields...)
+	for i := range document.Fields {
+		normalizeImageTarget(&document.Fields[i].Target, document.Fields[i].Annotation.Type)
+	}
+}
+
+func normalizeImageTarget(target *TargetSpec, annotationType string) {
+	if target == nil || annotationType != "image" || target.ImageIndexToken == nil {
+		return
+	}
+	if target.ImagePathToken == nil {
+		pathToken := target.Index
+		target.Index = target.ImageIndexToken
+		target.ImagePathToken = pathToken
+	}
+	target.ImageIndexToken = nil
 }
 
 func validateGlob(pattern string) error {
