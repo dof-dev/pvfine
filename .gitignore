@@ -16,3 +16,6 @@ build/android/overlay.json
 build/android/gen/
 
 ImagePacks2
+
+# Local PVF export fixtures and unpacked game data
+/export/
