@@ -31,7 +31,8 @@ import {
   defaultKeymap,
   history,
   historyKeymap,
-  indentWithTab,
+  indentLess,
+  insertTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
@@ -474,7 +475,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
-      indentWithTab,
+      { key: "Tab", run: insertTab, shift: indentLess },
     ]),
     EditorView.domEventHandlers({
       click(event, currentView) {
