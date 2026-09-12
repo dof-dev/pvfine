@@ -38,6 +38,7 @@ import { autocompletion, type CompletionContext, type CompletionResult } from "@
 import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
+import { NTooltip } from "naive-ui";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
@@ -129,7 +130,6 @@ class AnnotationWidget extends WidgetType {
     const tooltip = this.annotation.targetFileIndex >= 0
       ? `${this.annotation.content || this.annotation.title}\n\nCmd/Ctrl+单击可以跳转`
       : this.annotation.content;
-    if (!this.annotation.image) tag.title = tooltip;
     tag.setAttribute("aria-label", tooltip || this.annotation.title);
     tag.contentEditable = "false";
     if (imageReference && inlineImage) {
@@ -148,7 +148,7 @@ class AnnotationWidget extends WidgetType {
       inlineImageSlots.set(imageSlot, entry);
       queueMicrotask(() => loadInlineImage(entry));
     }
-    if (this.annotation.image) {
+    if (tooltip || this.annotation.image) {
       tag.addEventListener("mouseenter", () => this.showTooltip(this.annotation, tag));
       tag.addEventListener("mouseleave", this.hideTooltip);
     }
@@ -218,47 +218,91 @@ function loadInlineImage(entry: InlineImageSlot): void {
   });
 }
 
-const imageTooltip = ref<{
+type AnnotationTooltipPlacement = "bottom-start" | "top-start";
+
+const annotationTooltip = ref<{
   visible: boolean;
   left: number;
   top: number;
+  placement: AnnotationTooltipPlacement;
   content: string;
   dataUrl: string;
   loading: boolean;
-}>({ visible: false, left: 0, top: 0, content: "", dataUrl: "", loading: false });
-let imageTooltipRequest = 0;
-let activeImageReference: EditorAnnotation["image"] = null;
+}>({
+  visible: false,
+  left: 0,
+  top: 0,
+  placement: "bottom-start",
+  content: "",
+  dataUrl: "",
+  loading: false,
+});
+let annotationTooltipRequest = 0;
+let activeTooltipImageReference: EditorAnnotation["image"] = null;
+let tooltipHideTimer: number | undefined;
 
-function showImageTooltip(annotation: EditorAnnotation, element: HTMLElement): void {
-  if (!annotation.image) return;
+function clearTooltipHideTimer(): void {
+  if (tooltipHideTimer === undefined) return;
+  window.clearTimeout(tooltipHideTimer);
+  tooltipHideTimer = undefined;
+}
+
+function showAnnotationTooltip(annotation: EditorAnnotation, element: HTMLElement): void {
+  clearTooltipHideTimer();
   const rect = element.getBoundingClientRect();
-  const width = 280;
+  const width = 320;
   const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
-  const top = rect.bottom + 8 < window.innerHeight - 80 ? rect.bottom + 8 : Math.max(8, rect.top - 8);
-  const request = ++imageTooltipRequest;
-  activeImageReference = annotation.image;
-  imageTooltip.value = {
+  const placement: AnnotationTooltipPlacement = rect.bottom + 260 < window.innerHeight
+    ? "bottom-start"
+    : "top-start";
+  const top = placement === "bottom-start" ? rect.bottom : rect.top;
+  const request = ++annotationTooltipRequest;
+  activeTooltipImageReference = annotation.image;
+  annotationTooltip.value = {
     visible: true,
     left,
     top,
+    placement,
     content: [
-      annotation.content || `${annotation.image.path}[${annotation.image.index}]`,
+      annotation.content || (annotation.image
+        ? `${annotation.image.path}[${annotation.image.index}]`
+        : annotation.title),
       annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击可以跳转" : "",
     ].filter(Boolean).join("\n\n"),
     dataUrl: "",
-    loading: true,
+    loading: !!annotation.image,
   };
-  void images.loadImage(annotation.image).then((data) => {
-    if (request !== imageTooltipRequest) return;
-    imageTooltip.value.dataUrl = data?.dataUrl ?? "";
-    imageTooltip.value.loading = false;
-  });
+
+  if (!annotation.image) return;
+  void images.loadImage(annotation.image)
+    .then((data) => {
+      if (request !== annotationTooltipRequest) return;
+      annotationTooltip.value.dataUrl = data?.dataUrl ?? "";
+      annotationTooltip.value.loading = false;
+    })
+    .catch(() => {
+      if (request !== annotationTooltipRequest) return;
+      annotationTooltip.value.loading = false;
+    });
 }
 
-function hideImageTooltip(): void {
-  imageTooltipRequest++;
-  activeImageReference = null;
-  imageTooltip.value.visible = false;
+function hideAnnotationTooltip(): void {
+  clearTooltipHideTimer();
+  annotationTooltipRequest++;
+  activeTooltipImageReference = null;
+  annotationTooltip.value.visible = false;
+}
+
+function scheduleHideTooltip(): void {
+  clearTooltipHideTimer();
+  tooltipHideTimer = window.setTimeout(() => {
+    tooltipHideTimer = undefined;
+    hideAnnotationTooltip();
+  }, 180);
+}
+
+function cancelTooltipHide(): void {
+  clearTooltipHideTimer();
 }
 
 watch(
@@ -272,15 +316,18 @@ watch(
       loadInlineImage(entry);
     }
 
-    const reference = activeImageReference;
-    if (!reference || !imageTooltip.value.visible) return;
-    const request = ++imageTooltipRequest;
-    imageTooltip.value.dataUrl = "";
-    imageTooltip.value.loading = true;
+    const reference = activeTooltipImageReference;
+    if (!reference || !annotationTooltip.value.visible) return;
+    const request = ++annotationTooltipRequest;
+    annotationTooltip.value.dataUrl = "";
+    annotationTooltip.value.loading = true;
     void images.loadImage(reference).then((data) => {
-      if (request !== imageTooltipRequest) return;
-      imageTooltip.value.dataUrl = data?.dataUrl ?? "";
-      imageTooltip.value.loading = false;
+      if (request !== annotationTooltipRequest) return;
+      annotationTooltip.value.dataUrl = data?.dataUrl ?? "";
+      annotationTooltip.value.loading = false;
+    }).catch(() => {
+      if (request !== annotationTooltipRequest) return;
+      annotationTooltip.value.loading = false;
     });
   }
 );
@@ -308,8 +355,8 @@ function annotationDecorations(
           widget: new AnnotationWidget(
             annotation,
             (fileIndex) => emit("open-reference", fileIndex),
-            showImageTooltip,
-            hideImageTooltip
+            showAnnotationTooltip,
+            scheduleHideTooltip
           ),
           side: 1,
         }).range(position)
@@ -533,6 +580,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  hideAnnotationTooltip();
   view?.destroy();
   view = null;
 });
@@ -595,18 +643,32 @@ watch(
 
 <template>
   <div ref="host" class="code-editor" />
-  <Teleport to="body">
+  <NTooltip
+    :show="annotationTooltip.visible"
+    trigger="manual"
+    :x="annotationTooltip.left"
+    :y="annotationTooltip.top"
+    :placement="annotationTooltip.placement"
+    to="body"
+    :raw="true"
+    :show-arrow="false"
+    :delay="0"
+    :duration="0"
+    :keep-alive-on-hover="true"
+    :z-index="2000"
+    content-class="annotation-tooltip-content"
+  >
     <div
-      v-if="imageTooltip.visible"
-      class="annotation-image-tooltip"
-      :style="{ left: `${imageTooltip.left}px`, top: `${imageTooltip.top}px` }"
+      class="annotation-tooltip-inner"
       role="tooltip"
+      @mouseenter="cancelTooltipHide"
+      @mouseleave="scheduleHideTooltip"
     >
-      <div v-if="imageTooltip.loading" class="annotation-image-tooltip-loading">正在加载图片…</div>
-      <img v-if="imageTooltip.dataUrl" :src="imageTooltip.dataUrl" alt="标注图片" />
-      <div class="annotation-image-tooltip-text">{{ imageTooltip.content }}</div>
+      <div v-if="annotationTooltip.loading" class="annotation-tooltip-loading">正在加载图片…</div>
+      <img v-if="annotationTooltip.dataUrl" :src="annotationTooltip.dataUrl" alt="标注图片" />
+      <div class="annotation-tooltip-text">{{ annotationTooltip.content }}</div>
     </div>
-  </Teleport>
+  </NTooltip>
 </template>
 
 <style scoped>
@@ -700,31 +762,35 @@ watch(
 :global(.cm-tooltip-autocomplete) {
   z-index: 1000;
 }
-.annotation-image-tooltip {
-  position: fixed;
-  z-index: 2000;
-  width: 280px;
+:global(.annotation-tooltip-content) {
+  max-width: 320px;
   padding: 9px;
   color: var(--pvf-text-primary);
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: text;
   background: var(--pvf-surface-elevated);
   border: 1px solid var(--pvf-border-subtle);
   border-radius: 6px;
   box-shadow: 0 8px 24px var(--pvf-effect-tooltip-shadow);
 }
-.annotation-image-tooltip img {
+.annotation-tooltip-inner {
+  max-width: 300px;
+  cursor: text;
+  user-select: text;
+}
+.annotation-tooltip-inner img {
   display: block;
   max-width: 100%;
   max-height: 220px;
   margin: 0 auto 7px;
   object-fit: contain;
 }
-.annotation-image-tooltip-loading,
-.annotation-image-tooltip-text {
+.annotation-tooltip-loading,
+.annotation-tooltip-text {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.annotation-image-tooltip-loading {
+.annotation-tooltip-loading {
   margin-bottom: 7px;
   color: var(--pvf-text-muted);
 }
