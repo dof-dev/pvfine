@@ -155,6 +155,13 @@ function onClose(index: number): void {
   editor.closeTab(index, paneId);
 }
 
+function onTabMouseDown(event: MouseEvent, index: number): void {
+  if (event.button !== 1) return;
+  event.preventDefault();
+  event.stopPropagation();
+  onClose(index);
+}
+
 const tabContextMenuOptions = computed(() => [
   {
     label: "关闭当前",
@@ -432,6 +439,7 @@ function onDrop(event: DragEvent): void {
             draggable="true"
             @dragstart="onDragStart($event, tab.index)"
             @dragend="onDragEnd"
+            @mousedown="onTabMouseDown($event, tab.index)"
             @contextmenu.stop="onTabContextMenu($event, tab.index)"
           >
             <ImageThumbnail v-if="tab.icon" :reference="tab.icon" :size="16" />
