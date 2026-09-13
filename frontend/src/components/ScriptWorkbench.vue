@@ -25,6 +25,7 @@ import {
   DocumentText24Regular,
   Eraser24Regular,
   FolderOpen24Regular,
+  Merge24Regular,
   PanelBottomContract20Regular,
   PanelBottomExpand20Regular,
   PanelRightContract20Regular,
@@ -32,17 +33,19 @@ import {
   Save24Regular,
   Search24Regular,
   Stop24Regular,
+  WindowNew24Regular,
 } from "@vicons/fluent";
 import CodeEditor from "./CodeEditor.vue";
 import { useScriptStore } from "../stores/script";
-import { useEditorStore } from "../stores/editor";
-import { useExplorerStore } from "../stores/explorer";
+import { useArchiveStore } from "../stores/archive";
 import { useSettingsStore } from "../stores/settings";
 import type { BatchDiffLine, ScriptDiagnostic } from "../../bindings/pvfine/services/models";
 import type { ResolvedThemeId } from "../theme";
 
-defineProps<{
+const props = defineProps<{
   themeId: ResolvedThemeId;
+  // 由独立脚本窗口承载时为 true：此时隐藏「在新窗口打开」，显示「合并回主窗口」。
+  standalone?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -50,8 +53,7 @@ const emit = defineEmits<{
 }>();
 
 const script = useScriptStore();
-const editor = useEditorStore();
-const explorer = useExplorerStore();
+const archive = useArchiveStore();
 const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -337,13 +339,9 @@ async function onStop(): Promise<void> {
 
 async function onApply(): Promise<void> {
   try {
-    const result = await script.apply();
-    if (result.structural) {
-      // 结构变更会让后续条目重新编号，必须按路径重新解析树与已打开标签。
-      await editor.refreshAfterArchiveChange([], false);
-      await explorer.reload();
-    }
-    await editor.refreshBatchFiles(result.fileIndexes ?? []);
+    await script.apply();
+    // 归档树与已打开标签的刷新由 editor / explorer store 的
+    // archive:batch-applied 监听统一负责，这里不再重复刷新。
     message.success("已应用选中的脚本修改；请继续手动保存 PVF");
   } catch (error: any) {
     if (!isCancel(error)) message.error(`应用失败: ${error?.message ?? error}`);
@@ -360,6 +358,20 @@ async function onOpenDirectory(): Promise<void> {
   } catch (error: any) {
     message.error(`打开目录失败: ${error?.message ?? error}`);
   }
+}
+
+/** 把工作区分离到独立窗口；主窗口随后回到归档编辑。 */
+async function onDetach(): Promise<void> {
+  try {
+    await script.detachWorkspace();
+  } catch (error: any) {
+    message.error(`在新窗口打开失败: ${error?.message ?? error}`);
+  }
+}
+
+/** 关闭独立窗口，内容交回主窗口。 */
+function onMergeBack(): void {
+  emit("close");
 }
 
 onBeforeUnmount(() => {
@@ -406,6 +418,27 @@ onBeforeUnmount(() => {
         <NButton v-if="script.running" size="small" type="warning" :loading="script.stopping" @click="onStop">
           <template #icon><NIcon><Stop24Regular /></NIcon></template>
           停止
+        </NButton>
+        <NButton
+          v-if="!props.standalone"
+          size="small"
+          secondary
+          title="在独立窗口中打开脚本工作区，主窗口回到归档编辑"
+          :disabled="script.running || !archive.open"
+          @click="onDetach"
+        >
+          <template #icon><NIcon><WindowNew24Regular /></NIcon></template>
+          在新窗口打开
+        </NButton>
+        <NButton
+          v-else
+          size="small"
+          secondary
+          title="关闭独立窗口并将脚本内容带回主窗口"
+          @click="onMergeBack"
+        >
+          <template #icon><NIcon><Merge24Regular /></NIcon></template>
+          合并回主窗口
         </NButton>
       </div>
 

@@ -24,7 +24,10 @@ const hasUnsavedChanges = computed(
     archive.modifiedCount > 0 ||
     editor.dirtyCount > 0 ||
     fileSets.dirty ||
-    script.dirty ||
+    // 工作区分离后脚本内容在独立窗口里：本窗口的 script.dirty 停留在分离那一刻
+    // 的值（在那边保存也不会同步回来），必须改用独立窗口上报的 dirty，否则
+    // 会在已保存的情况下误报有未保存修改。
+    (script.workspaceDetached ? script.detachedDirty : script.dirty) ||
     version.status.changedFiles > 0 ||
     version.status.needsSave
 );

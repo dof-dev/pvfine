@@ -1,7 +1,7 @@
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { Events } from "@wailsio/runtime";
-import { ScriptService } from "../../bindings/pvfine/services";
+import { ScriptService, ScriptWindowService } from "../../bindings/pvfine/services";
 import type {
   ScriptApplyResult,
   ScriptCompileResult,
@@ -31,6 +31,12 @@ for (const file of pvf.glob("equipment/**/*.equ")) {
 export const useScriptStore = defineStore("script", () => {
   const archive = useArchiveStore();
   const workspaceVisible = ref(false);
+  // 工作区已分离到独立窗口时为 true：主窗口不再内嵌脚本界面，工具栏按钮
+  // 改为聚焦那个窗口。
+  const workspaceDetached = ref(false);
+  // 独立窗口里的未保存状态。主窗口有自己的一份 Pinia store，拿不到对方的
+  // dirty，只能由脚本窗口主动上报。
+  const detachedDirty = ref(false);
   const files = ref<ScriptFile[]>([]);
   const directory = ref("");
   const currentName = ref(defaultScriptName);
@@ -162,8 +168,73 @@ export const useScriptStore = defineStore("script", () => {
     resetPreview();
   }
 
+  /** 把当前脚本内容交付给独立窗口，并让主窗口回到归档编辑。 */
+  async function detachWorkspace(): Promise<void> {
+    if (!archive.open || running.value) return;
+    error.value = "";
+    try {
+      await ScriptWindowService.OpenScriptWindow(sessionSnapshot());
+      workspaceDetached.value = true;
+      workspaceVisible.value = false;
+    } catch (value: any) {
+      error.value = errorMessage(value);
+      throw value;
+    }
+  }
+
+  /** 聚焦已分离的脚本窗口；窗口已不在时退回内嵌模式。 */
+  async function focusScriptWindow(): Promise<void> {
+    try {
+      const focused = await ScriptWindowService.FocusScriptWindow();
+      if (!focused) {
+        workspaceDetached.value = false;
+        showWorkspace();
+      }
+    } catch (value: any) {
+      error.value = errorMessage(value);
+    }
+  }
+
+  function sessionSnapshot(): { name: string; source: string; savedSource: string } {
+    return {
+      name: currentName.value,
+      source: source.value,
+      savedSource: savedSource.value,
+    };
+  }
+
+  /** 独立窗口关闭后接收交回的内容，供主窗口下次进入工作区时恢复。 */
+  function adoptHandedBackSession(session: { name?: string; source?: string; savedSource?: string } | null): void {
+    workspaceDetached.value = false;
+    detachedDirty.value = false;
+    if (!session) return;
+    if (typeof session.name === "string" && session.name !== "") currentName.value = session.name;
+    if (typeof session.source !== "string") return;
+    source.value = session.source;
+    // savedSource 决定"未保存"标记，必须一起带回来。
+    savedSource.value =
+      typeof session.savedSource === "string" ? session.savedSource : session.source;
+    resetForNewSource();
+  }
+
+  // 脚本窗口的 Pinia store 是独立的，运行日志、预览计划、源码都在那边，
+  // 主窗口这份不再有意义；同步拉取暂存内容即可。
+  async function syncFromDetachedWindow(): Promise<void> {
+    try {
+      const session = await ScriptWindowService.LoadScriptSession();
+      adoptHandedBackSession(session);
+    } catch (value: any) {
+      error.value = errorMessage(value);
+    }
+  }
+
   function showWorkspace(): void {
     if (!archive.open) return;
+    // 已分离时按钮语义是聚焦独立窗口，不在主窗口内嵌打开。
+    if (workspaceDetached.value) {
+      void focusScriptWindow();
+      return;
+    }
     workspaceVisible.value = true;
     void refreshFiles();
   }
@@ -476,6 +547,19 @@ export const useScriptStore = defineStore("script", () => {
   Events.On("archive:closed", () => {
     markStale();
     workspaceVisible.value = false;
+    // 归档关掉后独立脚本窗口会自行收起（它没有打开归档的入口），复位的
+    // 责任在这里：否则工具栏按钮会一直指向一个正在关闭的窗口。
+    workspaceDetached.value = false;
+    detachedDirty.value = false;
+  });
+  // 独立窗口关闭：拉回它交出的脚本内容，主窗口停在归档编辑。
+  Events.On("script-window:closed", () => {
+    void syncFromDetachedWindow();
+  });
+  // 独立窗口上报未保存状态，主窗口的退出确认需要知道它。
+  Events.On("script-window:dirty", (event: any) => {
+    const data = eventData(event);
+    detachedDirty.value = Boolean(data?.dirty);
   });
 
   watch(
@@ -490,10 +574,13 @@ export const useScriptStore = defineStore("script", () => {
 
   return {
     workspaceVisible,
+    workspaceDetached,
+    detachedDirty,
     files,
     directory,
     currentName,
     source,
+    savedSource,
     loadingFiles,
     loadingScript,
     saving,
@@ -526,6 +613,10 @@ export const useScriptStore = defineStore("script", () => {
     showWorkspace,
     hideWorkspace,
     showArchiveEditor,
+    detachWorkspace,
+    focusScriptWindow,
+    adoptHandedBackSession,
+    syncFromDetachedWindow,
     refreshFiles,
     newScript,
     loadScript,

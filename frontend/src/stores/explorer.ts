@@ -338,6 +338,12 @@ export const useExplorerStore = defineStore("explorer", () => {
     window.clearTimeout(refreshTimer);
     refreshTimer = window.setTimeout(() => void search(query.value), 0);
   });
+  // 结构变更（脚本窗口或批处理在别处增删条目）后目录树必须重载；事件是
+  // 广播的，因此独立脚本窗口的变更也能反映到这个窗口。
+  Events.On("archive:batch-applied", (event: any) => {
+    const data = event?.data ?? event;
+    if (data?.structural) void reload();
+  });
   Events.On("archive:index-ready", () => {
     void refreshTreeTags();
     if (mode.value === "search" && query.value.trim()) {

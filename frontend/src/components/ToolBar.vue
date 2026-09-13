@@ -240,17 +240,18 @@ function isCancel(e: any): boolean {
                 'switch-item--active': script.workspaceVisible,
                 'switch-item--disabled': !archive.open,
               }"
-              :title="archive.open ? '切换到脚本工作区' : ''"
+              :title="script.workspaceDetached ? '聚焦独立脚本窗口' : archive.open ? '切换到脚本工作区' : ''"
               @click="archive.open && script.showWorkspace()"
             >
               <NIcon :size="15"><Code24Regular /></NIcon>
               <span>脚本工作区</span>
-              <span v-if="script.running" class="switch-badge switch-badge--running" title="脚本运行中" />
+              <span v-if="script.workspaceDetached" class="switch-badge switch-badge--running" title="已在独立窗口中打开" />
+              <span v-else-if="script.running" class="switch-badge switch-badge--running" title="脚本运行中" />
               <span v-else-if="script.hasPreview" class="switch-badge switch-badge--success" title="有待应用的预览" />
               <span v-else-if="script.dirty" class="switch-badge switch-badge--warning" title="脚本未保存" />
             </button>
           </template>
-          需先打开 PVF 归档
+          {{ script.workspaceDetached ? "脚本工作区已在独立窗口中打开，点击聚焦该窗口" : "需先打开 PVF 归档" }}
         </NTooltip>
       </div>
 

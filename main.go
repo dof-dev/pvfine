@@ -29,22 +29,61 @@ const (
 	closeRequestedEvent = "app:close-requested"
 	quitConfirmedEvent  = "app:quit-confirmed"
 	closeConfirmedEvent = "app:close-confirmed"
+
+	// mainWindowName identifies the archive editor window. It must be set
+	// explicitly, otherwise Wails names it "window-N" and it cannot be
+	// distinguished from the detached script window by name.
+	mainWindowName = "main"
 )
 
 type closeCoordinator struct {
-	app                *application.App
+	app *application.App
+	// allowWindowClosing permits the next close of the window that is actually
+	// being closed. A single flag is not enough once a second window exists:
+	// app.Window.Current() reports the last interacted window, so approving a
+	// close would target whichever window the user touched most recently.
 	allowWindowClosing atomic.Bool
+	// pendingClose remembers which window asked to close so the confirmation
+	// closes that window instead of guessing from window focus.
+	pendingClose atomic.Uint64
+	// scriptWindow lets the quit path release the detached script window without
+	// waiting for its own close confirmation.
+	scriptWindow *services.ScriptWindowService
 }
 
-func newCloseCoordinator(app *application.App) *closeCoordinator {
-	coordinator := &closeCoordinator{app: app}
+func newCloseCoordinator(app *application.App, scriptWindow *services.ScriptWindowService) *closeCoordinator {
+	coordinator := &closeCoordinator{app: app, scriptWindow: scriptWindow}
 	app.Event.On(closeConfirmedEvent, func(*application.CustomEvent) {
 		coordinator.allowWindowClosing.Store(true)
-		if window := app.Window.Current(); window != nil {
-			window.Close()
+		// Close the window that started this handshake; falling back to the
+		// focused window would close the wrong one when two windows are open.
+		id := uint(coordinator.pendingClose.Swap(0))
+		addressable := false
+		if id != 0 {
+			if window, ok := app.Window.GetByID(id); ok && window != nil {
+				// 主窗口关闭时，独立脚本窗口不能留下：它已经没有回到归档编辑的
+				// 入口，留下来就是一个无法操作的窗口。
+				if coordinator.scriptWindow != nil && window.Name() == mainWindowName {
+					coordinator.scriptWindow.AllowScriptWindowClose()
+					coordinator.scriptWindow.CloseScriptWindowIfOpen()
+				}
+				window.Close()
+				addressable = true
+			}
+		}
+		if !addressable {
+			if window := app.Window.Current(); window != nil {
+				window.Close()
+			}
 		}
 	})
 	app.Event.On(quitConfirmedEvent, func(*application.CustomEvent) {
+		// The detached script window keeps its own close confirmation and its own
+		// Pinia store; release it first so quitting cannot stall on it.
+		if coordinator.scriptWindow != nil {
+			coordinator.scriptWindow.AllowScriptWindowClose()
+			coordinator.scriptWindow.CloseScriptWindowIfOpen()
+		}
 		app.Quit()
 	})
 	return coordinator
@@ -54,12 +93,20 @@ func (c *closeCoordinator) requestQuit() {
 	_ = c.app.Event.Emit(quitRequestedEvent)
 }
 
-func (c *closeCoordinator) handleWindowClosing(event *application.WindowEvent) {
-	if c.allowWindowClosing.CompareAndSwap(true, false) {
-		return
+// handlerFor returns the close handler for one specific window. Binding the
+// window keeps the confirmation handshake pointing at the window the user
+// actually tried to close.
+func (c *closeCoordinator) handlerFor(window application.Window) func(*application.WindowEvent) {
+	return func(event *application.WindowEvent) {
+		if c.allowWindowClosing.CompareAndSwap(true, false) {
+			return
+		}
+		if window != nil {
+			c.pendingClose.Store(uint64(window.ID()))
+		}
+		event.Cancel()
+		_ = c.app.Event.Emit(closeRequestedEvent)
 	}
-	event.Cancel()
-	_ = c.app.Event.Emit(closeRequestedEvent)
 }
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -100,7 +147,9 @@ func main() {
 		},
 	})
 	app.RegisterService(application.NewService(services.NewUpdateService(app)))
-	closeCoordinator := newCloseCoordinator(app)
+	scriptWindowService := services.NewScriptWindowService(app)
+	app.RegisterService(application.NewService(scriptWindowService))
+	closeCoordinator := newCloseCoordinator(app, scriptWindowService)
 
 	updaterEnabled := configureUpdater(app)
 
@@ -124,6 +173,7 @@ func main() {
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:          "pvfine — PVF 归档编辑器",
+		Name:           mainWindowName,
 		Width:          1440,
 		Height:         900,
 		EnableFileDrop: true,
@@ -161,7 +211,7 @@ func main() {
 			app.Event.Emit("archive:open-path", path)
 		}
 	})
-	window.RegisterHook(events.Common.WindowClosing, closeCoordinator.handleWindowClosing)
+	window.RegisterHook(events.Common.WindowClosing, closeCoordinator.handlerFor(window))
 	window.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
 		ctx := event.Context()
 		if ctx == nil {

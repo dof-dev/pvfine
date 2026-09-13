@@ -11,6 +11,7 @@ import * as ImageService from "./imageservice.js";
 import * as PreviewService from "./previewservice.js";
 import * as RenderingService from "./renderingservice.js";
 import * as ScriptService from "./scriptservice.js";
+import * as ScriptWindowService from "./scriptwindowservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as UpdateService from "./updateservice.js";
 import * as VersionService from "./versionservice.js";
@@ -25,6 +26,7 @@ export {
     PreviewService,
     RenderingService,
     ScriptService,
+    ScriptWindowService,
     SettingsService,
     UpdateService,
     VersionService
@@ -77,6 +79,7 @@ export type {
     ScriptPreviewPage,
     ScriptRunRequest,
     ScriptRunResult,
+    ScriptSession,
     SearchHit,
     SearchResult,
     StoredFileSet,

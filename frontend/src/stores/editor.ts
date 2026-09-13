@@ -789,6 +789,21 @@ export const useEditorStore = defineStore("editor", () => {
   Events.On("archive:reloaded", () => {
     void refreshAfterArchiveChange(tabs.value.map((tab) => tab.path), true);
   });
+  // 脚本或批处理在别的窗口应用了变更时，本窗口的标签不会自己更新。事件是
+  // 广播的，所以这里同时覆盖同窗口（发起方已自行刷新，重复刷新是幂等的）
+  // 和独立脚本窗口发起的情况。
+  Events.On("archive:batch-applied", (event: any) => {
+    const data = event?.data ?? event;
+    // 结构变更会让后续条目重新编号，必须按路径重新解析树与标签。
+    if (data?.structural) {
+      void refreshAfterArchiveChange([], false);
+      return;
+    }
+    const indexes = (data?.fileIndexes ?? []).filter(
+      (value: unknown): value is number => typeof value === "number",
+    );
+    if (indexes.length > 0) void refreshBatchFiles(indexes);
+  });
   Events.On("archive:index-ready", () => {
     void refreshOpenTabTags();
   });

@@ -498,6 +498,17 @@ export interface ScriptRunResult {
 }
 
 /**
+ * ScriptSession is the script editor state handed between the main window and
+ * the detached script window. Every webview has its own Pinia store, so the
+ * content has to travel explicitly.
+ */
+export interface ScriptSession {
+    "name": string;
+    "source": string;
+    "savedSource": string;
+}
+
+/**
  * SearchHit is one searchable file/list record.
  */
 export interface SearchHit {
