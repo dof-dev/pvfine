@@ -242,9 +242,11 @@
         "values": {
           "[at fighter]": "格斗家·男",
           "[at gunner]": "神枪手·女",
-          "[at mage]": "魔法师·nan",
+          "[at mage]": "魔法师·男",
+          "[at priest]": "圣职者·女",
           "[at swordman]": "鬼剑士·女",
           "[creator mage]": "缔造者",
+          "[demonic lancer]": "魔枪士",
           "[demonic swordman]": "黑暗武士",
           "[fighter]": "格斗家",
           "[gunner]": "神枪手",
@@ -701,10 +703,21 @@
         "title": "技能",
         "type": "reference",
         "values": {
-          "[at swordman]": "阿修罗",
+          "[at fighter]": "格斗家·男",
+          "[at gunner]": "神枪手·女",
+          "[at mage]": "魔法师·男",
+          "[at priest]": "圣职者·女",
+          "[at swordman]": "鬼剑士·女",
+          "[creator mage]": "缔造者",
+          "[demonic lancer]": "魔枪士",
           "[demonic swordman]": "黑暗武士",
+          "[fighter]": "格斗家",
+          "[gunner]": "神枪手",
           "[knight]": "守护者",
-          "[swordman]": "鬼剑士"
+          "[mage]": "魔法师",
+          "[priest]": "圣职者",
+          "[swordman]": "鬼剑士",
+          "[thief]": "暗夜使者"
         },
         "relation": "技能"
       },
@@ -728,7 +741,7 @@
         "section": "basic explain"
       },
       "annotation": {
-        "title": "其它效果",
+        "title": "效果说明",
         "type": "text"
       },
       "preview": {
@@ -908,6 +921,44 @@
         "order": 10,
         "format": "enum"
       }
+    },
+    {
+      "id": "stk.input-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "input item",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "物品ID",
+        "type": "reference",
+        "relation": "物品"
+      }
+    },
+    {
+      "id": "stk.outpu-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output item",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "物品ID",
+        "type": "reference",
+        "relation": "道具"
+      }
     }
   ],
   "rules": [
@@ -926,7 +977,7 @@
       "annotation": {
         "title": "非法 ID",
         "type": "reference",
-        "relation": "装备"
+        "relation": "物品"
       },
       "group": "booster"
     },
@@ -945,7 +996,7 @@
       "annotation": {
         "title": "非法 ID",
         "type": "reference",
-        "relation": "道具"
+        "relation": "物品"
       },
       "group": "booster"
     },

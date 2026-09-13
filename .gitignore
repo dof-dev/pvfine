@@ -1,6 +1,7 @@
 .task
 bin
 .idea
+.zcode
 frontend/dist
 frontend/node_modules
 *.pvf

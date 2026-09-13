@@ -921,6 +921,44 @@
         "order": 10,
         "format": "enum"
       }
+    },
+    {
+      "id": "stk.input-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "input item",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "物品ID",
+        "type": "reference",
+        "relation": "物品"
+      }
+    },
+    {
+      "id": "stk.outpu-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output item",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "物品ID",
+        "type": "reference",
+        "relation": "物品"
+      }
     }
   ],
   "rules": [
@@ -939,7 +977,7 @@
       "annotation": {
         "title": "非法 ID",
         "type": "reference",
-        "relation": "装备"
+        "relation": "物品"
       },
       "group": "booster"
     },
@@ -958,7 +996,7 @@
       "annotation": {
         "title": "非法 ID",
         "type": "reference",
-        "relation": "道具"
+        "relation": "物品"
       },
       "group": "booster"
     },
