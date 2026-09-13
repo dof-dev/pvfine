@@ -282,7 +282,7 @@ async function submitNewFile(): Promise<void> {
   if (creating.value) return;
   const name = normalizeNewFilePath(newFileName.value);
   if (!name) {
-    newFileError.value = "路径不能为空，且不能包含 . 或 .. 目录段";
+    newFileError.value = "路径无效：不能为空，且不能包含空段、. 或 ..";
     return;
   }
 

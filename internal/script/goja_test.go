@@ -326,6 +326,41 @@ func TestGojaRuntimeCreateCopyDeleteFiles(t *testing.T) {
 	}
 }
 
+func TestGojaRuntimeCreateFilesInNewDirectories(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	// Neither brand/ nor copy/ exists in the fixture; both calls must
+	// introduce the missing directory chain instead of failing.
+	const created = pvf.createFile("brand/new/deep/added.equ", pvf.types.script, "[price]\n500");
+	if (created.path !== "brand/new/deep/added.equ") throw new Error("nested create lost its path");
+	const found = pvf.find("brand/new/deep/added.equ");
+	if (!found || !found.text().includes("500")) throw new Error("nested create not readable");
+
+	const copied = pvf.copyFile("equipment/a.equ", "copy/nested/dir/dup.equ");
+	if (copied.path !== "copy/nested/dir/dup.equ") throw new Error("nested copy lost its path");
+	if (!pvf.find("copy/nested/dir/dup.equ").text().includes("100")) throw new Error("nested copy content mismatch");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+
+	changes, err := tx.Changes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := make(map[string]string, len(changes))
+	for _, change := range changes {
+		kinds[change.Normalized] = change.Kind
+	}
+	for _, path := range []string{"brand/new/deep/added.equ", "copy/nested/dir/dup.equ"} {
+		if kinds[path] != pvf.ChangeKindCreated {
+			t.Fatalf("kind for %s = %q changes=%#v", path, kinds[path], changes)
+		}
+	}
+}
+
 func TestGojaRuntimeDeleteThenCreateSamePath(t *testing.T) {
 	archive := scriptTestArchive(t)
 	tx := NewTransaction(archive)

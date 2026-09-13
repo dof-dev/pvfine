@@ -567,6 +567,66 @@ func TestArchiveServiceCreateAndDeleteFiles(t *testing.T) {
 	}
 }
 
+func TestArchiveServiceCreateFileInMissingDirectories(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	first := a.AddFile("dir/first.equ", []byte("first"), pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	svc := NewArchiveService(c)
+	// The path introduces three directories that do not exist in the archive.
+	created, err := svc.CreateFile("brand/new/deep/generated.equ", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created == nil || created.Path != "brand/new/deep/generated.equ" || created.FileIndex <= first {
+		t.Fatalf("created node = %#v", created)
+	}
+
+	// Every level of the new chain must be reachable as a directory node.
+	root, err := svc.ListChildren("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasDirChild(root, "brand") {
+		t.Fatalf("root children missing brand dir: %#v", root)
+	}
+	level, err := svc.ListChildren("brand/new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasDirChild(level, "deep") {
+		t.Fatalf("brand/new children missing deep dir: %#v", level)
+	}
+	leaf, err := svc.ListChildren("brand/new/deep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leaf) != 1 || leaf[0].Path != "brand/new/deep/generated.equ" {
+		t.Fatalf("deep children = %#v", leaf)
+	}
+
+	descendants, err := svc.ListDescendantFiles("brand")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descendants) != 1 || descendants[0].Path != "brand/new/deep/generated.equ" {
+		t.Fatalf("descendants of brand = %#v", descendants)
+	}
+}
+
+func hasDirChild(nodes []*TreeNode, name string) bool {
+	for _, node := range nodes {
+		if node.IsDir && node.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func TestArchiveServiceDeleteFileRegistrations(t *testing.T) {
 	c := NewCore()
 	a := pvf.New()
