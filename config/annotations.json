@@ -189,7 +189,11 @@
         "title": "交易类型",
         "type": "enum",
         "values": {
-          "[account]": "账号绑定",
+          "[account]": "帐号绑定",
+          "[free]": "不限制",
+          "[sealing trade]": "封装且不可交易",
+          "[sealing]": "封装",
+          "[trade delete]": "无法交易、删除",
           "[trade]": "不可交易"
         }
       },
