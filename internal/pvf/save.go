@@ -252,7 +252,18 @@ func (a *Archive) rebuild() ([]byte, error) {
 	}
 
 	// Hash section.
-	hashBytes := a.buildHashTable()
+	//
+	// The standard variant regenerates it. The alternate variant's HASH seed is
+	// not reproducible (see variantKeys), so its original bytes are carried over
+	// verbatim: whatever the client reads from this section then stays exactly
+	// as the tooling that produced the archive left it, instead of being
+	// re-encrypted under a key that client cannot read.
+	var hashBytes []byte
+	if a.keys.isStandard || a.data == nil || a.hashSize == 0 {
+		hashBytes = a.buildHashTable()
+	} else {
+		hashBytes = a.data[a.hashOff : a.hashOff+a.hashSize]
+	}
 
 	// Name table: rebuild only when pools changed.
 	var nameBytes []byte

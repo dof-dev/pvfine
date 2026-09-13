@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -94,6 +95,87 @@ func TestParseAcceptsStandardArchive(t *testing.T) {
 	}
 	if b.keys.header != (sectionKey{keySeed(keyHead), magicMain}) {
 		t.Errorf("standard archive did not take the standard key path: %+v", b.keys.header)
+	}
+}
+
+// TestVariantKeysAreFixedConstants pins the alternate variant's seeds. They are
+// properties of the variant rather than of one archive: two revisions of the
+// same source, one of them edited by third-party tooling, share all five values.
+func TestVariantKeysAreFixedConstants(t *testing.T) {
+	k := variantKeys()
+	want := []struct {
+		name string
+		got  sectionKey
+		want sectionKey
+	}{
+		{"header", k.header, sectionKey{0x4A454634, magicMain}},
+		{"grpi", k.grpi, sectionKey{0x1FBB7078, magicMain}},
+		{"body", k.body, sectionKey{0xDD4FF706, magicMain}},
+		{"strA", k.strA, sectionKey{0x712A98D4, magicAlt}},
+		{"strW", k.strW, sectionKey{0x712AE776, magicAlt}},
+	}
+	for _, w := range want {
+		if w.got != w.want {
+			t.Errorf("%s key = %+v, want %+v", w.name, w.got, w.want)
+		}
+	}
+	if k.isStandard {
+		t.Error("variantKeys must not be marked standard")
+	}
+}
+
+// TestVariantHashCarriedOverOnSave checks that a rebuilt variant archive keeps
+// the HASH section byte-for-byte. Its seed is unknown, so rewriting it would
+// replace a table the client can read with one it cannot.
+func TestVariantHashCarriedOverOnSave(t *testing.T) {
+	p := os.Getenv(testFileEnv)
+	if p == "" {
+		t.Skipf("%s not set; skipping", testFileEnv)
+	}
+	a, err := Open(p)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if a.keys.isStandard {
+		t.Skip("archive uses the standard key set; nothing to carry over")
+	}
+	origHash := append([]byte(nil), a.data[a.hashOff:a.hashOff+a.hashSize]...)
+
+	// Force a rebuild: an entry edit plus a newly added file.
+	target, ok := a.Find("equipment/character/common/amulet/100300001.equ")
+	if !ok {
+		t.Skip("sample entry not present in this fixture")
+	}
+	if err := a.SetText(target, scriptText); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddFileText("zz_test/carry.txt", "[a]\n`b`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "rebuilt.pvf")
+	if err := a.SaveAs(out); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := Open(out)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if b.keys.isStandard {
+		t.Error("rebuilt variant was written with the standard key set")
+	}
+	if got := b.data[b.hashOff : b.hashOff+b.hashSize]; !bytes.Equal(got, origHash) {
+		t.Errorf("HASH section was rewritten (%d bytes -> %d bytes)", len(origHash), len(got))
+	}
+	// The rebuild must still be functional.
+	if text, err := b.Text(mustFind(b, "equipment/character/common/amulet/100300001.equ")); err != nil || text != scriptTextDecoded {
+		t.Errorf("edited script unreadable after rebuild: err=%v text=%q", err, text)
+	}
+	if _, ok := b.Find("zz_test/carry.txt"); !ok {
+		t.Error("added entry missing after rebuild")
+	}
+	if b.keys.body.seed != 0xDD4FF706 || b.keys.grpi.seed != 0x1FBB7078 {
+		t.Errorf("variant seeds lost after rebuild: body=%#x grpi=%#x", b.keys.body.seed, b.keys.grpi.seed)
 	}
 }
 

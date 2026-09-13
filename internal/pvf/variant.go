@@ -31,13 +31,17 @@ type sectionKey struct {
 }
 
 // keySet holds the per-section keys of one archive. The standard variant
-// derives every seed from a fixed key string; other variants ship different
-// seeds, which are recovered from the data itself (see recoverHeader).
+// derives every seed from a fixed key string; the alternate variant ships a
+// different, equally fixed set of seeds (see variantKeys).
 type keySet struct {
 	header, hash, grpi, body, strA, strW sectionKey
 
+	// isStandard distinguishes the reference key derivation from the alternate
+	// variant, whose HASH section cannot be reproduced (see rebuild).
+	isStandard bool
+
 	// bodyRecovered records that body was derived from the archive data rather
-	// than from the standard key, so recovery is attempted only once.
+	// than from a known key set, so the recovery is attempted only once.
 	bodyRecovered bool
 }
 
@@ -51,12 +55,33 @@ func keySeed(key string) uint32 {
 // standardKeys is the key set used by the reference "S4A21" archives.
 func standardKeys() keySet {
 	return keySet{
-		header: sectionKey{keySeed(keyHead), magicMain},
-		hash:   sectionKey{keySeed(keyHash), magicMain},
-		grpi:   sectionKey{keySeed(keyGrpi), magicMain},
-		body:   sectionKey{keySeed(keyBody), magicMain},
-		strA:   sectionKey{keySeed(keyStrA), magicAlt},
-		strW:   sectionKey{keySeed(keyStrW), magicAlt},
+		header:     sectionKey{keySeed(keyHead), magicMain},
+		hash:       sectionKey{keySeed(keyHash), magicMain},
+		grpi:       sectionKey{keySeed(keyGrpi), magicMain},
+		body:       sectionKey{keySeed(keyBody), magicMain},
+		strA:       sectionKey{keySeed(keyStrA), magicAlt},
+		strW:       sectionKey{keySeed(keyStrW), magicAlt},
+		isStandard: true,
+	}
+}
+
+// variantKeys is the key set of the alternate variant family.
+//
+// These seeds are constants of the variant rather than of a single archive:
+// two archives of that family built eight months apart, one of them edited by
+// third-party tooling in between, share all six values exactly. Pinning them
+// here makes opening instant, and makes writes use the same keystream the
+// original tooling used.
+//
+// The HASH seed is deliberately absent: that section's contents could not be
+// reproduced, so rebuild preserves the original bytes instead of re-encrypting.
+func variantKeys() keySet {
+	return keySet{
+		header: sectionKey{0x4A454634, magicMain},
+		grpi:   sectionKey{0x1FBB7078, magicMain},
+		body:   sectionKey{0xDD4FF706, magicMain},
+		strA:   sectionKey{0x712A98D4, magicAlt},
+		strW:   sectionKey{0x712AE776, magicAlt},
 	}
 }
 
@@ -486,13 +511,35 @@ func headerSizeFits(hdr Header, size int) bool {
 	return declared == int64(size)
 }
 
-// recoverHeader recovers the header key of a variant whose seed is not derived
-// from the standard key string. The signature dword pins the first keystream
-// dword, leaving 65536 candidate seeds, and the section-size equation
-// identifies the right one.
+// recoverHeader decodes the header of an archive that is not using the standard
+// key set. The known variant family is tried first, which is a single decrypt;
+// an unknown variant falls back to solving for the seed, where the signature
+// dword pins the first keystream dword and the section-size equation identifies
+// the right candidate among the remaining 65536 possibilities.
 func recoverHeader(data []byte) (Header, bool, keySet, bool) {
 	var raw [headerSize]byte
 	copy(raw[:], data[:headerSize])
+
+	// Fast path: the known variant's fixed keys.
+	keys := variantKeys()
+	for _, guard := range [...]bool{true, false} {
+		b := raw
+		if guard {
+			applyGuard(b[:])
+		}
+		dec := b
+		cryptSeed(keys.header.seed, keys.header.magic, dec[:])
+		if binary.LittleEndian.Uint32(dec[:]) != MagicSignature {
+			continue
+		}
+		hdr := decodeHeader(dec)
+		if !headerSizeFits(hdr, len(data)) {
+			continue
+		}
+		return hdr, guard, keys, true
+	}
+
+	// Slow path: unknown variant, solve for the header seed.
 	for _, guard := range [...]bool{true, false} {
 		for _, magic := range [...]uint32{magicMain, magicAlt} {
 			b := raw
@@ -510,7 +557,12 @@ func recoverHeader(data []byte) (Header, bool, keySet, bool) {
 				if !headerSizeFits(hdr, len(data)) {
 					continue
 				}
+				// An unknown variant: only the header key is known, so the other
+				// sections are solved from their own data and nothing may be
+				// re-encrypted from the standard key set. Leaving isStandard
+				// false makes rebuild carry the original HASH bytes over.
 				keys := standardKeys()
+				keys.isStandard = false
 				keys.header = sectionKey{seed, magic}
 				return hdr, guard, keys, true
 			}
