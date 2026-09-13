@@ -17,7 +17,7 @@ import {
 } from "naive-ui";
 import { ArrowCollapseAll20Regular, Target20Regular } from "@vicons/fluent";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
-import type { FileRegistration, TreeNode } from "../../bindings/pvfine/services/models";
+import type { FileRegistration, TreeTag, TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore, type SearchItem, type TreeItem } from "../stores/explorer";
 import { useEditorStore } from "../stores/editor";
@@ -69,6 +69,22 @@ const newFileTypeOptions = [
   { label: "脚本（DataType 1）", value: 1 },
   { label: "文本（DataType 3）", value: 3 },
 ];
+const copyBusy = computed(
+  () =>
+    creating.value ||
+    deleting.value ||
+    adding.value ||
+    exporting.value ||
+    copying.value ||
+    batching.value ||
+    importer.running ||
+    !archive.open
+);
+const copyMenuDisabled = computed(
+  () => copyBusy.value || contextMenu.value.items.length === 0
+);
+// ID 与名称都来自语义搜索索引，索引未就绪时没有可复制的值。
+const copyIndexDisabled = computed(() => copyMenuDisabled.value || !archive.indexReady);
 const contextMenuOptions = computed(() => [
   {
     label: "新建文件",
@@ -99,16 +115,7 @@ const contextMenuOptions = computed(() => [
   {
     label: "删除文件",
     key: "delete",
-    disabled:
-      creating.value ||
-      deleting.value ||
-      adding.value ||
-      exporting.value ||
-      copying.value ||
-      batching.value ||
-      importer.running ||
-      !archive.open ||
-      contextMenu.value.items.length === 0,
+    disabled: copyMenuDisabled.value,
   },
   {
     type: "divider",
@@ -117,44 +124,33 @@ const contextMenuOptions = computed(() => [
   {
     label: "导出文件",
     key: "export",
-    disabled:
-      creating.value ||
-      deleting.value ||
-      adding.value ||
-      exporting.value ||
-      copying.value ||
-      batching.value ||
-      importer.running ||
-      !archive.open ||
-      contextMenu.value.items.length === 0,
+    disabled: copyMenuDisabled.value,
   },
   {
-    label: "复制文件路径",
-    key: "copy-paths",
-    disabled:
-      creating.value ||
-      deleting.value ||
-      adding.value ||
-      exporting.value ||
-      copying.value ||
-      batching.value ||
-      importer.running ||
-      !archive.open ||
-      contextMenu.value.items.length === 0,
+    label: "复制",
+    key: "copy",
+    disabled: copyMenuDisabled.value,
+    children: [
+      {
+        label: "文件路径",
+        key: "copy-paths",
+      },
+      {
+        label: "ID",
+        key: "copy-ids",
+        disabled: copyIndexDisabled.value,
+      },
+      {
+        label: "名称",
+        key: "copy-names",
+        disabled: copyIndexDisabled.value,
+      },
+    ],
   },
   {
     label: `加入“${fileSets.activeSet?.name ?? "当前文件集"}”`,
     key: "add",
-    disabled:
-      creating.value ||
-      deleting.value ||
-      adding.value ||
-      exporting.value ||
-      copying.value ||
-      batching.value ||
-      importer.running ||
-      !archive.open ||
-      contextMenu.value.items.length === 0,
+    disabled: copyMenuDisabled.value,
   },
   {
     label: "加入当前书签簿",
@@ -174,16 +170,7 @@ const contextMenuOptions = computed(() => [
   {
     label: "批量处理…",
     key: "batch",
-    disabled:
-      creating.value ||
-      deleting.value ||
-      adding.value ||
-      exporting.value ||
-      copying.value ||
-      batching.value ||
-      importer.running ||
-      !archive.open ||
-      contextMenu.value.items.length === 0,
+    disabled: copyMenuDisabled.value,
   },
 ]);
 
@@ -279,11 +266,23 @@ function closeNewFileDialog(): void {
   newFileError.value = "";
 }
 
+/**
+ * 归一化新建文件路径：与后端 normalizeNewFilePath 保持一致。
+ * 输入中出现的目录不需要预先存在，后端会按路径补建目录。
+ */
+function normalizeNewFilePath(raw: string): string | null {
+  const path = raw.trim().replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+  if (!path) return null;
+  const parts = path.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) return null;
+  return parts.join("/");
+}
+
 async function submitNewFile(): Promise<void> {
   if (creating.value) return;
-  const name = newFileName.value.trim().replaceAll("\\", "/");
-  if (!name || name.includes("/") || name === "." || name === "..") {
-    newFileError.value = "请输入不含目录的文件名";
+  const name = normalizeNewFilePath(newFileName.value);
+  if (!name) {
+    newFileError.value = "路径不能为空，且不能包含 . 或 .. 目录段";
     return;
   }
 
@@ -374,12 +373,31 @@ async function collectExportScopes(items: TreeItem[]): Promise<string[]> {
   return [...new Set(items.map((item) => item.key).filter(Boolean))];
 }
 
-async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
+async function collectNodes(items: TreeItem[]): Promise<TreeNode[]> {
   const paths = await collectFilePaths(items);
   const nodes = await ArchiveService.ResolveFiles(paths);
-  return (nodes ?? [])
-    .filter((node): node is TreeNode => !!node && !node.isDir && node.fileIndex >= 0)
-    .map(serviceEntry);
+  return (nodes ?? []).filter(
+    (node): node is TreeNode => !!node && !node.isDir && node.fileIndex >= 0
+  );
+}
+
+async function collectFiles(items: TreeItem[]): Promise<FileSetEntry[]> {
+  return (await collectNodes(items)).map(serviceEntry);
+}
+
+/** 取出选中文件在索引中登记的 ID 或名称，按值去重并保持归档顺序。 */
+function collectIndexValues(nodes: TreeNode[], pick: (tag: TreeTag) => string): string[] {
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const node of nodes) {
+    for (const tag of node.tags ?? []) {
+      const value = pick(tag).trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      values.push(value);
+    }
+  }
+  return values;
 }
 
 type DeleteDecision = "sync" | "files-only" | "cancel";
@@ -484,24 +502,38 @@ async function writeClipboardText(text: string): Promise<void> {
   if (!copied) throw new Error("系统剪贴板不可用");
 }
 
-async function onCopyPaths(items: TreeItem[]): Promise<void> {
+type CopyKind = "paths" | "ids" | "names";
+
+const copyKindLabels: Record<CopyKind, string> = {
+  paths: "文件路径",
+  ids: "ID",
+  names: "名称",
+};
+
+async function onCopy(kind: CopyKind, items: TreeItem[]): Promise<void> {
   if (copying.value) return;
   const archivePath = archive.info?.path ?? "";
   const session = fileSets.sessionId;
   hideContextMenu();
   copying.value = true;
   try {
-    const paths = await collectFilePaths(items);
+    const nodes = await collectNodes(items);
     if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
-    if (paths.length === 0) {
-      message.info("选中的目录中没有文件");
+    const values =
+      kind === "paths"
+        ? nodes.map((node) => node.path)
+        : collectIndexValues(nodes, (tag) => (kind === "ids" ? tag.id : tag.name));
+    if (values.length === 0) {
+      message.info(
+        kind === "paths" ? "选中的目录中没有文件" : `选中的文件在索引中没有登记${copyKindLabels[kind]}`
+      );
       return;
     }
-    await writeClipboardText(paths.join("\n"));
-    message.success(`已复制 ${paths.length} 个文件路径`);
+    await writeClipboardText(values.join("\n"));
+    message.success(`已复制 ${values.length} 个${copyKindLabels[kind]}`);
   } catch (error: any) {
     if (session === fileSets.sessionId && archive.info?.path === archivePath) {
-      message.error(`复制文件路径失败: ${error?.message ?? error}`);
+      message.error(`复制${copyKindLabels[kind]}失败: ${error?.message ?? error}`);
     }
   } finally {
     copying.value = false;
@@ -600,7 +632,15 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
     return;
   }
   if (key === "copy-paths") {
-    await onCopyPaths(contextMenu.value.items);
+    await onCopy("paths", contextMenu.value.items);
+    return;
+  }
+  if (key === "copy-ids") {
+    await onCopy("ids", contextMenu.value.items);
+    return;
+  }
+  if (key === "copy-names") {
+    await onCopy("names", contextMenu.value.items);
     return;
   }
   if (key === "bookmark-add") {
@@ -908,7 +948,7 @@ function sortTree(items: TreeItem[]): void {
         <NInput
           v-model:value="newFileName"
           autofocus
-          placeholder="输入文件名"
+          placeholder="输入文件名或相对路径，例如 dir/new.equ"
           :disabled="creating"
           :status="newFileError ? 'error' : undefined"
           @keydown.enter.prevent="submitNewFile"
