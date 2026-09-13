@@ -21,13 +21,18 @@ body {
   color: var(--pvf-text-primary);
 }
 
-/* 只允许输入框和编辑器选中文字。 */
+/* 只允许输入框、编辑器和只读文本输出区选中文字。 */
 input,
 textarea,
 [contenteditable="true"],
 [contenteditable="plaintext-only"],
 .cm-editor,
-.cm-editor * {
+.cm-editor *,
+/* 控制台滚动内容，限定在容器内以免覆盖滚动条自身的 user-select: none。 */
+.script-console-scroll .n-scrollbar-container,
+.script-console-scroll .n-scrollbar-container *,
+/* 进度行位于滚动容器之外，需要单独放行。 */
+.script-progress-message {
   -webkit-user-select: text;
   user-select: text;
 }

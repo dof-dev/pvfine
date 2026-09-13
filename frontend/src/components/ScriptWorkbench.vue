@@ -203,6 +203,16 @@ function focusDiagnostic(diagnostic: ScriptDiagnostic): void {
   scriptEditor.value?.revealPosition(diagnostic.line, diagnostic.column ?? 1);
 }
 
+function onDiagnosticClick(diagnostic: ScriptDiagnostic, event: MouseEvent): void {
+  const selection = window.getSelection();
+  const host = event.currentTarget as HTMLElement | null;
+  // 正在框选诊断文本时不跳转，否则焦点切到编辑器会丢掉选区。
+  if (selection && !selection.isCollapsed && host && selection.anchorNode && host.contains(selection.anchorNode)) {
+    return;
+  }
+  focusDiagnostic(diagnostic);
+}
+
 function isSelected(changeKey: string): boolean {
   return script.selectedKeys.has(changeKey);
 }
@@ -532,8 +542,8 @@ onBeforeUnmount(() => {
                 type="button"
                 class="script-diagnostic"
                 :class="{ 'script-diagnostic--clickable': !!diagnostic.line }"
-                :disabled="!diagnostic.line"
-                @click="focusDiagnostic(diagnostic)"
+                :aria-disabled="!diagnostic.line"
+                @click="onDiagnosticClick(diagnostic, $event)"
               >
                 <NTag size="tiny" type="error" :bordered="false">{{ diagnostic.kind }}</NTag>
                 <span class="script-diagnostic-message">{{ diagnostic.message }}</span>
@@ -1004,6 +1014,12 @@ onBeforeUnmount(() => {
   flex: 1 1 0;
   min-height: 0;
 }
+/* 控制台是只读文本输出，选中权限由 style.css 的全局白名单放行，这里只提示可选中。 */
+.script-log-line,
+.script-log-empty,
+.script-progress-message {
+  cursor: text;
+}
 .script-diagnostic {
   display: flex;
   width: 100%;
@@ -1023,7 +1039,7 @@ onBeforeUnmount(() => {
 .script-diagnostic--clickable:hover {
   background: var(--pvf-surface-hover);
 }
-.script-diagnostic:disabled {
+.script-diagnostic[aria-disabled="true"] {
   cursor: default;
   opacity: 0.8;
 }

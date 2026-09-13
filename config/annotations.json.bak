@@ -957,7 +957,7 @@
       "annotation": {
         "title": "物品ID",
         "type": "reference",
-        "relation": "道具"
+        "relation": "物品"
       }
     }
   ],
@@ -1235,6 +1235,69 @@
         "inlineImage": true
       },
       "group": "ani"
+    },
+    {
+      "id": "npc.small face",
+      "match": {
+        "extensions": [
+          ".npc"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "small face",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "头像",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "npc"
+    },
+    {
+      "id": "npc.big face",
+      "match": {
+        "extensions": [
+          ".npc"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "big face",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "头像",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "npc"
+    },
+    {
+      "id": "npc.popup face",
+      "match": {
+        "extensions": [
+          ".npc"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "big face",
+        "index": 1,
+        "recordTokens": 2,
+        "imagePathToken": 0
+      },
+      "annotation": {
+        "title": "头像",
+        "type": "image",
+        "inlineImage": true
+      },
+      "group": "npc"
     }
   ]
 }
