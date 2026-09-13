@@ -87,10 +87,15 @@ const activeTab = computed(() => {
   const activeKey = pane.value?.activeKey;
   return paneTabs.value.find((tab) => tab.index === activeKey) ?? null;
 });
+type FileTagKind = "id" | "name" | "path";
+interface FileTag {
+  kind: FileTagKind;
+  value: string;
+}
 const fileTags = computed(() => {
   const ids = new Set<string>();
   const names = new Set<string>();
-  const result: Array<{ kind: "id" | "name"; value: string }> = [];
+  const result: FileTag[] = [];
   for (const tag of activeTab.value?.tags ?? []) {
     const id = tag.id.trim();
     if (id && !ids.has(id)) {
@@ -103,6 +108,9 @@ const fileTags = computed(() => {
       result.push({ kind: "name", value: name });
     }
   }
+  // 路径放在最后：它通常最长，靠后的位置被截断时不影响前面的 id/名称。
+  const path = activeTab.value?.path.trim();
+  if (path) result.push({ kind: "path", value: path });
   return result;
 });
 const canRevealActiveFile = computed(
@@ -274,11 +282,35 @@ async function onBookmarkActive(): Promise<void> {
   }
 }
 
-async function copyTag(value: string): Promise<void> {
+// 仅作为异常长路径的兜底上限，实际宽度由 CSS 按窗口宽度决定。
+const pathHeadLength = 24;
+const pathTailLength = 56;
+
+function tagLabel(kind: FileTagKind): string {
+  if (kind === "id") return "id";
+  if (kind === "name") return "name";
+  return "路径";
+}
+
+/**
+ * 保留路径的末段（目录/文件名本身）和路径起点，中间省略。这里只是防止极端
+ * 长路径撑爆标签的兜底；正常长度交给 CSS 按可用宽度收缩并显示省略号。
+ */
+function shortenPath(path: string): string {
+  if (path.length <= pathHeadLength + pathTailLength + 1) return path;
+  return `${path.slice(0, pathHeadLength)}…${path.slice(-pathTailLength)}`;
+}
+
+/** 路径通常很长，通知里只说明复制了什么，避免整条路径铺满提示。 */
+function copyFeedback(tag: FileTag): string {
+  return tag.kind === "path" ? "已复制文件路径" : `已复制 ${tag.value}`;
+}
+
+async function copyTag(value: string, feedback: string): Promise<void> {
   try {
     // Wails 桌面端使用原生剪贴板,不受 WebView 的 Clipboard 权限限制。
     await Clipboard.SetText(value);
-    message.success(`已复制 ${value}`);
+    message.success(feedback);
   } catch {
     try {
       // 浏览器开发模式没有 Wails runtime 时使用 Web Clipboard API。
@@ -297,7 +329,7 @@ async function copyTag(value: string): Promise<void> {
         textarea.remove();
         if (!copied) throw new Error("clipboard unavailable");
       }
-      message.success(`已复制 ${value}`);
+      message.success(feedback);
     } catch {
       message.error("复制失败,请重试");
     }
@@ -489,16 +521,16 @@ function onDrop(event: DragEvent): void {
               :key="`${tag.kind}:${tag.value}`"
               size="tiny"
               :bordered="false"
-              :type="tag.kind === 'id' ? 'info' : 'success'"
-              class="editor-file-tag"
+              :type="tag.kind === 'id' ? 'info' : tag.kind === 'name' ? 'success' : 'default'"
+              :class="['editor-file-tag', `editor-file-tag--${tag.kind}`]"
               role="button"
               tabindex="0"
-              :title="`点击复制${tag.kind === 'id' ? 'id' : 'name'}: ${tag.value}`"
-              @click="copyTag(tag.value)"
-              @keydown.enter.prevent="copyTag(tag.value)"
-              @keydown.space.prevent="copyTag(tag.value)"
+              :title="`点击复制${tagLabel(tag.kind)}: ${tag.value}`"
+              @click="copyTag(tag.value, copyFeedback(tag))"
+              @keydown.enter.prevent="copyTag(tag.value, copyFeedback(tag))"
+              @keydown.space.prevent="copyTag(tag.value, copyFeedback(tag))"
             >
-              {{ tag.value }}
+              {{ tag.kind === "path" ? shortenPath(tag.value) : tag.value }}
             </NTag>
           </div>
 
@@ -790,6 +822,7 @@ function onDrop(event: DragEvent): void {
   flex: 0 0 auto;
 }
 .editor-file-tags {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -805,6 +838,16 @@ function onDrop(event: DragEvent): void {
   max-width: 240px;
   cursor: pointer;
   user-select: none;
+}
+/*
+ * 路径标签吃掉工具栏的剩余空间：窗口宽就展示得更完整，窗口窄则由 flex 收缩
+ * 并显示省略号。上限用 vw 跟窗口联动，避免在大窗口下仍被固定像素卡住。
+ */
+.editor-file-tag--path {
+  flex: 0 1 auto;
+  min-width: 96px;
+  max-width: min(60vw, 720px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .editor-file-tag :deep(.n-tag__content) {
   overflow: hidden;
