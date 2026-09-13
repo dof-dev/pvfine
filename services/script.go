@@ -158,8 +158,13 @@ type ScriptProgress struct {
 }
 
 type ScriptPreviewPage struct {
-	PlanID        string               `json:"planId"`
-	NextCursor    int                  `json:"nextCursor"`
+	PlanID     string `json:"planId"`
+	NextCursor int    `json:"nextCursor"`
+	// Filter echoes the path filter this page was built with.
+	Filter string `json:"filter,omitempty"`
+	// MatchedFiles counts every row matching the filter across all pages, so
+	// the UI can report an accurate total instead of only what is loaded.
+	MatchedFiles  int                  `json:"matchedFiles"`
 	ScannedFiles  int                  `json:"scannedFiles"`
 	ModifiedFiles int                  `json:"modifiedFiles"`
 	Rows          []*ScriptFilePreview `json:"rows"`
@@ -432,7 +437,11 @@ func (s *ScriptService) IsRunning() bool {
 	return s.running
 }
 
-func (s *ScriptService) PreviewPage(planID string, cursor, limit int) (*ScriptPreviewPage, error) {
+// PreviewPage returns one page of preview rows, optionally narrowed to rows
+// whose path contains filter (case-insensitive). Filtering happens here rather
+// than in the UI so pagination and the matched total stay consistent: a filter
+// that matches only later pages still reports and pages its matches correctly.
+func (s *ScriptService) PreviewPage(planID, filter string, cursor, limit int) (*ScriptPreviewPage, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
 	plan, err := s.currentScriptPlanLocked(planID)
@@ -442,32 +451,79 @@ func (s *ScriptService) PreviewPage(planID string, cursor, limit int) (*ScriptPr
 	if cursor < 0 {
 		cursor = 0
 	}
-	if cursor > len(plan.rows) {
-		cursor = len(plan.rows)
-	}
 	if limit <= 0 || limit > 500 {
 		limit = scriptPageSize
 	}
+
+	matched := matchingScriptRows(plan, filter)
+	if cursor > len(matched) {
+		cursor = len(matched)
+	}
 	end := cursor + limit
-	if end > len(plan.rows) {
-		end = len(plan.rows)
+	if end > len(matched) {
+		end = len(matched)
 	}
 	rows := make([]*ScriptFilePreview, 0, end-cursor)
 	for index := cursor; index < end; index++ {
-		row := plan.rows[index].preview
+		row := matched[index].preview
 		row.Warnings = append([]string(nil), row.Warnings...)
 		row.Diff = append([]*BatchDiffLine(nil), row.Diff...)
 		rows = append(rows, &row)
 	}
 	next := -1
-	if end < len(plan.rows) {
+	if end < len(matched) {
 		next = end
 	}
 	return &ScriptPreviewPage{
 		PlanID: plan.id, NextCursor: next,
-		ScannedFiles: plan.scannedFiles, ModifiedFiles: plan.modifiedFiles,
-		Rows: rows,
+		Filter:        strings.TrimSpace(filter),
+		MatchedFiles:  len(matched),
+		ScannedFiles:  plan.scannedFiles,
+		ModifiedFiles: plan.modifiedFiles,
+		Rows:          rows,
 	}, nil
+}
+
+// matchingScriptRows returns the plan rows whose path contains filter. An empty
+// filter matches every row. The order matches the plan's stable path order.
+func matchingScriptRows(plan *scriptPlan, filter string) []*scriptPlanRow {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		matched := make([]*scriptPlanRow, 0, len(plan.rows))
+		for index := range plan.rows {
+			matched = append(matched, &plan.rows[index])
+		}
+		return matched
+	}
+	matched := make([]*scriptPlanRow, 0)
+	for index := range plan.rows {
+		row := &plan.rows[index]
+		if strings.Contains(strings.ToLower(row.preview.Path), filter) {
+			matched = append(matched, row)
+		}
+	}
+	return matched
+}
+
+// SelectableChangeKeys returns the change keys of every row matching filter
+// that can be applied. The frontend uses this so "apply selected" covers the
+// whole filtered set even when only the loaded pages were ever previewed.
+func (s *ScriptService) SelectableChangeKeys(planID, filter string) ([]string, error) {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	plan, err := s.currentScriptPlanLocked(planID)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(plan.rows))
+	for _, row := range matchingScriptRows(plan, filter) {
+		if row.preview.Status == ScriptFileChanged ||
+			row.preview.Status == ScriptFileAdded ||
+			row.preview.Status == ScriptFileDeleted {
+			keys = append(keys, row.preview.ChangeKey)
+		}
+	}
+	return keys, nil
 }
 
 // Apply commits exactly the selected changed rows from one script plan. Rows

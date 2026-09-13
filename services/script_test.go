@@ -97,11 +97,11 @@ func TestScriptServiceRunPreviewAndApplySelected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := svc.PreviewPage(result.PlanID, 0, 100)
+	page, err := svc.PreviewPage(result.PlanID, "", 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.ModifiedFiles != 1 || len(page.Rows) != 1 || page.Rows[0].FileIndex != first {
+	if page.ModifiedFiles != 1 || page.MatchedFiles != 1 || len(page.Rows) != 1 || page.Rows[0].FileIndex != first {
 		t.Fatalf("preview page = %#v", page)
 	}
 	if page.Rows[0].ChangeKey == "" || page.Rows[0].Status != ScriptFileChanged {
@@ -132,8 +132,147 @@ func TestScriptServiceRunPreviewAndApplySelected(t *testing.T) {
 	if afterSecond != beforeSecond || beforeSecond != liveSecondBefore {
 		t.Fatalf("unselected file changed: before=%q after=%q", beforeSecond, afterSecond)
 	}
-	if _, err := svc.PreviewPage(result.PlanID, 0, 10); !errors.Is(err, ErrScriptPlanStale) {
+	if _, err := svc.PreviewPage(result.PlanID, "", 0, 10); !errors.Is(err, ErrScriptPlanStale) {
 		t.Fatalf("applied plan error = %v, want ErrScriptPlanStale", err)
+	}
+}
+
+func TestScriptServicePreviewPageFiltersByPath(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	// Three matching files and two non-matching ones, spread across paths.
+	for _, path := range []string{
+		"equipment/alpha.equ",
+		"equipment/beta.equ",
+		"equipment/nested/gamma.equ",
+		"text/name.str",
+		"text/other.str",
+	} {
+		if _, err := a.AddFileText(path, "[price]\n1\n[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+
+	result, err := svc.Run(nil, ScriptRunRequest{Source: `
+for (const file of pvf.glob("**/*")) {
+  file.setText("[price]\n2\n[name]\n` + "`x`" + `");
+}
+`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ModifiedFiles != 5 {
+		t.Fatalf("modified files = %d, want 5", result.ModifiedFiles)
+	}
+
+	// An empty filter returns everything and reports the full total.
+	all, err := svc.PreviewPage(result.PlanID, "", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.MatchedFiles != 5 || len(all.Rows) != 5 {
+		t.Fatalf("unfiltered page = %d rows, matched %d", len(all.Rows), all.MatchedFiles)
+	}
+
+	// A filter narrows rows and the matched total together.
+	filtered, err := svc.PreviewPage(result.PlanID, "equipment/", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.MatchedFiles != 3 || len(filtered.Rows) != 3 {
+		t.Fatalf("filtered page = %d rows, matched %d, want 3", len(filtered.Rows), filtered.MatchedFiles)
+	}
+	if filtered.Filter != "equipment/" {
+		t.Fatalf("filter echo = %q", filtered.Filter)
+	}
+	for _, row := range filtered.Rows {
+		if !strings.Contains(row.Path, "equipment/") {
+			t.Fatalf("row %q does not match the filter", row.Path)
+		}
+	}
+
+	// Filtering is case-insensitive.
+	upper, err := svc.PreviewPage(result.PlanID, "EQUIPMENT/", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upper.MatchedFiles != 3 {
+		t.Fatalf("case-insensitive matched = %d, want 3", upper.MatchedFiles)
+	}
+
+	// Pagination walks only the filtered rows, so the total stays consistent.
+	firstPage, err := svc.PreviewPage(result.PlanID, "equipment/", 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(firstPage.Rows) != 2 || firstPage.NextCursor != 2 || firstPage.MatchedFiles != 3 {
+		t.Fatalf("first page = %d rows cursor %d matched %d", len(firstPage.Rows), firstPage.NextCursor, firstPage.MatchedFiles)
+	}
+	secondPage, err := svc.PreviewPage(result.PlanID, "equipment/", firstPage.NextCursor, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secondPage.Rows) != 1 || secondPage.NextCursor != -1 {
+		t.Fatalf("second page = %d rows cursor %d", len(secondPage.Rows), secondPage.NextCursor)
+	}
+
+	// A filter matching nothing reports zero rather than falling back to all.
+	empty, err := svc.PreviewPage(result.PlanID, "no-such-path", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.MatchedFiles != 0 || len(empty.Rows) != 0 {
+		t.Fatalf("empty filter page = %d rows, matched %d", len(empty.Rows), empty.MatchedFiles)
+	}
+}
+
+func TestScriptServiceSelectableChangeKeysRespectsFilter(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	for _, path := range []string{"equipment/alpha.equ", "equipment/beta.equ", "text/name.str"} {
+		if _, err := a.AddFileText(path, "[price]\n1", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+
+	result, err := svc.Run(nil, ScriptRunRequest{Source: `
+for (const file of pvf.glob("**/*")) file.setText("[price]\n9");
+`})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The keys must cover every matching row, not just one loaded page, so the
+	// UI can apply a filtered set without having paged through all of it.
+	keys, err := svc.SelectableChangeKeys(result.PlanID, "equipment/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("filtered keys = %#v, want 2", keys)
+	}
+	for _, key := range keys {
+		if !strings.Contains(key, "equipment/") {
+			t.Fatalf("key %q does not match the filter", key)
+		}
+	}
+
+	all, err := svc.SelectableChangeKeys(result.PlanID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("unfiltered keys = %#v, want 3", all)
 	}
 }
 
@@ -186,7 +325,7 @@ pvf.deleteFile("equipment/second.equ");
 		t.Fatal("preview deleted a live entry")
 	}
 
-	page, err := svc.PreviewPage(result.PlanID, 0, 100)
+	page, err := svc.PreviewPage(result.PlanID, "", 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +409,7 @@ lst.set("1009", "character/b.equ");
 		t.Fatal("preview mutated the live list")
 	}
 
-	page, err := svc.PreviewPage(result.PlanID, 0, 100)
+	page, err := svc.PreviewPage(result.PlanID, "", 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +497,7 @@ file.setText("[price]\n10");
 	if _, _, err := c.setText(first, "[price]\n2"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.PreviewPage(result.PlanID, 0, 10); !errors.Is(err, ErrScriptPlanStale) {
+	if _, err := svc.PreviewPage(result.PlanID, "", 0, 10); !errors.Is(err, ErrScriptPlanStale) {
 		t.Fatalf("stale preview error = %v, want ErrScriptPlanStale", err)
 	}
 }

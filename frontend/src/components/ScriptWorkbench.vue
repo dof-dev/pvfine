@@ -30,6 +30,7 @@ import {
   PanelRightContract20Regular,
   PanelRightExpand20Regular,
   Save24Regular,
+  Search24Regular,
   Stop24Regular,
 } from "@vicons/fluent";
 import CodeEditor from "./CodeEditor.vue";
@@ -561,7 +562,9 @@ onBeforeUnmount(() => {
           <div class="script-panel-heading">
             <div class="script-preview-title">
               <span>预览 diff</span>
-              <NTag size="tiny" :bordered="false" type="info">{{ script.modifiedFiles }} 个文件</NTag>
+              <NTag size="tiny" :bordered="false" type="info">
+                {{ script.filtered ? `${script.matchedFiles}/${script.modifiedFiles}` : script.modifiedFiles }} 个文件
+              </NTag>
             </div>
             <NButton v-if="script.hasPreview" text size="tiny" type="error" @click="onDiscard">丢弃</NButton>
           </div>
@@ -571,6 +574,19 @@ onBeforeUnmount(() => {
           <NAlert v-if="script.stale" type="warning" :bordered="false" class="script-error">
             归档内容已变化，本次预览不能继续应用，请重新运行脚本。
           </NAlert>
+          <div class="script-preview-filter" v-if="script.hasPreview">
+            <NInput
+              :value="script.filter"
+              size="small"
+              clearable
+              placeholder="按文件路径筛选，如 equipment/"
+              @update:value="script.setFilter"
+            >
+              <template #prefix>
+                <NIcon :size="14"><Search24Regular /></NIcon>
+              </template>
+            </NInput>
+          </div>
           <div class="script-preview-actions" v-if="script.hasPreview">
             <NButton size="small" secondary @click="script.selectAll">全选</NButton>
             <NButton size="small" secondary @click="script.clearSelection">清空</NButton>
@@ -579,7 +595,11 @@ onBeforeUnmount(() => {
             </NButton>
           </div>
           <NScrollbar class="script-preview-scroll">
-            <NEmpty v-if="script.rows.length === 0" description="运行脚本后显示文件 diff" size="small" />
+            <NEmpty
+              v-if="script.rows.length === 0"
+              size="small"
+              :description="script.filtered ? `没有匹配「${script.filter}」的文件` : '运行脚本后显示文件 diff'"
+            />
             <template v-else>
               <div v-for="row in script.rows" :key="row.changeKey" class="script-preview-row">
                 <label class="script-preview-file">
@@ -1041,6 +1061,9 @@ onBeforeUnmount(() => {
 .script-error {
   margin: 5px 0;
   font-size: 11px;
+}
+.script-preview-filter {
+  margin: 5px 0 0;
 }
 .script-preview-actions {
   display: flex;

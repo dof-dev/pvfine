@@ -61,8 +61,14 @@ export function OpenScriptDirectory(): $CancellablePromise<void> {
     return $Call.ByID(2089810056);
 }
 
-export function PreviewPage(planID: string, cursor: number, limit: number): $CancellablePromise<$models.ScriptPreviewPage | null> {
-    return $Call.ByID(3664869185, planID, cursor, limit);
+/**
+ * PreviewPage returns one page of preview rows, optionally narrowed to rows
+ * whose path contains filter (case-insensitive). Filtering happens here rather
+ * than in the UI so pagination and the matched total stay consistent: a filter
+ * that matches only later pages still reports and pages its matches correctly.
+ */
+export function PreviewPage(planID: string, filter: string, cursor: number, limit: number): $CancellablePromise<$models.ScriptPreviewPage | null> {
+    return $Call.ByID(3664869185, planID, filter, cursor, limit);
 }
 
 /**
@@ -81,4 +87,13 @@ export function SaveScript(name: string, source: string): $CancellablePromise<vo
 
 export function ScriptDirectory(): $CancellablePromise<string> {
     return $Call.ByID(1815875880);
+}
+
+/**
+ * SelectableChangeKeys returns the change keys of every row matching filter
+ * that can be applied. The frontend uses this so "apply selected" covers the
+ * whole filtered set even when only the loaded pages were ever previewed.
+ */
+export function SelectableChangeKeys(planID: string, filter: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(503571914, planID, filter);
 }

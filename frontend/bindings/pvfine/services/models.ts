@@ -465,6 +465,17 @@ export interface ScriptLog {
 export interface ScriptPreviewPage {
     "planId": string;
     "nextCursor": number;
+
+    /**
+     * Filter echoes the path filter this page was built with.
+     */
+    "filter"?: string;
+
+    /**
+     * MatchedFiles counts every row matching the filter across all pages, so
+     * the UI can report an accurate total instead of only what is loaded.
+     */
+    "matchedFiles": number;
     "scannedFiles": number;
     "modifiedFiles": number;
     "rows": (ScriptFilePreview | null)[] | null;

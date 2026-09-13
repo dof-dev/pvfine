@@ -54,19 +54,25 @@ export const useScriptStore = defineStore("script", () => {
   const nextCursor = ref(-1);
   const scannedFiles = ref(0);
   const modifiedFiles = ref(0);
+  // Path filter applied by the backend so paging and the matched total stay
+  // consistent; never filter rows.value locally or later pages get lost.
+  const filter = ref("");
+  const matchedFiles = ref(0);
   const selectedKeys = ref<Set<string>>(new Set());
   let selectionMode: "all" | "none" | "some" = "all";
   const excludedKeys = new Set<string>();
   let runRequest = 0;
+  let filterTimer: ReturnType<typeof setTimeout> | null = null;
 
   const dirty = computed(() => source.value !== savedSource.value);
   const hasPreview = computed(() => !!planId.value && !stale.value);
+  const filtered = computed(() => filter.value.trim() !== "");
   const selectedCount = computed(() => {
     // Read the reactive set in both modes so toggling one loaded row also
     // refreshes the total count while the all-pages mode uses exclusions.
     const loadedSelectedCount = selectedKeys.value.size;
     if (selectionMode === "all") {
-      return Math.max(0, modifiedFiles.value - excludedKeys.size);
+      return Math.max(0, matchedFiles.value - excludedKeys.size);
     }
     return loadedSelectedCount;
   });
@@ -92,17 +98,62 @@ export const useScriptStore = defineStore("script", () => {
 
   function resetPreview(): void {
     runRequest++;
+    if (filterTimer) {
+      clearTimeout(filterTimer);
+      filterTimer = null;
+    }
     rows.value = [];
     planId.value = "";
     nextCursor.value = -1;
     scannedFiles.value = 0;
     modifiedFiles.value = 0;
+    filter.value = "";
+    matchedFiles.value = 0;
     selectedKeys.value = new Set();
     selectionMode = "all";
     excludedKeys.clear();
     stale.value = false;
     runResult.value = null;
     progress.value = { done: 0, total: 0, message: "", currentPath: "" };
+  }
+
+  /** 重新从第一页拉取预览；筛选变化后必须重取，否则只筛已加载的行。 */
+  async function reloadPreview(): Promise<void> {
+    if (!planId.value || !hasPreview.value) return;
+    const request = runRequest;
+    try {
+      const page = await ScriptService.PreviewPage(planId.value, filter.value, 0, 100);
+      if (request !== runRequest) return;
+      if (page) applyPage(page, false);
+    } catch (value: any) {
+      stale.value = true;
+      error.value = errorMessage(value);
+    }
+  }
+
+  /**
+   * 修改文件路径筛选。筛选由后端执行，因此这里要重取第一页，
+   * 并把选择重置为“当前筛选结果全选”，避免隐藏的旧排除项继续生效。
+   */
+  function setFilter(value: string): void {
+    if (filter.value === value) return;
+    filter.value = value;
+    selectionMode = "all";
+    excludedKeys.clear();
+    selectedKeys.value = new Set();
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => {
+      filterTimer = null;
+      void reloadPreview();
+    }, 200);
+  }
+
+  function clearFilter(): void {
+    if (filterTimer) {
+      clearTimeout(filterTimer);
+      filterTimer = null;
+    }
+    setFilter("");
   }
 
   function resetForNewSource(): void {
@@ -236,6 +287,7 @@ export const useScriptStore = defineStore("script", () => {
     nextCursor.value = page.nextCursor;
     scannedFiles.value = page.scannedFiles;
     modifiedFiles.value = page.modifiedFiles;
+    matchedFiles.value = page.matchedFiles ?? page.modifiedFiles ?? 0;
   }
 
   /** 只有有实际变更的行可以勾选：新建、删除和已修改。 */
@@ -255,6 +307,8 @@ export const useScriptStore = defineStore("script", () => {
     rows.value = [];
     planId.value = "";
     nextCursor.value = -1;
+    filter.value = "";
+    matchedFiles.value = 0;
     selectedKeys.value = new Set();
     selectionMode = "all";
     excludedKeys.clear();
@@ -268,7 +322,7 @@ export const useScriptStore = defineStore("script", () => {
       runResult.value = result;
       if (result.logs) logs.value = result.logs.filter((item): item is ScriptLog => !!item);
       if (result.status === "completed" && result.planId) {
-        const page = await ScriptService.PreviewPage(result.planId, 0, 100);
+        const page = await ScriptService.PreviewPage(result.planId, "", 0, 100);
         if (page) applyPage(page, false);
       } else if (result.error) {
         error.value = result.error.message;
@@ -299,7 +353,7 @@ export const useScriptStore = defineStore("script", () => {
   async function loadMore(): Promise<void> {
     if (!hasPreview.value || nextCursor.value < 0 || !planId.value) return;
     try {
-      const page = await ScriptService.PreviewPage(planId.value, nextCursor.value, 100);
+      const page = await ScriptService.PreviewPage(planId.value, filter.value, nextCursor.value, 100);
       if (page) applyPage(page, true);
     } catch (value: any) {
       stale.value = true;
@@ -307,10 +361,21 @@ export const useScriptStore = defineStore("script", () => {
     }
   }
 
-  async function loadAll(): Promise<void> {
-    while (hasPreview.value && nextCursor.value >= 0) await loadMore();
+  function selectAll(): void {
+    selectionMode = "all";
+    excludedKeys.clear();
+    selectedKeys.value = new Set(
+      rows.value.filter((row) => isSelectable(row)).map((row) => row.changeKey),
+    );
   }
 
+  function clearSelection(): void {
+    selectionMode = "none";
+    excludedKeys.clear();
+    selectedKeys.value = new Set();
+  }
+
+  /** 切换单行；只影响当前筛选结果内的这一行。 */
   function toggleSelected(changeKey: string): void {
     const selected = new Set(selectedKeys.value);
     if (selectionMode === "all") {
@@ -330,28 +395,25 @@ export const useScriptStore = defineStore("script", () => {
     selectedKeys.value = selected;
   }
 
-  function selectAll(): void {
-    selectionMode = "all";
-    excludedKeys.clear();
-    selectedKeys.value = new Set(
-      rows.value.filter((row) => isSelectable(row)).map((row) => row.changeKey),
-    );
-  }
-
-  function clearSelection(): void {
-    selectionMode = "none";
-    excludedKeys.clear();
-    selectedKeys.value = new Set();
-  }
-
   async function apply(): Promise<ScriptApplyResult> {
     if (!canApply.value || !planId.value) throw new Error("没有选中的脚本变更");
     applying.value = true;
     error.value = "";
     try {
-      await loadAll();
+      const planID = planId.value;
+      // In "all" mode the intent is every row matching the current filter,
+      // including pages never fetched. Ask the backend for that exact set so a
+      // filter cannot silently shrink what gets applied.
+      let keys: string[];
+      if (selectionMode === "all") {
+        const all = await ScriptService.SelectableChangeKeys(planID, filter.value);
+        keys = (all ?? []).filter((key) => !excludedKeys.has(key));
+      } else {
+        keys = [...selectedKeys.value];
+      }
+      if (keys.length === 0) throw new Error("没有选中的脚本变更");
       if (!hasPreview.value) throw new Error("脚本预览已过期,请重新运行");
-      const result = await ScriptService.Apply(planId.value, [...selectedKeys.value]);
+      const result = await ScriptService.Apply(planID, keys);
       runResult.value = runResult.value
         ? { ...runResult.value, modifiedFiles: result.modifiedCount }
         : runResult.value;
@@ -452,6 +514,9 @@ export const useScriptStore = defineStore("script", () => {
     nextCursor,
     scannedFiles,
     modifiedFiles,
+    filter,
+    matchedFiles,
+    filtered,
     selectedKeys,
     isSelectable,
     selectedCount,
@@ -472,7 +537,8 @@ export const useScriptStore = defineStore("script", () => {
     run,
     cancel,
     loadMore,
-    loadAll,
+    setFilter,
+    clearFilter,
     toggleSelected,
     selectAll,
     clearSelection,
