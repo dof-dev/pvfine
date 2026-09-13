@@ -2,7 +2,7 @@
 import { computed, h, nextTick, ref, watch, type VNodeChild } from "vue";
 import { NTag, NTree, type TreeInst, type TreeOption } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
-import type { TreeItem } from "../stores/explorer";
+import type { RevealRequest, TreeItem } from "../stores/explorer";
 import type { ExplorerOpenMode } from "../stores/settings";
 import ImageThumbnail from "./ImageThumbnail.vue";
 
@@ -13,13 +13,23 @@ const props = withDefaults(
     expandAll?: boolean;
     openMode?: ExplorerOpenMode;
     selectedKey?: string | null;
+    revealRequest?: RevealRequest | null;
     loadChildren?: (item: TreeItem) => Promise<void>;
   }>(),
-  { height: "100%", expandAll: false, openMode: "single-click", selectedKey: null }
+  {
+    height: "100%",
+    expandAll: false,
+    openMode: "single-click",
+    selectedKey: null,
+    revealRequest: null,
+  }
 );
 
 const emit = defineEmits<{
   open: [item: TreeItem];
+  select: [item: TreeItem];
+  deselect: [];
+  "reveal-consumed": [];
   contextmenu: [event: MouseEvent, item: TreeItem | null, items: TreeItem[]];
 }>();
 
@@ -104,15 +114,18 @@ watch(
       expandedKeys.value = next;
       searchExpansionInitialized.value = true;
     }
-    if (props.selectedKey) void revealSelectedKey(props.selectedKey);
   },
   { deep: true }
 );
 
+// 只有显式的“定位”请求才会展开目录并滚动到目标节点；选中态本身不触发滚动。
 watch(
-  () => props.selectedKey,
-  (key) => {
-    if (key) void revealSelectedKey(key);
+  () => props.revealRequest,
+  (request) => {
+    if (!request) return;
+    void revealPath(request.path).then(() => {
+      if (props.revealRequest === request) emit("reveal-consumed");
+    });
   },
   { immediate: true }
 );
@@ -133,13 +146,13 @@ function findAncestorKeys(key: string): string[] {
   return ancestors;
 }
 
-async function revealSelectedKey(key: string): Promise<void> {
+async function revealPath(key: string): Promise<void> {
   const ancestors = findAncestorKeys(key);
   if (ancestors.length > 0) {
     expandedKeys.value = [...new Set([...expandedKeys.value, ...ancestors])];
   }
   await nextTick();
-  if (props.selectedKey === key) treeRef.value?.scrollTo({ key, behavior: "smooth" });
+  treeRef.value?.scrollTo({ key, behavior: "smooth" });
 }
 
 async function onLoad(node: TreeOption): Promise<void> {
@@ -186,6 +199,8 @@ function onNodeClick(event: MouseEvent, item: TreeItem): void {
   if (handledClickEvents.has(event)) return;
   handledClickEvents.add(event);
   if (isTreeControl(event)) return;
+  // 单击只更新选中高亮，不展开、不滚动；滚动定位只由显式的定位请求触发。
+  if (!item.isDir) emit("select", item);
   if (props.openMode !== "single-click") return;
   event.stopPropagation();
   openNode(item);
@@ -219,6 +234,14 @@ function nodeProps({ option }: { option: TreeOption }) {
 function onShellContextMenu(event: MouseEvent): void {
   event.preventDefault();
   emit("contextmenu", event, null, []);
+}
+
+function onShellClick(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  // 节点区域由节点自身处理；滚动条点击不应清空选中。
+  if (target.closest(".n-tree-node, .n-scrollbar-rail")) return;
+  emit("deselect");
 }
 
 function onExpandedKeys(keys: Array<string | number>): void {
@@ -304,6 +327,7 @@ defineExpose({ collapseAll });
 <template>
   <div
     class="file-tree-shell"
+    @click="onShellClick"
     @contextmenu="onShellContextMenu"
   >
     <!-- 目录是逻辑选择，允许在子节点尚未加载时勾选目录本身。 -->

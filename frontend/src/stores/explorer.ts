@@ -44,12 +44,20 @@ export interface SearchItem {
   fieldImage: ImageReference | null;
 }
 
+export interface RevealRequest {
+  path: string;
+  nonce: number;
+}
+
 /** 资源管理器状态:懒加载树 + 搜索 */
 export const useExplorerStore = defineStore("explorer", () => {
   const archive = useArchiveStore();
   const roots = ref<TreeItem[]>([]);
   const expanded = ref<Set<string>>(new Set([""]));
   const selectedKey = ref<string | null>(null);
+  // 仅由显式的“定位”操作写入；文件树的滚动定位只响应这个请求，选中态本身不触发滚动。
+  const revealRequest = ref<RevealRequest | null>(null);
+  let revealNonce = 0;
   const itemsByKey = new Map<string, TreeItem>();
 
   // 搜索状态
@@ -126,6 +134,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     const restoreSearch = mode.value === "search" && query.value.trim() !== "";
     const currentQuery = query.value;
     selectedKey.value = null;
+    revealRequest.value = null;
     await loadRoots();
     if (!restoreSearch) {
       clearSearch();
@@ -160,7 +169,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     registerItems(node.children);
   }
 
-  /** 加载目标文件的父目录，并将其设为资源树当前选中项。 */
+  /** 加载目标文件的父目录，并将其设为资源树当前选中项并滚动定位。 */
   async function revealPath(path: string): Promise<boolean> {
     if (!archive.open) return false;
     const parts = normalizePath(path).split("/").filter(Boolean);
@@ -182,7 +191,23 @@ export const useExplorerStore = defineStore("explorer", () => {
 
     if (!node || node.isDir) return false;
     selectedKey.value = node.key;
+    revealRequest.value = { path: node.key, nonce: ++revealNonce };
     return true;
+  }
+
+  /** 仅选中节点，不展开、不滚动。 */
+  function selectPath(path: string | null): void {
+    selectedKey.value = path;
+  }
+
+  /** 取消当前选中。 */
+  function clearSelection(): void {
+    selectedKey.value = null;
+  }
+
+  /** 文件树消费完一次定位请求后回调，避免重复滚动。 */
+  function consumeRevealRequest(): void {
+    revealRequest.value = null;
   }
 
   function getItem(path: string): TreeItem | undefined {
@@ -196,6 +221,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     roots.value = [];
     itemsByKey.clear();
     selectedKey.value = null;
+    revealRequest.value = null;
     expanded.value = new Set([""]);
     clearSearch();
     mode.value = "tree";
@@ -327,6 +353,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     roots,
     expanded,
     selectedKey,
+    revealRequest,
     query,
     hits,
     nextCursor,
@@ -341,6 +368,9 @@ export const useExplorerStore = defineStore("explorer", () => {
     reload,
     loadChildren,
     revealPath,
+    selectPath,
+    clearSelection,
+    consumeRevealRequest,
     refreshTreeTags,
     refreshAnnotations,
     reset,

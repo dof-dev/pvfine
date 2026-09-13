@@ -224,9 +224,13 @@ async function onTreeLoad(item: TreeItem): Promise<void> {
 
 function onTreeOpen(item: TreeItem): void {
   if (item && !item.isDir) {
-    explorer.selectedKey = item.key;
+    explorer.selectPath(item.key);
     void editor.openFile(item.fileIndex);
   }
+}
+
+function onTreeSelect(item: TreeItem): void {
+  explorer.selectPath(item.key);
 }
 
 function hideContextMenu(): void {
@@ -294,7 +298,7 @@ async function submitNewFile(): Promise<void> {
     await archive.refreshInfo();
     await explorer.reload();
     if (explorer.mode === "tree") await explorer.revealPath(node.path);
-    else explorer.selectedKey = node.path;
+    else explorer.selectPath(node.path);
     await editor.openFile(node.fileIndex);
     message.success(`已新建文件 ${node.path}`);
   } catch (error: any) {
@@ -867,8 +871,12 @@ function sortTree(items: TreeItem[]): void {
               :expand-all="explorer.mode === 'search'"
               :open-mode="settings.explorerOpenMode"
               :selected-key="explorer.selectedKey"
+              :reveal-request="explorer.revealRequest"
               :load-children="onTreeLoad"
               @open="onTreeOpen"
+              @select="onTreeSelect"
+              @deselect="explorer.clearSelection()"
+              @reveal-consumed="explorer.consumeRevealRequest()"
               @contextmenu="onTreeContextMenu"
             />
           </div>
