@@ -183,7 +183,6 @@ async function exportCurrent(): Promise<void> {
   const setId = active.id;
   exporting.value = true;
   try {
-    await editor.flushPending();
     if (
       session !== fileSets.sessionId ||
       archive.info?.path !== archivePath ||
@@ -215,7 +214,6 @@ async function openBatch(): Promise<void> {
     return;
   }
   try {
-    await editor.flushPending();
     batch.open(paths, `文件集“${active.name}”`);
   } catch (error: any) {
     message.error(`打开批处理失败: ${error?.message ?? error}`);

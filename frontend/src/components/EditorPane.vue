@@ -20,6 +20,7 @@ import {
   DocumentSearch24Regular,
   Eye24Regular,
   EyeOff24Regular,
+  Save24Regular,
   SplitHorizontal24Regular,
   SplitVertical24Regular,
 } from "@vicons/fluent";
@@ -110,6 +111,9 @@ const canRevealActiveFile = computed(
 const activeBookmarked = computed(
   () => !!activeTab.value && bookmarks.isBookmarkedInGroup(activeTab.value.path)
 );
+const activeTabDirty = computed(
+  () => !!activeTab.value && activeTab.value.editable && activeTab.value.text !== activeTab.value.original
+);
 const canBookmarkActiveFile = computed(
   () => archive.open && bookmarks.loaded && !!activeTab.value && !bookmarking.value
 );
@@ -152,7 +156,7 @@ function onActive(key: string | number): void {
 }
 
 function onClose(index: number): void {
-  editor.closeTab(index, paneId);
+  editor.requestCloseTab(index, paneId);
 }
 
 function onTabMouseDown(event: MouseEvent, index: number): void {
@@ -205,11 +209,11 @@ function onTabContextMenuSelect(key: string | number): void {
   if (index === null) return;
 
   if (key === "close") {
-    editor.closeTab(index, targetPaneId ?? paneId);
+    editor.requestCloseTab(index, targetPaneId ?? paneId);
   } else if (key === "close-all") {
-    editor.closeAllTabs();
+    editor.requestCloseAll();
   } else if (key === "close-others") {
-    editor.closeOtherTabs(index);
+    editor.requestCloseOthers(index);
   }
 }
 
@@ -462,6 +466,23 @@ function onDrop(event: DragEvent): void {
         </template>
 
         <div class="editor-info-bar" role="toolbar" aria-label="当前文件操作">
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NButton
+                quaternary
+                size="tiny"
+                class="editor-save-button"
+                :type="activeTabDirty ? 'primary' : 'default'"
+                :loading="editor.saving"
+                aria-label="保存"
+                @click="editor.saveActiveTab(paneId)"
+              >
+                <template #icon><NIcon><Save24Regular /></NIcon></template>
+              </NButton>
+            </template>
+            {{ activeTabDirty ? "保存当前文件 (Cmd+S)" : "当前文件没有待保存的修改" }}
+          </NTooltip>
+
           <div class="editor-file-tags" aria-label="当前文件关联信息">
             <NTag
               v-for="tag in fileTags"
@@ -764,6 +785,9 @@ function onDrop(event: DragEvent): void {
   padding: 2px 8px;
   border-bottom: 1px solid var(--pvf-border-subtle);
   background: var(--pvf-surface-subtle);
+}
+.editor-save-button {
+  flex: 0 0 auto;
 }
 .editor-file-tags {
   min-width: 0;

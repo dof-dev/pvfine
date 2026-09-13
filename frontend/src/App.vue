@@ -18,6 +18,7 @@ import ImportModal from "./components/ImportModal.vue";
 import VersionPanel from "./components/VersionPanel.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
+import EditorCloseGuard from "./components/EditorCloseGuard.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
@@ -120,7 +121,6 @@ async function onKeydown(e: KeyboardEvent) {
       }
     } else if (version.canCommit) {
       e.preventDefault();
-      await editor.flushPending();
       void version.commit();
     }
   } else if (key === "o") {
@@ -133,12 +133,15 @@ async function onKeydown(e: KeyboardEvent) {
     } catch {
       // 工作区已经展示了具体错误。
     }
+  } else if (key === "s" && !e.shiftKey) {
+    e.preventDefault();
+    if (archive.open) await editor.saveActiveTab();
   } else if (key === "s" && e.shiftKey) {
     e.preventDefault();
     if (archive.open) await editor.saveAs();
   } else if (key === "w") {
     e.preventDefault();
-    if (editor.activeKey !== null) editor.closeTab(editor.activeKey);
+    if (editor.activeKey !== null) editor.requestCloseTab(editor.activeKey, editor.activePaneId);
   }
 }
 </script>
@@ -148,6 +151,7 @@ async function onKeydown(e: KeyboardEvent) {
     <NMessageProvider placement="bottom-right">
       <NDialogProvider>
         <CloseGuard />
+        <EditorCloseGuard />
         <div class="app-root" data-file-drop-target :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />

@@ -37,6 +37,12 @@ export interface DraggedEditorTab {
   index: number;
 }
 
+/** 待确认的关闭动作:目标标签仍含未保存的本地草稿。 */
+export type PendingTabClose =
+  | { kind: "tab"; index: number; paneId: EditorPaneId }
+  | { kind: "others"; keepIndex: number }
+  | { kind: "all" };
+
 export interface EditorLayoutPane {
   kind: "pane";
   paneId: EditorPaneId;
@@ -98,9 +104,7 @@ export const useEditorStore = defineStore("editor", () => {
     () => tabs.value.find((tab) => tab.index === activePane.value.activeKey) ?? null
   );
   const dirtyCount = computed(() => tabs.value.filter((tab) => tab.text !== tab.original).length);
-
-  let syncTimer: number | undefined;
-  const pendingSync = new Set<number>();
+  const pendingClose = ref<PendingTabClose | null>(null);
 
   function collectPaneIds(node: EditorLayoutNode, result: EditorPaneId[]): void {
     if (node.kind === "pane") {
@@ -215,7 +219,6 @@ export const useEditorStore = defineStore("editor", () => {
     if (!stillUsed) {
       const globalTabIndex = tabs.value.findIndex((tab) => tab.index === index);
       if (globalTabIndex >= 0) tabs.value.splice(globalTabIndex, 1);
-      pendingSync.delete(index);
       clearExplorerSelection(tab?.path);
     }
 
@@ -256,7 +259,6 @@ export const useEditorStore = defineStore("editor", () => {
     }
 
     tabs.value = tabs.value.filter((tab) => !removedIndexes.has(tab.index));
-    for (const index of removedIndexes) pendingSync.delete(index);
     clearExplorerSelection(removedPaths);
 
     while (isSplit.value) {
@@ -466,27 +468,61 @@ export const useEditorStore = defineStore("editor", () => {
     splitNode.ratio = Math.min(0.8, Math.max(0.2, value));
   }
 
-  /** 编辑器内容变化:立即更新本地脏状态,短暂防抖后同步到后端 overlay */
+  /** 编辑器内容变化:只更新本地文本,写入 overlay 由保存动作显式触发。 */
   function updateContent(index: number, text: string) {
     const tab = tabs.value.find((item) => item.index === index);
     if (!tab || !tab.editable) return;
     tab.text = text;
-    pendingSync.add(index);
-    window.clearTimeout(syncTimer);
-    syncTimer = window.setTimeout(async () => {
-      const batch = [...pendingSync];
-      pendingSync.clear();
-      for (const itemIndex of batch) {
-        const currentTab = tabs.value.find((item) => item.index === itemIndex);
-        if (!currentTab) continue;
-        try {
-          await syncTab(currentTab);
-        } catch (e) {
-          console.error("sync failed", e);
-        }
-      }
-      await useArchiveStore().refreshInfo();
-    }, 200);
+  }
+
+  function isDirty(tab: EditorTab): boolean {
+    return tab.editable && tab.text !== tab.original;
+  }
+
+  /** 把单个标签的本地文本写入后端 overlay,成功后重置脏基线。 */
+  async function saveTab(index: number): Promise<boolean> {
+    const tab = tabs.value.find((item) => item.index === index);
+    if (!tab || !isDirty(tab)) return false;
+    const text = tab.text;
+    await EditorService.SetText(tab.index, text);
+    const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
+    const current = tabs.value.find((item) => item.index === tab.index);
+    if (!current) return true;
+    // 等待期间用户继续输入时保留其草稿,下一次保存再写入。
+    if (current.text === text) {
+      current.original = text;
+      current.annotations = annotations.filter(
+        (annotation): annotation is EditorAnnotation => !!annotation
+      );
+    }
+    await useExplorerStore().refreshTreeTags();
+    return true;
+  }
+
+  /** 保存指定窗格的活动标签(默认当前窗格)。无修改时为空操作。 */
+  async function saveActiveTab(requestedPaneId?: EditorPaneId): Promise<boolean> {
+    const paneId = resolvePaneId(requestedPaneId);
+    const index = paneStates[paneId]?.activeKey ?? null;
+    if (index === null || saving.value) return false;
+    saving.value = true;
+    try {
+      const saved = await saveTab(index);
+      if (saved) await useArchiveStore().refreshInfo();
+      return saved;
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  /** 把所有本地有修改的标签写入 overlay(PVF 写盘前调用)。 */
+  async function saveAllDirty(): Promise<number> {
+    const indexes = tabs.value.filter((tab) => isDirty(tab)).map((tab) => tab.index);
+    let saved = 0;
+    for (const index of indexes) {
+      if (await saveTab(index)) saved += 1;
+    }
+    if (saved > 0) await useArchiveStore().refreshInfo();
+    return saved;
   }
 
   /** 保存到源文件 */
@@ -494,7 +530,7 @@ export const useEditorStore = defineStore("editor", () => {
     const archive = useArchiveStore();
     saving.value = true;
     try {
-      await flushPending();
+      await saveAllDirty();
       const info = await EditorService.Save();
       archive.info = info;
       // 保存成功后,文本与基准重置(overlay 已清空)
@@ -513,7 +549,7 @@ export const useEditorStore = defineStore("editor", () => {
     const archive = useArchiveStore();
     saving.value = true;
     try {
-      await flushPending();
+      await saveAllDirty();
       const path = await EditorService.SaveAsDialog();
       if (path) {
         for (const tab of tabs.value) {
@@ -528,21 +564,6 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
-  async function flushPending() {
-    window.clearTimeout(syncTimer);
-    const batch = [...pendingSync];
-    pendingSync.clear();
-    for (const index of batch) {
-      const tab = tabs.value.find((item) => item.index === index);
-      if (tab) await syncTab(tab);
-    }
-  }
-
-  function discardPendingSync(): void {
-    window.clearTimeout(syncTimer);
-    pendingSync.clear();
-  }
-
   function clearExplorerSelection(paths: string | string[] | undefined): void {
     if (!paths) return;
     const explorer = useExplorerStore();
@@ -552,20 +573,54 @@ export const useEditorStore = defineStore("editor", () => {
     if (closedPaths.has(selection)) explorer.selectedKey = null;
   }
 
-  async function syncTab(tab: EditorTab) {
-    const text = tab.text;
-    await EditorService.SetText(tab.index, text);
-    const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
-    const current = tabs.value.find((item) => item.index === tab.index);
-    if (!current || current.text !== text) return;
-    current.annotations = annotations.filter(
-      (annotation): annotation is EditorAnnotation => !!annotation
-    );
-    await useExplorerStore().refreshTreeTags();
+  /** 关闭标签:存在未保存本地编辑时先请求确认。 */
+  function requestCloseTab(index: number, requestedPaneId: EditorPaneId = activePaneId.value): void {
+    if (pendingClose.value) return;
+    const tab = tabs.value.find((item) => item.index === index);
+    if (!tab) return;
+    if (isDirty(tab)) {
+      pendingClose.value = { kind: "tab", index, paneId: resolvePaneId(requestedPaneId) };
+      return;
+    }
+    closeTab(index, requestedPaneId);
+  }
+
+  /** 关闭其它标签:有待确认的脏标签时先请求确认。 */
+  function requestCloseOthers(keepIndex: number): void {
+    if (pendingClose.value) return;
+    const hasDirty = tabs.value.some((tab) => tab.index !== keepIndex && isDirty(tab));
+    if (hasDirty) {
+      pendingClose.value = { kind: "others", keepIndex };
+      return;
+    }
+    closeOtherTabs(keepIndex);
+  }
+
+  /** 关闭所有标签:有待确认的脏标签时先请求确认。 */
+  function requestCloseAll(): void {
+    if (pendingClose.value) return;
+    if (tabs.value.some((tab) => isDirty(tab))) {
+      pendingClose.value = { kind: "all" };
+      return;
+    }
+    closeAllTabs();
+  }
+
+  /** 确认丢弃未保存编辑并执行挂起的关闭动作。 */
+  function confirmPendingClose(): void {
+    const action = pendingClose.value;
+    if (!action) return;
+    pendingClose.value = null;
+    if (action.kind === "tab") closeTab(action.index, action.paneId);
+    else if (action.kind === "others") closeOtherTabs(action.keepIndex);
+    else closeAllTabs();
+  }
+
+  function cancelPendingClose(): void {
+    pendingClose.value = null;
   }
 
   async function refreshAnnotations() {
-    await flushPending();
     await Promise.all(
       tabs.value.map(async (tab) => {
         const text = tab.text;
@@ -581,7 +636,6 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 重新读取当前 renderer 生成的文本,但保留已修改标签的脏基线。 */
   async function refreshRenderedText() {
-    await flushPending();
     await Promise.all(
       tabs.value.map(async (tab) => {
         const meta = await EditorService.GetFile(tab.index);
@@ -595,9 +649,12 @@ export const useEditorStore = defineStore("editor", () => {
         current.tags = cleanTreeTags(meta.tags);
         current.icon = meta.icon ?? null;
         current.fieldImage = meta.fieldImage ?? null;
-        current.text = meta.text;
         current.modified = meta.modified;
-        if (!meta.modified) current.original = meta.text;
+        // 本地有未保存编辑时保留编辑器内容,避免重载规则覆盖用户草稿。
+        if (!isDirty(current)) {
+          current.text = meta.text;
+          if (!meta.modified) current.original = meta.text;
+        }
         current.annotations = (meta.annotations ?? []).filter(
           (annotation): annotation is EditorAnnotation => !!annotation
         );
@@ -615,7 +672,6 @@ export const useEditorStore = defineStore("editor", () => {
         const meta = await EditorService.GetFile(index);
         if (!meta) return;
         current.path = meta.path;
-        current.text = meta.text;
         current.modified = meta.modified;
         current.tags = cleanTreeTags(meta.tags);
         current.annotations = (meta.annotations ?? []).filter(
@@ -623,6 +679,8 @@ export const useEditorStore = defineStore("editor", () => {
         );
         current.icon = meta.icon ?? null;
         current.fieldImage = meta.fieldImage ?? null;
+        // 本地有未保存编辑时保留编辑器内容,让保存动作以用户文本为准。
+        if (!isDirty(current)) current.text = meta.text;
       })
     );
   }
@@ -632,9 +690,7 @@ export const useEditorStore = defineStore("editor", () => {
     refreshPaths: string[] = [],
     resetOriginal = false
   ): Promise<void> {
-    // 结构变更已经完成，旧索引上的待同步请求不能再发送；标签中的
-    // 本地文本保留，后续编辑会按新的文件索引继续同步。
-    discardPendingSync();
+    // 结构变更后旧索引已失效；标签中的本地文本保留,后续保存会按新索引写入。
     if (tabs.value.length === 0) return;
 
     const currentTabs = [...tabs.value];
@@ -678,7 +734,6 @@ export const useEditorStore = defineStore("editor", () => {
     }
 
     tabs.value = remainingTabs;
-    pendingSync.clear();
     await Promise.all(
       remainingTabs
         .filter((tab) => pathsToRefresh.has(tab.path))
@@ -692,12 +747,15 @@ export const useEditorStore = defineStore("editor", () => {
           tab.tags = cleanTreeTags(meta.tags);
           tab.icon = meta.icon ?? null;
           tab.fieldImage = meta.fieldImage ?? null;
-          tab.text = meta.text;
           if (resetOriginal) {
+            // 归档整体重载:索引已失效,直接采用新内容。
+            tab.text = meta.text;
             tab.original = meta.text;
             tab.modified = false;
           } else {
             tab.modified = meta.modified;
+            // 本地有未保存编辑时保留编辑器内容,不被后端结果覆盖。
+            if (!isDirty(tab)) tab.text = meta.text;
           }
           tab.annotations = (meta.annotations ?? []).filter(
             (annotation): annotation is EditorAnnotation => !!annotation
@@ -751,6 +809,7 @@ export const useEditorStore = defineStore("editor", () => {
     opening: computed(() => openingPaneId.value !== null),
     openingPaneId,
     saving,
+    pendingClose,
     openFile,
     activatePane,
     beginTabDrag,
@@ -759,15 +818,22 @@ export const useEditorStore = defineStore("editor", () => {
     closeTab,
     closeAllTabs,
     closeOtherTabs,
+    requestCloseTab,
+    requestCloseOthers,
+    requestCloseAll,
+    confirmPendingClose,
+    cancelPendingClose,
     moveTab,
     split,
     splitAndMoveTab,
     closeSplit,
     setSplitRatio,
     updateContent,
+    saveTab,
+    saveActiveTab,
+    saveAllDirty,
     save,
     saveAs,
-    flushPending,
     refreshAnnotations,
     refreshRenderedText,
     refreshBatchFiles,

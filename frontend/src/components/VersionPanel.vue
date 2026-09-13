@@ -664,7 +664,6 @@ function onFileClick(file: VersionChange): void {
 
 async function initialize(): Promise<void> {
   try {
-    await editor.flushPending();
     invalidateDiff();
     selectedFile.value = null;
     await version.initialize();
@@ -677,7 +676,6 @@ async function initialize(): Promise<void> {
 
 async function commit(): Promise<void> {
   try {
-    await editor.flushPending();
     invalidateDiff();
     selectedFile.value = null;
     const result = await version.commit();
@@ -690,7 +688,6 @@ async function commit(): Promise<void> {
 
 async function undo(): Promise<void> {
   try {
-    await editor.flushPending();
     invalidateDiff();
     selectedFile.value = null;
     await version.undo();
@@ -704,14 +701,12 @@ async function undo(): Promise<void> {
 async function discard(): Promise<void> {
   invalidateDiff();
   selectedFile.value = null;
-  await editor.flushPending();
   await version.discard();
   await autoSelectInitialTarget();
 }
 
 async function restoreSingleFile(path: string): Promise<void> {
   try {
-    await editor.flushPending();
     const isCurrent = selectedFile.value?.path === path;
     if (isCurrent) {
       invalidateDiff();
@@ -767,7 +762,6 @@ async function executeConfirmation(): Promise<void> {
     } else if (action.type === "checkout") {
       invalidateDiff();
       selectedFile.value = null;
-      await editor.flushPending();
       await version.checkout(action.commit);
       message.success(`已加载版本 ${shortID(action.commit.id)}`);
       await autoSelectInitialTarget();

@@ -291,7 +291,6 @@ async function submitNewFile(): Promise<void> {
   creating.value = true;
   newFileError.value = "";
   try {
-    await editor.flushPending();
     const node = await ArchiveService.CreateFile(path, newFileType.value);
     if (!node) throw new Error("后端未返回新文件信息");
     newFileVisible.value = false;
@@ -435,14 +434,12 @@ async function onDeleteSelected(items: TreeItem[]): Promise<void> {
       message.info("选中的目录中没有文件");
       return;
     }
-    await editor.flushPending();
     const registrations = ((await ArchiveService.FindFileRegistrations(indexes)) ?? []).filter(
       (registration): registration is FileRegistration => !!registration
     );
     const decision = await confirmDelete(indexes.length, files, registrations);
     if (decision === "cancel") return;
 
-    await editor.flushPending();
     const removed = await ArchiveService.DeleteFilesWithRegistrations(
       indexes,
       decision === "sync"
@@ -647,7 +644,6 @@ async function onBatchSelected(items: TreeItem[]): Promise<void> {
   hideContextMenu();
   batching.value = true;
   try {
-    await editor.flushPending();
     const paths = await collectFilePaths(selectedItems);
     if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
     if (paths.length === 0) {
@@ -671,7 +667,6 @@ async function onExportSelected(items: TreeItem[]): Promise<void> {
   hideContextMenu();
   exporting.value = true;
   try {
-    await editor.flushPending();
     const scopes = await collectExportScopes(items);
     if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
     if (scopes.length === 0) {

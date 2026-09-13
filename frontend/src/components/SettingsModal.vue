@@ -121,7 +121,6 @@ async function onReloadAnnotations() {
   if (reloadingAnnotations.value) return;
   reloadingAnnotations.value = true;
   try {
-    await editor.flushPending();
     const result = await AnnotationService.ReloadRules();
     await Promise.all([editor.refreshAnnotations(), explorer.refreshAnnotations()]);
     message.success(
@@ -138,7 +137,6 @@ async function onReloadRendering() {
   if (reloadingRendering.value) return;
   reloadingRendering.value = true;
   try {
-    await editor.flushPending();
     const result = await RenderingService.ReloadRules();
     await editor.refreshRenderedText();
     message.success(`已重载 ${result.ruleCount} 条渲染规则`);

@@ -219,7 +219,6 @@ async function confirmImport(): Promise<void> {
   importer.running = true;
   importer.error = "";
   try {
-    await editor.flushPending();
     const result = await ArchiveService.ImportFiles(
       importer.sourcePaths,
       importer.targetDir,

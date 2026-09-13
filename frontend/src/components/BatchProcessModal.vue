@@ -328,7 +328,6 @@ async function preview(): Promise<void> {
 
 async function apply(): Promise<void> {
   try {
-    await editor.flushPending();
     const result = await batch.apply();
     await editor.refreshBatchFiles(result.fileIndexes ?? []);
     await Promise.all([
