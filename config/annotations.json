@@ -1302,6 +1302,64 @@
         "inlineImage": true
       },
       "group": "npc"
+    },
+    {
+      "id": "global.need material.id",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "need material",
+        "index": 0
+      },
+      "annotation": {
+        "title": " 未知ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "global"
+    },
+    {
+      "id": "global.need material",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "need material"
+      },
+      "annotation": {
+        "title": "商店兑换需要的道具",
+        "type": "text",
+        "relation": "物品"
+      },
+      "group": "global"
+    },
+    {
+      "id": "shp.item list",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "item list"
+      },
+      "annotation": {
+        "title": "售卖的物品",
+        "type": "text"
+      },
+      "group": "shp"
+    },
+    {
+      "id": "shp.item list.item id",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "item list",
+        "index": 0,
+        "recordTokens": 1
+      },
+      "annotation": {
+        "title": "ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "shp"
     }
   ]
 }
