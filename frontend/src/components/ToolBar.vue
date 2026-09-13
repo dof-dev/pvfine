@@ -100,12 +100,23 @@ function onSave() {
   const backupHint = settings.backupSourceOnSave
     ? "保存前会将当前源文件备份为同目录下的 .bak 文件。"
     : "当前未启用源文件备份。";
-  dialog.warning({
+  const dialogRef = dialog.warning({
     title: "确认保存到源文件",
     content: `保存会覆盖源文件中的当前内容。${backupHint}确定继续吗？`,
     positiveText: "确认保存",
     negativeText: "取消",
-    onPositiveClick: saveToSource,
+    // naive-ui 会等待 onPositiveClick 返回的 Promise 结束再关闭弹窗,
+    // 期间通过 dialogRef 回写加载态,否则保存过程没有任何反馈。
+    onPositiveClick: async () => {
+      dialogRef.loading = true;
+      dialogRef.negativeButtonProps = { disabled: true };
+      try {
+        await saveToSource();
+      } finally {
+        dialogRef.loading = false;
+        dialogRef.negativeButtonProps = { disabled: false };
+      }
+    },
   });
 }
 
