@@ -681,7 +681,37 @@ func splitBatchLines(text string) []string {
 	return strings.Split(text, "\n")
 }
 
+// batchDiffOps diffs two line slices. It first strips the common prefix and
+// suffix so the quadratic middle-diff only ever sees the region that actually
+// changed; a small edit inside a large file therefore stays a small diff
+// instead of tripping the size fallback below.
 func batchDiffOps(oldLines, newLines []string) []batchDiffOp {
+	prefix := 0
+	for prefix < len(oldLines) && prefix < len(newLines) && oldLines[prefix] == newLines[prefix] {
+		prefix++
+	}
+	suffix := 0
+	for suffix < len(oldLines)-prefix && suffix < len(newLines)-prefix &&
+		oldLines[len(oldLines)-1-suffix] == newLines[len(newLines)-1-suffix] {
+		suffix++
+	}
+
+	middle := diffBatchMiddle(
+		oldLines[prefix:len(oldLines)-suffix],
+		newLines[prefix:len(newLines)-suffix],
+	)
+	result := make([]batchDiffOp, 0, len(oldLines)+len(newLines))
+	for _, line := range oldLines[:prefix] {
+		result = append(result, batchDiffOp{kind: '=', text: line})
+	}
+	result = append(result, middle...)
+	for _, line := range oldLines[len(oldLines)-suffix:] {
+		result = append(result, batchDiffOp{kind: '=', text: line})
+	}
+	return result
+}
+
+func diffBatchMiddle(oldLines, newLines []string) []batchDiffOp {
 	// The bounded dynamic-programming path gives compact diffs for normal
 	// scripts. Very large changed regions fall back to a safe remove/add block
 	// rather than allocating a quadratic matrix.
