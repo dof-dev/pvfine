@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -220,6 +221,84 @@ pvf.deleteFile("equipment/second.equ");
 	}
 	if text, textErr := c.archive.Text(second); textErr != nil || text != beforeSecond {
 		t.Fatalf("unselected file changed: %q err=%v", text, textErr)
+	}
+}
+
+func TestScriptServiceListEditFlowsThroughPreviewAndApply(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	if _, err := a.AddFileText(
+		"equipment/equipment.lst",
+		"1008 `character/a.equ`",
+		pvf.TypeScript,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"equipment/character/a.equ", "equipment/character/b.equ"} {
+		if _, err := a.AddFileText(path, "[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+
+	listIndex, _ := c.archive.Find("equipment/equipment.lst")
+	before, err := c.archive.RawBytes(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := svc.Run(nil, ScriptRunRequest{Name: "register", Source: `
+const lst = pvf.lst("equipment/equipment.lst");
+lst.set("1009", "character/b.equ");
+`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != ScriptRunCompleted || result.PlanID == "" || result.ModifiedFiles != 1 {
+		t.Fatalf("run result = %#v", result)
+	}
+	// The preview must not touch the live list.
+	afterRun, err := c.archive.RawBytes(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, afterRun) {
+		t.Fatal("preview mutated the live list")
+	}
+
+	page, err := svc.PreviewPage(result.PlanID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Rows) != 1 || page.Rows[0].Path != "equipment/equipment.lst" {
+		t.Fatalf("preview rows = %#v", page.Rows)
+	}
+	// A list edit is an ordinary payload change, not a structural one.
+	if page.Rows[0].Status != ScriptFileChanged {
+		t.Fatalf("row status = %q", page.Rows[0].Status)
+	}
+
+	apply, err := svc.Apply(result.PlanID, []string{page.Rows[0].ChangeKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if apply.Structural {
+		t.Fatal("a list edit should not be reported as structural")
+	}
+	applied, ok := c.archive.Find("equipment/equipment.lst")
+	if !ok {
+		t.Fatal("list file disappeared")
+	}
+	pairs, err := c.archive.ListPairs(applied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pairs) != 2 || pairs[1].ID != "1009" || pairs[1].Path != "character/b.equ" {
+		t.Fatalf("applied pairs = %#v", pairs)
 	}
 }
 

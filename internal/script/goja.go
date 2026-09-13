@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/dop251/goja"
@@ -314,6 +315,19 @@ func (b *gojaBindings) bindPVF() error {
 	}); err != nil {
 		return err
 	}
+	if err := setFunction(b.vm, pvfObject, "lst", func(call goja.FunctionCall) (goja.Value, error) {
+		filePath, err := requiredString(call.Argument(0), "列表路径")
+		if err != nil {
+			return nil, err
+		}
+		list, err := b.host.OpenList(filePath)
+		if err != nil {
+			return nil, err
+		}
+		return b.listObject(list), nil
+	}); err != nil {
+		return err
+	}
 	if err := setFunction(b.vm, pvfObject, "log", func(call goja.FunctionCall) (goja.Value, error) {
 		b.host.Log(LogLevelInfo, formatArguments(call.Arguments))
 		return goja.Undefined(), nil
@@ -424,6 +438,86 @@ func (b *gojaBindings) fileObject(file *FileHandle) *goja.Object {
 			return nil, err
 		}
 		return goja.Undefined(), nil
+	})
+	return object
+}
+
+func (b *gojaBindings) listObject(list *ListHandle) *goja.Object {
+	object := b.vm.NewObject()
+	_ = defineReadOnly(object, "path", b.vm.ToValue(list.Path()))
+	_ = setFunction(b.vm, object, "get", func(goja.FunctionCall) (goja.Value, error) {
+		pairs, err := list.Get()
+		if err != nil {
+			return nil, err
+		}
+		result := b.vm.NewObject()
+		for _, pair := range pairs {
+			if err := result.Set(pair.ID, pair.Path); err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
+	})
+	_ = setFunction(b.vm, object, "set", func(call goja.FunctionCall) (goja.Value, error) {
+		id, err := listIDString(call.Argument(0))
+		if err != nil {
+			return nil, err
+		}
+		entryPath, err := requiredString(call.Argument(1), "列表路径")
+		if err != nil {
+			return nil, err
+		}
+		if err := list.Set(id, entryPath); err != nil {
+			return nil, err
+		}
+		return goja.Undefined(), nil
+	})
+	_ = setFunction(b.vm, object, "mset", func(call goja.FunctionCall) (goja.Value, error) {
+		source, ok := call.Argument(0).(*goja.Object)
+		if !ok {
+			return nil, fmt.Errorf("mset 需要 id 到路径的对象")
+		}
+		keys := source.Keys()
+		if len(keys) == 0 {
+			return goja.Undefined(), nil
+		}
+		pairs := make([]pvf.ListPair, 0, len(keys))
+		for _, id := range keys {
+			entryPath, err := requiredString(source.Get(id), "列表路径")
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", id, err)
+			}
+			pairs = append(pairs, pvf.ListPair{ID: id, Path: entryPath})
+		}
+		if err := list.MSet(pairs); err != nil {
+			return nil, err
+		}
+		return goja.Undefined(), nil
+	})
+	_ = setFunction(b.vm, object, "unset", func(call goja.FunctionCall) (goja.Value, error) {
+		id, err := listIDString(call.Argument(0))
+		if err != nil {
+			return nil, err
+		}
+		removed, err := list.Unset(id)
+		if err != nil {
+			return nil, err
+		}
+		return b.vm.ToValue(removed), nil
+	})
+	_ = setFunction(b.vm, object, "getId", func(call goja.FunctionCall) (goja.Value, error) {
+		entryPath, err := requiredString(call.Argument(0), "列表路径")
+		if err != nil {
+			return nil, err
+		}
+		id, found, err := list.GetID(entryPath)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return goja.Null(), nil
+		}
+		return b.vm.ToValue(id), nil
 	})
 	return object
 }
@@ -875,6 +969,29 @@ func requiredString(value goja.Value, label string) (string, error) {
 		return "", fmt.Errorf("%s必须是字符串", label)
 	}
 	return text, nil
+}
+
+// listIDString reads a .lst id, which is commonly written as a number in JSON
+// while the token stream stores it as a plain integer.
+func listIDString(value goja.Value) (string, error) {
+	if isMissingValue(value) {
+		return "", fmt.Errorf("列表 id 不能为空")
+	}
+	switch exported := value.Export().(type) {
+	case string:
+		return exported, nil
+	case int64:
+		return strconv.FormatInt(exported, 10), nil
+	case int:
+		return strconv.FormatInt(int64(exported), 10), nil
+	case float64:
+		if math.Trunc(exported) != exported {
+			return "", fmt.Errorf("列表 id 必须是整数或字符串")
+		}
+		return strconv.FormatInt(int64(exported), 10), nil
+	default:
+		return "", fmt.Errorf("列表 id 必须是整数或字符串")
+	}
 }
 
 func exportScalar(value goja.Value) (any, error) {

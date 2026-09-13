@@ -454,6 +454,252 @@ func TestGojaRuntimeMultipleDeletesUsePathIdentity(t *testing.T) {
 	}
 }
 
+// scriptListArchive builds an archive containing an equipment .lst plus the
+// files its entries point at.
+func scriptListArchive(t *testing.T) *pvf.Archive {
+	t.Helper()
+	built := pvf.New()
+	if _, err := built.AddFileText(
+		"equipment/equipment.lst",
+		"1008 `character/a.equ` 1009 `character/b.equ`",
+		pvf.TypeScript,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		"equipment/character/a.equ",
+		"equipment/character/b.equ",
+		"equipment/character/c.equ",
+	} {
+		if _, err := built.AddFileText(path, "[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var data bytes.Buffer
+	if err := built.SaveTo(&data); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := pvf.Parse(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return archive
+}
+
+func TestGojaRuntimeListReadAndWrite(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+	const entries = lst.get();
+	if (Object.keys(entries).length !== 2) throw new Error("unexpected entry count");
+	if (entries["1008"] !== "character/a.equ") throw new Error("wrong entry: " + entries["1008"]);
+
+	// Update an existing id in place.
+	lst.set("1008", "character/c.equ");
+	// Append a new id.
+	lst.set("1010", "character/a.equ");
+	// mset handles several ids at once.
+	lst.mset({ "1009": "character/c.equ", "1011": "character/b.equ" });
+
+	const after = lst.get();
+	if (after["1008"] !== "character/c.equ") throw new Error("update failed");
+	if (after["1009"] !== "character/c.equ") throw new Error("mset update failed");
+	if (after["1010"] !== "character/a.equ") throw new Error("append failed");
+	if (after["1011"] !== "character/b.equ") throw new Error("mset append failed");
+	if (Object.keys(after).length !== 4) throw new Error("wrong final count");
+
+	// getId resolves the reverse direction.
+	if (lst.getId("character/c.equ") !== "1008") throw new Error("getId mismatch");
+	if (lst.getId("equipment/character/b.equ") !== "1011") throw new Error("getId did not accept an archive path");
+	if (lst.getId("character/missing.equ") !== null) throw new Error("getId should return null when unregistered");
+
+	// unset reports whether anything was removed.
+	if (lst.unset("1011") !== true) throw new Error("unset reported no removal");
+	if (lst.unset("1011") !== false) throw new Error("second unset should be a no-op");
+	if (lst.get()["1011"] !== undefined) throw new Error("entry survived unset");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+
+	changes, err := tx.Changes()
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("changes = %#v err=%v", changes, err)
+	}
+	if changes[0].Kind != pvf.ChangeKindChanged || changes[0].Path != "equipment/equipment.lst" {
+		t.Fatalf("change = %#v", changes[0])
+	}
+	if archive.ModifiedCount() != 0 {
+		t.Fatalf("runtime changed the live archive: %d", archive.ModifiedCount())
+	}
+	// Staging keeps the edits isolated from the live list.
+	liveIndex, _ := archive.Find("equipment/equipment.lst")
+	livePairs, err := archive.ListPairs(liveIndex)
+	if err != nil || len(livePairs) != 2 {
+		t.Fatalf("live pairs changed: %#v err=%v", livePairs, err)
+	}
+}
+
+func TestGojaRuntimeListIdCollapsedOnSet(t *testing.T) {
+	built := pvf.New()
+	if _, err := built.AddFileText(
+		"equipment/equipment.lst",
+		"1008 `character/a.equ` 1009 `character/b.equ` 1008 `character/c.equ`",
+		pvf.TypeScript,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"equipment/character/a.equ", "equipment/character/b.equ", "equipment/character/c.equ"} {
+		if _, err := built.AddFileText(path, "[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var data bytes.Buffer
+	if err := built.SaveTo(&data); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := pvf.Parse(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+	lst.set("1008", "character/b.equ");
+	const entries = lst.get();
+	if (Object.keys(entries).length !== 2) throw new Error("duplicate id was not collapsed");
+	// unset removes every remaining record for the id.
+	if (lst.unset("1008") !== true) throw new Error("unset failed");
+	if (lst.get()["1008"] !== undefined) throw new Error("entry survived unset");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
+func TestGojaRuntimeListRejectsMissingTargetAndList(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+
+	// A missing target file must be refused instead of registering a dangling entry.
+	let rejected = false;
+	try { lst.set("2000", "character/does-not-exist.equ"); } catch (error) {
+		if (!String(error).includes("不存在")) throw error;
+		rejected = true;
+	}
+	if (!rejected) throw new Error("set accepted a missing target");
+
+	// Lookup does not require the file to exist, so the reverse query stays available.
+	if (lst.getId("character/does-not-exist.equ") !== null) throw new Error("getId should be null");
+
+	// The failed write must not have changed anything.
+	if (Object.keys(lst.get()).length !== 2) throw new Error("failed set mutated the list");
+
+	// An unknown list file is an error.
+	let missingList = false;
+	try { pvf.lst("equipment/nope.lst"); } catch { missingList = true; }
+	if (!missingList) throw new Error("unknown list file was accepted");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	if changes, changeErr := tx.Changes(); changeErr != nil || len(changes) != 0 {
+		t.Fatalf("rejected list writes staged a change = %#v err=%v", changes, changeErr)
+	}
+}
+
+func TestGojaRuntimeListAbsolutePathRebased(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	// The archive path resolves to the same list-relative entry, so it is
+	// accepted and stored in the file's native relative form.
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+	lst.set("2000", "equipment/character/a.equ");
+	const stored = lst.getId("character/a.equ");
+	if (stored !== "2000" && stored !== "1008") throw new Error("absolute path was not rebased: " + stored);
+	if (lst.get()["2000"] !== "character/a.equ") throw new Error("stored value is not list-relative");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
+func TestGojaRuntimeListRejectsInvalidMSetArgument(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+	let rejected = false;
+	try { lst.mset("not-an-object"); } catch { rejected = true; }
+	if (!rejected) throw new Error("mset accepted a non-object");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	if changes, changeErr := tx.Changes(); changeErr != nil || len(changes) != 0 {
+		t.Fatalf("rejected mset staged a change = %#v err=%v", changes, changeErr)
+	}
+}
+
+func TestGojaRuntimeListRollbackLeavesLiveArchiveUntouched(t *testing.T) {
+	archive := scriptListArchive(t)
+	index, _ := archive.Find("equipment/equipment.lst")
+	before, err := archive.RawBytes(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	pvf.lst("equipment/equipment.lst").set("1008", "character/c.equ");
+	throw new Error("abort");
+`, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != RunStatusFailed {
+		t.Fatalf("run result = %#v", result)
+	}
+	after, err := archive.RawBytes(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("failed script mutated the live list")
+	}
+}
+
+func TestGojaRuntimeListAcceptsNumericIDs(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	// .lst ids are integers in the token stream, so a JS number must be
+	// accepted and normalised to the same string key.
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+	lst.set(2000, "character/c.equ");
+	if (lst.get()["2000"] !== "character/c.equ") throw new Error("numeric id was not normalised");
+	if (lst.getId("character/c.equ") !== "2000") throw new Error("getId mismatch");
+	if (lst.unset(2000) !== true) throw new Error("unset rejected a numeric id");
+	if (lst.get()["2000"] !== undefined) throw new Error("numeric-id entry survived unset");
+	// Existing integer ids can also be addressed as numbers.
+	lst.set(1008, "character/c.equ");
+	if (lst.get()["1008"] !== "character/c.equ") throw new Error("existing numeric id was not updated");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
 func TestGojaRuntimeCreateRejectsInvalidPaths(t *testing.T) {
 	archive := scriptTestArchive(t)
 	tx := NewTransaction(archive)

@@ -148,6 +148,54 @@ func (t *Transaction) SetRawBytes(path string, raw []byte) error {
 	return t.stage.SetRawBytes(index, raw)
 }
 
+// ListPairs reads the staged id/path pairs of a .lst file.
+func (t *Transaction) ListPairs(path string) ([]pvf.ListPair, error) {
+	index, ok := t.resolve(path)
+	if !ok {
+		return nil, fmt.Errorf("文件不存在: %s", path)
+	}
+	return t.stage.ListPairs(index)
+}
+
+// SetListPairs stages an insert-or-update of id/path pairs in a .lst file.
+func (t *Transaction) SetListPairs(path string, pairs []pvf.ListPair) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+	if err := t.markPath(path); err != nil {
+		return err
+	}
+	index, ok := t.resolve(path)
+	if !ok {
+		return fmt.Errorf("文件不存在: %s", path)
+	}
+	return t.stage.SetListPairs(index, pairs)
+}
+
+// UnsetListIDs stages removal of every entry matching the supplied ids.
+func (t *Transaction) UnsetListIDs(path string, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if err := t.markPath(path); err != nil {
+		return 0, err
+	}
+	index, ok := t.resolve(path)
+	if !ok {
+		return 0, fmt.Errorf("文件不存在: %s", path)
+	}
+	return t.stage.RemoveListIDs(index, ids)
+}
+
+// ListID resolves the id registered for a path in a .lst file.
+func (t *Transaction) ListID(path, entryPath string) (string, bool, error) {
+	index, ok := t.resolve(path)
+	if !ok {
+		return "", false, fmt.Errorf("文件不存在: %s", path)
+	}
+	return t.stage.ListID(index, entryPath)
+}
+
 // CreateFile stages a new entry. It fails when the path already exists so a
 // typo cannot silently overwrite content the script never read.
 func (t *Transaction) CreateFile(rawPath string, dataType int32, raw []byte) (string, error) {

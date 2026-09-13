@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 
@@ -210,6 +211,191 @@ func (a *BatchAPI) DeleteFile(filePath string) (bool, error) {
 		return false, err
 	}
 	return a.tx.DeleteFile(filePath)
+}
+
+// OpenList resolves a .lst file and returns its list facade.
+func (a *BatchAPI) OpenList(filePath string) (*ListHandle, error) {
+	if err := a.checkContext(); err != nil {
+		return nil, err
+	}
+	index, ok := a.tx.Stage().Find(filePath)
+	if !ok {
+		return nil, fmt.Errorf("列表文件不存在: %s", filePath)
+	}
+	if a.tx.Stage().File(index).DataType != pvf.TypeScript {
+		return nil, fmt.Errorf("文件 %s 不是 .lst 列表", a.tx.Stage().Path(index))
+	}
+	return &ListHandle{api: a, path: a.tx.Stage().Path(index)}, nil
+}
+
+// ListHandle is the narrow Go host object behind a JavaScript PVFList. Entry
+// paths inside a .lst are relative to the list file's own directory.
+type ListHandle struct {
+	api  *BatchAPI
+	path string
+}
+
+// Path returns the archive path of the list file.
+func (l *ListHandle) Path() string {
+	if l == nil {
+		return ""
+	}
+	return l.path
+}
+
+// Get returns the id/path pairs in file order.
+func (l *ListHandle) Get() ([]pvf.ListPair, error) {
+	if err := l.api.checkContext(); err != nil {
+		return nil, err
+	}
+	return l.api.tx.ListPairs(l.path)
+}
+
+// Set inserts or updates one id/path entry.
+func (l *ListHandle) Set(id, entryPath string) error {
+	if err := l.api.checkContext(); err != nil {
+		return err
+	}
+	relative, err := l.storagePath(entryPath)
+	if err != nil {
+		return err
+	}
+	return l.api.tx.SetListPairs(l.path, []pvf.ListPair{{ID: id, Path: relative}})
+}
+
+// MSet inserts or updates several id/path entries at once.
+func (l *ListHandle) MSet(pairs []pvf.ListPair) error {
+	if err := l.api.checkContext(); err != nil {
+		return err
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+	resolved := make([]pvf.ListPair, 0, len(pairs))
+	for _, pair := range pairs {
+		relative, err := l.storagePath(pair.Path)
+		if err != nil {
+			return err
+		}
+		resolved = append(resolved, pvf.ListPair{ID: pair.ID, Path: relative})
+	}
+	return l.api.tx.SetListPairs(l.path, resolved)
+}
+
+// Unset removes every entry whose id matches and reports whether any was
+// removed.
+func (l *ListHandle) Unset(id string) (bool, error) {
+	if err := l.api.checkContext(); err != nil {
+		return false, err
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, fmt.Errorf("列表 id 不能为空")
+	}
+	removed, err := l.api.tx.UnsetListIDs(l.path, []string{id})
+	if err != nil {
+		return false, err
+	}
+	return removed > 0, nil
+}
+
+// GetID returns the id registered for entryPath, or false when the list has no
+// matching entry. Unlike Set, it neither validates nor requires the target file
+// to exist: it normalizes the path and compares it with the list content.
+func (l *ListHandle) GetID(entryPath string) (string, bool, error) {
+	if err := l.api.checkContext(); err != nil {
+		return "", false, err
+	}
+	raw, err := normalizeListPath(entryPath)
+	if err != nil {
+		return "", false, err
+	}
+	for _, candidate := range l.candidatePaths(raw) {
+		id, found, err := l.api.tx.ListID(l.path, candidate)
+		if err != nil {
+			return "", false, err
+		}
+		if found {
+			return id, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// storagePath resolves an entry path to the list-relative form the .lst file
+// stores. Both spellings are accepted: the native relative form
+// ("character/x.equ") and a full archive path ("equipment/character/x.equ").
+// The target must exist in the archive so a typo cannot register a dangling
+// entry.
+func (l *ListHandle) storagePath(entryPath string) (string, error) {
+	raw, err := normalizeListPath(entryPath)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range l.candidatePaths(raw) {
+		if l.targetExists(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("列表条目指向的文件不存在: %s", raw)
+}
+
+// candidatePaths lists the list-relative spellings a user path may mean, most
+// literal first: the path as written, then the same path interpreted as an
+// archive path and rebased onto the list directory.
+func (l *ListHandle) candidatePaths(raw string) []string {
+	candidates := []string{raw}
+	if rebased, ok := l.rebase(raw); ok && rebased != raw {
+		candidates = append(candidates, rebased)
+	}
+	return candidates
+}
+
+// rebase converts a full archive path into the list-relative form, when the
+// path lives under the list file's directory.
+func (l *ListHandle) rebase(archivePath string) (string, bool) {
+	dir := path.Dir(l.path)
+	if dir == "." {
+		return archivePath, true
+	}
+	prefix := strings.ToLower(dir) + "/"
+	if !strings.HasPrefix(strings.ToLower(archivePath), prefix) {
+		return "", false
+	}
+	relative := archivePath[len(prefix):]
+	if relative == "" {
+		return "", false
+	}
+	return relative, true
+}
+
+// targetExists reports whether a list-relative entry resolves to an archive
+// entry, mirroring the service lookup that also accepts a "(r)" sibling.
+func (l *ListHandle) targetExists(relative string) bool {
+	directory := path.Dir(l.path)
+	if _, ok := l.api.tx.Stage().Find(path.Join(directory, relative)); ok {
+		return true
+	}
+	base := path.Base(relative)
+	if strings.HasPrefix(strings.ToLower(base), "(r)") {
+		return false
+	}
+	_, ok := l.api.tx.Stage().Find(path.Join(directory, path.Dir(relative), "(r)"+base))
+	return ok
+}
+
+// normalizeListPath trims an incoming entry path to its archive spelling.
+func normalizeListPath(entryPath string) (string, error) {
+	raw := strings.TrimSpace(strings.ReplaceAll(entryPath, "\\", "/"))
+	raw = strings.TrimPrefix(raw, "./")
+	raw = strings.Trim(raw, "/")
+	if raw == "" {
+		return "", fmt.Errorf("列表条目路径不能为空")
+	}
+	if raw == "." || raw == ".." || strings.HasPrefix(raw, "../") {
+		return "", fmt.Errorf("列表条目路径无效: %q", entryPath)
+	}
+	return raw, nil
 }
 
 // Log records a message and forwards it to the service event sink.

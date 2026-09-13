@@ -14,6 +14,16 @@ type ListPair struct {
 	Path string `json:"path"`
 }
 
+// listRecord is one decoded id/path token pair together with its original
+// tokens. Unchanged records are re-emitted verbatim so token encoding and
+// string-pool offsets stay stable across an edit.
+type listRecord struct {
+	id        string
+	path      string
+	idToken   batchToken
+	pathToken batchToken
+}
+
 // ScriptImageReference is the raw PVF representation used by [icon] and
 // [field image]. Services map it to their public ImageReference type.
 type ScriptImageReference struct {
@@ -137,6 +147,226 @@ func (a *Archive) RemoveListPairs(i int32, entries []ListPair) (int, error) {
 		return 0, err
 	}
 	return removed, nil
+}
+
+// decodeListRecords decodes a .lst payload into records. Every token must be
+// a valid id/path member and the token count must be even.
+func (a *Archive) decodeListRecords(i int32, raw []byte) ([]listRecord, error) {
+	if len(raw)%5 != 0 {
+		return nil, fmt.Errorf("pvf: malformed script payload for file %d", i)
+	}
+	tokens := make([]batchToken, 0, len(raw)/5)
+	values := make([]scriptMetadataValue, 0, len(raw)/5)
+	for pos := 0; pos < len(raw); pos += 5 {
+		value, ok := a.scriptMetadataValue(raw[pos], int32(binary.LittleEndian.Uint32(raw[pos+1:])))
+		if !ok {
+			return nil, fmt.Errorf("pvf: incomplete or unsupported .lst pair data for file %d", i)
+		}
+		tokens = append(tokens, batchToken{
+			typ:   raw[pos],
+			value: int32(binary.LittleEndian.Uint32(raw[pos+1:])),
+		})
+		values = append(values, value)
+	}
+	if len(values)%2 != 0 {
+		return nil, fmt.Errorf("pvf: incomplete or unsupported .lst pair data for file %d", i)
+	}
+
+	records := make([]listRecord, 0, len(values)/2)
+	for pos := 0; pos+1 < len(values); pos += 2 {
+		records = append(records, listRecord{
+			id:        strings.TrimSpace(values[pos].text),
+			path:      strings.TrimSpace(values[pos+1].text),
+			idToken:   tokens[pos],
+			pathToken: tokens[pos+1],
+		})
+	}
+	return records, nil
+}
+
+// listPathToken encodes a .lst entry path as the backtick-quoted string token
+// used by real list files.
+func (a *Archive) listPathToken(path string) batchToken {
+	return batchToken{typ: 6, value: a.StringOffset(path)}
+}
+
+// listIDToken encodes a list id. Numeric ids keep the integer token used by
+// real .lst files; anything else falls back to a quoted string.
+func (a *Archive) listIDToken(id string) batchToken {
+	if number, err := strconv.ParseInt(id, 10, 32); err == nil {
+		return batchToken{typ: 0, value: int32(number)}
+	}
+	return batchToken{typ: 6, value: a.StringOffset(id)}
+}
+
+func encodeListRecords(records []listRecord) []byte {
+	raw := make([]byte, 0, len(records)*10)
+	for _, record := range records {
+		raw = append(raw, encodeBatchTokens([]batchToken{record.idToken, record.pathToken})...)
+	}
+	return raw
+}
+
+// ListPairs returns the id/path pairs of a .lst payload in file order. When an
+// id repeats, the first occurrence wins.
+func (a *Archive) ListPairs(i int32) ([]ListPair, error) {
+	records, err := a.listRecordsAt(i)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(records))
+	pairs := make([]ListPair, 0, len(records))
+	for _, record := range records {
+		if record.id == "" || record.path == "" {
+			continue
+		}
+		if _, duplicate := seen[record.id]; duplicate {
+			continue
+		}
+		seen[record.id] = struct{}{}
+		pairs = append(pairs, ListPair{ID: record.id, Path: record.path})
+	}
+	return pairs, nil
+}
+
+func (a *Archive) listRecordsAt(i int32) ([]listRecord, error) {
+	if i < 0 || i >= int32(len(a.items)) {
+		return nil, ErrBadIndex
+	}
+	if a.items[i].typ != TypeScript {
+		return nil, fmt.Errorf("pvf: file %d is not a script", i)
+	}
+	raw, err := a.RawBytes(i)
+	if err != nil {
+		return nil, err
+	}
+	return a.decodeListRecords(i, raw)
+}
+
+// SetListPairs inserts or updates id/path pairs in a .lst payload. An existing
+// id keeps its position and id-token encoding while its path is replaced; a
+// new id is appended. Duplicate records for an id are collapsed into the first
+// one, so an id addresses exactly one entry afterwards.
+func (a *Archive) SetListPairs(i int32, pairs []ListPair) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+	records, err := a.listRecordsAt(i)
+	if err != nil {
+		return err
+	}
+
+	// Match by trimmed id, mirroring how ListPairs reads the file. The first
+	// occurrence wins, so duplicates for the same id collapse into it.
+	firstByID := make(map[string]int, len(records))
+	for position, record := range records {
+		if _, exists := firstByID[record.id]; !exists {
+			firstByID[record.id] = position
+		}
+	}
+
+	requested := make(map[string]listRecord, len(pairs))
+	appended := make([]listRecord, 0, len(pairs))
+	for _, pair := range pairs {
+		id := strings.TrimSpace(pair.ID)
+		path := strings.TrimSpace(pair.Path)
+		if id == "" || path == "" {
+			return fmt.Errorf("pvf: 列表条目的 id 和路径不能为空")
+		}
+		record := listRecord{
+			id:        id,
+			path:      path,
+			idToken:   a.listIDToken(id),
+			pathToken: a.listPathToken(path),
+		}
+		position, exists := firstByID[id]
+		if !exists {
+			firstByID[id] = len(records) + len(appended)
+			appended = append(appended, record)
+			continue
+		}
+		// An updated entry keeps the original id token so its encoding and
+		// string-pool offset are untouched.
+		record.idToken = records[position].idToken
+		requested[id] = record
+	}
+
+	updated := make([]listRecord, 0, len(records)+len(appended))
+	for position, record := range records {
+		// A duplicate of an id being set is dropped; the surviving copy is the
+		// first occurrence, with its replacement applied if there is one.
+		if _, isSet := requested[record.id]; isSet && firstByID[record.id] != position {
+			continue
+		}
+		if replacement, ok := requested[record.id]; ok && firstByID[record.id] == position {
+			updated = append(updated, replacement)
+			continue
+		}
+		updated = append(updated, record)
+	}
+	updated = append(updated, appended...)
+	return a.SetRawBytes(i, encodeListRecords(updated))
+}
+
+// SetListPair inserts or updates one id/path pair. See SetListPairs.
+func (a *Archive) SetListPair(i int32, id, path string) error {
+	return a.SetListPairs(i, []ListPair{{ID: id, Path: path}})
+}
+
+// RemoveListIDs removes every record whose id matches, returning the number of
+// removed records. Other records are re-emitted verbatim.
+func (a *Archive) RemoveListIDs(i int32, ids []string) (int, error) {
+	targets := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		targets[id] = struct{}{}
+	}
+	if len(targets) == 0 {
+		return 0, nil
+	}
+	records, err := a.listRecordsAt(i)
+	if err != nil {
+		return 0, err
+	}
+	kept := make([]listRecord, 0, len(records))
+	removed := 0
+	for _, record := range records {
+		if _, ok := targets[record.id]; ok && record.id != "" {
+			removed++
+			continue
+		}
+		kept = append(kept, record)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	if err := a.SetRawBytes(i, encodeListRecords(kept)); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
+// ListID returns the id registered for path. It reports a malformed payload
+// rather than treating it as "not found", so a lookup failure cannot be
+// mistaken for an absent entry.
+func (a *Archive) ListID(i int32, path string) (string, bool, error) {
+	records, err := a.listRecordsAt(i)
+	if err != nil {
+		return "", false, err
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false, nil
+	}
+	for _, record := range records {
+		if record.path == path && record.id != "" {
+			return record.id, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 // ScriptMetadata extracts [name], [icon] and [field image] in one raw token
