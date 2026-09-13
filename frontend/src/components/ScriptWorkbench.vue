@@ -35,6 +35,7 @@ import {
 import CodeEditor from "./CodeEditor.vue";
 import { useScriptStore } from "../stores/script";
 import { useEditorStore } from "../stores/editor";
+import { useExplorerStore } from "../stores/explorer";
 import { useSettingsStore } from "../stores/settings";
 import type { BatchDiffLine, ScriptDiagnostic } from "../../bindings/pvfine/services/models";
 import type { ResolvedThemeId } from "../theme";
@@ -49,6 +50,7 @@ const emit = defineEmits<{
 
 const script = useScriptStore();
 const editor = useEditorStore();
+const explorer = useExplorerStore();
 const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -200,8 +202,24 @@ function focusDiagnostic(diagnostic: ScriptDiagnostic): void {
   scriptEditor.value?.revealPosition(diagnostic.line, diagnostic.column ?? 1);
 }
 
-function isSelected(fileIndex: number): boolean {
-  return script.selectedIndexes.has(fileIndex);
+function isSelected(changeKey: string): boolean {
+  return script.selectedKeys.has(changeKey);
+}
+
+function rowStatusLabel(status: string): string {
+  if (status === "added") return "新增";
+  if (status === "deleted") return "删除";
+  if (status === "changed") return "已修改";
+  return status;
+}
+
+type NTagType = "default" | "success" | "warning" | "error" | "info";
+
+function rowStatusType(status: string): NTagType {
+  if (status === "added") return "info";
+  if (status === "deleted") return "error";
+  if (status === "changed") return "success";
+  return "default";
 }
 
 function formatSize(size: number): string {
@@ -309,6 +327,11 @@ async function onStop(): Promise<void> {
 async function onApply(): Promise<void> {
   try {
     const result = await script.apply();
+    if (result.structural) {
+      // 结构变更会让后续条目重新编号，必须按路径重新解析树与已打开标签。
+      await editor.refreshAfterArchiveChange([], false);
+      await explorer.reload();
+    }
     await editor.refreshBatchFiles(result.fileIndexes ?? []);
     message.success("已应用选中的脚本修改；请继续手动保存 PVF");
   } catch (error: any) {
@@ -558,17 +581,17 @@ onBeforeUnmount(() => {
           <NScrollbar class="script-preview-scroll">
             <NEmpty v-if="script.rows.length === 0" description="运行脚本后显示文件 diff" size="small" />
             <template v-else>
-              <div v-for="row in script.rows" :key="row.fileIndex" class="script-preview-row">
+              <div v-for="row in script.rows" :key="row.changeKey" class="script-preview-row">
                 <label class="script-preview-file">
                   <input
                     type="checkbox"
-                    :checked="isSelected(row.fileIndex)"
-                    :disabled="row.status !== 'changed' || script.stale"
-                    @change="script.toggleSelected(row.fileIndex)"
+                    :checked="isSelected(row.changeKey)"
+                    :disabled="!script.isSelectable(row) || script.stale"
+                    @change="script.toggleSelected(row.changeKey)"
                   />
                   <span class="script-preview-path" :title="row.path">{{ row.path }}</span>
-                  <NTag size="tiny" :bordered="false" :type="row.status === 'changed' ? 'success' : 'default'">
-                    {{ row.status === "changed" ? "changed" : row.status }}
+                  <NTag size="tiny" :bordered="false" :type="rowStatusType(row.status)">
+                    {{ rowStatusLabel(row.status) }}
                   </NTag>
                 </label>
                 <div v-if="row.reason" class="script-preview-reason">{{ row.reason }}</div>

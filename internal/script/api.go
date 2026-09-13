@@ -52,7 +52,7 @@ func (a *BatchAPI) Files() ([]*FileHandle, error) {
 		if err := a.checkContext(); err != nil {
 			return nil, err
 		}
-		entries = append(entries, a.newFileHandle(index))
+		entries = append(entries, a.newFileHandle(archive.Path(index)))
 	}
 	a.scannedFiles += int(archive.FileCount())
 	sort.SliceStable(entries, func(left, right int) bool {
@@ -76,7 +76,7 @@ func (a *BatchAPI) Find(filePath string) (*FileHandle, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
-	return a.newFileHandle(index), true, nil
+	return a.newFileHandle(a.tx.Stage().Path(index)), true, nil
 }
 
 // Glob resolves slash-normalized case-insensitive patterns. '*' and '?' do
@@ -96,7 +96,7 @@ func (a *BatchAPI) Glob(pattern string) ([]*FileHandle, error) {
 			return nil, err
 		}
 		if globMatch(pattern, normalizeGlob(archive.Path(index))) {
-			result = append(result, a.newFileHandle(index))
+			result = append(result, a.newFileHandle(archive.Path(index)))
 		}
 	}
 	a.scannedFiles += int(archive.FileCount())
@@ -161,16 +161,55 @@ func (a *BatchAPI) ScannedCount() int {
 	return a.scannedFiles
 }
 
-// ModifiedCount reports the number of unique final payload changes.
+// ModifiedCount reports the number of unique final changes, including created
+// and deleted entries.
 func (a *BatchAPI) ModifiedCount() int {
 	if a == nil || a.tx == nil {
 		return 0
 	}
-	indexes, err := a.tx.ChangedIndexes()
+	changes, err := a.tx.Changes()
 	if err != nil {
 		return 0
 	}
-	return len(indexes)
+	return len(changes)
+}
+
+// CreateFile stages a new entry and returns its handle. text is the initial
+// decompiled content; an empty text creates an empty file.
+func (a *BatchAPI) CreateFile(filePath string, dataType int32, text string) (*FileHandle, error) {
+	if err := a.checkContext(); err != nil {
+		return nil, err
+	}
+	path, err := a.tx.CreateFile(filePath, dataType, nil)
+	if err != nil {
+		return nil, err
+	}
+	if text != "" {
+		if err := a.tx.SetText(path, text); err != nil {
+			return nil, err
+		}
+	}
+	return a.newFileHandle(path), nil
+}
+
+// CopyFile stages a copy of an existing entry.
+func (a *BatchAPI) CopyFile(from, to string, overwrite bool) (*FileHandle, error) {
+	if err := a.checkContext(); err != nil {
+		return nil, err
+	}
+	path, err := a.tx.CopyFile(from, to, overwrite)
+	if err != nil {
+		return nil, err
+	}
+	return a.newFileHandle(path), nil
+}
+
+// DeleteFile stages removal of one entry.
+func (a *BatchAPI) DeleteFile(filePath string) (bool, error) {
+	if err := a.checkContext(); err != nil {
+		return false, err
+	}
+	return a.tx.DeleteFile(filePath)
 }
 
 // Log records a message and forwards it to the service event sink.
@@ -195,61 +234,102 @@ func (a *BatchAPI) Progress(done, total int, message string) error {
 	return nil
 }
 
-func (a *BatchAPI) newFileHandle(index int32) *FileHandle {
-	return &FileHandle{api: a, index: index}
+func (a *BatchAPI) newFileHandle(path string) *FileHandle {
+	return &FileHandle{api: a, path: path, deleteRevision: a.tx.DeleteRevision()}
 }
 
-// FileHandle is the narrow Go host object behind a JavaScript PVFFile.
+// FileHandle is the narrow Go host object behind a JavaScript PVFFile. It is
+// addressed by path because staged creates and deletes shift entry indexes.
 type FileHandle struct {
-	api   *BatchAPI
-	index int32
+	api            *BatchAPI
+	path           string
+	deleteRevision int
 }
 
-func (f *FileHandle) Index() int32 { return f.index }
+func (f *FileHandle) Index() int32 {
+	index, ok := f.lookup()
+	if !ok {
+		return -1
+	}
+	return index
+}
 
 func (f *FileHandle) Path() string {
-	if f == nil || f.api == nil || f.api.tx == nil || f.api.tx.Stage() == nil {
+	if f == nil {
 		return ""
 	}
-	return f.api.tx.Stage().Path(f.index)
+	return f.path
 }
 
 func (f *FileHandle) Type() int32 {
-	if f == nil || f.api == nil || f.api.tx == nil || f.api.tx.Stage() == nil {
+	index, ok := f.lookup()
+	if !ok {
 		return 0
 	}
-	return f.api.tx.Stage().File(f.index).DataType
+	return f.api.tx.Stage().File(index).DataType
 }
 
 func (f *FileHandle) Size() int32 {
-	if f == nil || f.api == nil || f.api.tx == nil || f.api.tx.Stage() == nil {
+	index, ok := f.lookup()
+	if !ok {
 		return 0
 	}
-	return f.api.tx.Stage().File(f.index).DataSize
+	return f.api.tx.Stage().File(index).DataSize
+}
+
+// lookup resolves the handle and rejects handles captured before a staged
+// removal, because that removal may have renumbered the entry.
+func (f *FileHandle) lookup() (int32, bool) {
+	if f == nil || f.api == nil || f.api.tx == nil || f.api.tx.Stage() == nil {
+		return 0, false
+	}
+	if f.deleteRevision != f.api.tx.DeleteRevision() {
+		return 0, false
+	}
+	return f.api.tx.Stage().Find(f.path)
+}
+
+// staleError explains why a handle is unusable.
+func (f *FileHandle) staleError() error {
+	if f != nil && f.api != nil && f.api.tx != nil && f.deleteRevision != f.api.tx.DeleteRevision() {
+		return fmt.Errorf("文件 %s 的句柄已失效,请重新查询后再操作", f.path)
+	}
+	return fmt.Errorf("文件不存在: %s", f.Path())
 }
 
 func (f *FileHandle) Text() (string, error) {
 	if err := f.api.checkContext(); err != nil {
 		return "", err
 	}
-	return f.api.tx.Stage().Text(f.index)
+	index, ok := f.lookup()
+	if !ok {
+		return "", f.staleError()
+	}
+	return f.api.tx.Stage().Text(index)
 }
 
 func (f *FileHandle) SetText(text string) error {
 	if err := f.api.checkContext(); err != nil {
 		return err
 	}
-	return f.api.tx.SetText(f.index, text)
+	if _, ok := f.lookup(); !ok {
+		return f.staleError()
+	}
+	return f.api.tx.SetText(f.path, text)
 }
 
 func (f *FileHandle) Parse() (*pvf.ScriptDocument, error) {
 	if err := f.api.checkContext(); err != nil {
 		return nil, err
 	}
+	index, ok := f.lookup()
+	if !ok {
+		return nil, f.staleError()
+	}
 	if f.Type() != pvf.TypeScript {
 		return nil, fmt.Errorf("文件 %s 不是 TypeScript", f.Path())
 	}
-	raw, err := f.api.tx.Stage().RawBytes(f.index)
+	raw, err := f.api.tx.Stage().RawBytes(index)
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +350,9 @@ func (f *FileHandle) Write(document *pvf.ScriptDocument) error {
 	if err := f.api.checkContext(); err != nil {
 		return err
 	}
+	if _, ok := f.lookup(); !ok {
+		return f.staleError()
+	}
 	if f.Type() != pvf.TypeScript {
 		return fmt.Errorf("文件 %s 不是 TypeScript", f.Path())
 	}
@@ -277,7 +360,7 @@ func (f *FileHandle) Write(document *pvf.ScriptDocument) error {
 	if err != nil {
 		return err
 	}
-	return f.api.tx.SetRawBytes(f.index, raw)
+	return f.api.tx.SetRawBytes(f.path, raw)
 }
 
 // PathPatternMatch is exported for focused unit tests and future callers that

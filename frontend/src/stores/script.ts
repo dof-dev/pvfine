@@ -54,9 +54,9 @@ export const useScriptStore = defineStore("script", () => {
   const nextCursor = ref(-1);
   const scannedFiles = ref(0);
   const modifiedFiles = ref(0);
-  const selectedIndexes = ref<Set<number>>(new Set());
+  const selectedKeys = ref<Set<string>>(new Set());
   let selectionMode: "all" | "none" | "some" = "all";
-  const excludedIndexes = new Set<number>();
+  const excludedKeys = new Set<string>();
   let runRequest = 0;
 
   const dirty = computed(() => source.value !== savedSource.value);
@@ -64,9 +64,9 @@ export const useScriptStore = defineStore("script", () => {
   const selectedCount = computed(() => {
     // Read the reactive set in both modes so toggling one loaded row also
     // refreshes the total count while the all-pages mode uses exclusions.
-    const loadedSelectedCount = selectedIndexes.value.size;
+    const loadedSelectedCount = selectedKeys.value.size;
     if (selectionMode === "all") {
-      return Math.max(0, modifiedFiles.value - excludedIndexes.size);
+      return Math.max(0, modifiedFiles.value - excludedKeys.size);
     }
     return loadedSelectedCount;
   });
@@ -97,9 +97,9 @@ export const useScriptStore = defineStore("script", () => {
     nextCursor.value = -1;
     scannedFiles.value = 0;
     modifiedFiles.value = 0;
-    selectedIndexes.value = new Set();
+    selectedKeys.value = new Set();
     selectionMode = "all";
-    excludedIndexes.clear();
+    excludedKeys.clear();
     stale.value = false;
     runResult.value = null;
     progress.value = { done: 0, total: 0, message: "", currentPath: "" };
@@ -221,21 +221,28 @@ export const useScriptStore = defineStore("script", () => {
     );
     if (append) rows.value.push(...pageRows);
     else rows.value = pageRows;
-    const selected = new Set(selectedIndexes.value);
+    const selected = new Set(selectedKeys.value);
     for (const row of pageRows) {
       if (
-        row.status === "changed" &&
+        isSelectable(row) &&
         selectionMode === "all" &&
-        !excludedIndexes.has(row.fileIndex)
+        !excludedKeys.has(row.changeKey)
       ) {
-        selected.add(row.fileIndex);
+        selected.add(row.changeKey);
       }
     }
-    selectedIndexes.value = selected;
+    selectedKeys.value = selected;
     planId.value = page.planId;
     nextCursor.value = page.nextCursor;
     scannedFiles.value = page.scannedFiles;
     modifiedFiles.value = page.modifiedFiles;
+  }
+
+  /** 只有有实际变更的行可以勾选：新建、删除和已修改。 */
+  function isSelectable(row: ScriptFilePreview): boolean {
+    return (
+      row.status === "changed" || row.status === "added" || row.status === "deleted"
+    );
   }
 
   async function run(): Promise<ScriptRunResult> {
@@ -248,9 +255,9 @@ export const useScriptStore = defineStore("script", () => {
     rows.value = [];
     planId.value = "";
     nextCursor.value = -1;
-    selectedIndexes.value = new Set();
+    selectedKeys.value = new Set();
     selectionMode = "all";
-    excludedIndexes.clear();
+    excludedKeys.clear();
     stale.value = false;
     runResult.value = null;
     logs.value = [];
@@ -304,37 +311,37 @@ export const useScriptStore = defineStore("script", () => {
     while (hasPreview.value && nextCursor.value >= 0) await loadMore();
   }
 
-  function toggleSelected(fileIndex: number): void {
-    const selected = new Set(selectedIndexes.value);
+  function toggleSelected(changeKey: string): void {
+    const selected = new Set(selectedKeys.value);
     if (selectionMode === "all") {
-      if (selected.has(fileIndex)) {
-        selected.delete(fileIndex);
-        excludedIndexes.add(fileIndex);
+      if (selected.has(changeKey)) {
+        selected.delete(changeKey);
+        excludedKeys.add(changeKey);
       } else {
-        selected.add(fileIndex);
-        excludedIndexes.delete(fileIndex);
+        selected.add(changeKey);
+        excludedKeys.delete(changeKey);
       }
-    } else if (selected.has(fileIndex)) {
-      selected.delete(fileIndex);
+    } else if (selected.has(changeKey)) {
+      selected.delete(changeKey);
     } else {
-      selected.add(fileIndex);
+      selected.add(changeKey);
     }
     if (selectionMode !== "all") selectionMode = selected.size > 0 ? "some" : "none";
-    selectedIndexes.value = selected;
+    selectedKeys.value = selected;
   }
 
   function selectAll(): void {
     selectionMode = "all";
-    excludedIndexes.clear();
-    selectedIndexes.value = new Set(
-      rows.value.filter((row) => row.status === "changed").map((row) => row.fileIndex),
+    excludedKeys.clear();
+    selectedKeys.value = new Set(
+      rows.value.filter((row) => isSelectable(row)).map((row) => row.changeKey),
     );
   }
 
   function clearSelection(): void {
     selectionMode = "none";
-    excludedIndexes.clear();
-    selectedIndexes.value = new Set();
+    excludedKeys.clear();
+    selectedKeys.value = new Set();
   }
 
   async function apply(): Promise<ScriptApplyResult> {
@@ -344,7 +351,7 @@ export const useScriptStore = defineStore("script", () => {
     try {
       await loadAll();
       if (!hasPreview.value) throw new Error("脚本预览已过期,请重新运行");
-      const result = await ScriptService.Apply(planId.value, [...selectedIndexes.value]);
+      const result = await ScriptService.Apply(planId.value, [...selectedKeys.value]);
       runResult.value = runResult.value
         ? { ...runResult.value, modifiedFiles: result.modifiedCount }
         : runResult.value;
@@ -445,7 +452,8 @@ export const useScriptStore = defineStore("script", () => {
     nextCursor,
     scannedFiles,
     modifiedFiles,
-    selectedIndexes,
+    selectedKeys,
+    isSelectable,
     selectedCount,
     hasPreview,
     canRun,

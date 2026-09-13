@@ -109,10 +109,25 @@ export interface PVFTypes {
   readonly unicode: number;
 }
 
+/** 新建文件时可用的数据类型：pvf.types.script 或 pvf.types.unicode。 */
+export type PVFDataType = number;
+
 export interface PVFNamespace {
   files(): PVFFile[];
   find(path: string): PVFFile | null;
   glob(pattern: string): PVFFile[];
+  /**
+   * 在当前归档中新建文件。dataType 省略时默认为 pvf.types.script；
+   * text 是脚本可读的初始内容。路径已存在时报错。
+   */
+  createFile(path: string, dataType?: PVFDataType, text?: string): PVFFile;
+  /**
+   * 复制已有文件，返回目标文件的句柄。目标路径已存在时必须显式传入
+   * overwrite=true，否则报错。
+   */
+  copyFile(from: string, to: string, overwrite?: boolean): PVFFile;
+  /** 删除文件本体，返回是否真的删除了条目；路径不存在时返回 false。 */
+  deleteFile(path: string): boolean;
   log(...values: unknown[]): void;
   progress(done: number, total: number, message?: string): void;
   readonly modifiedCount: number;
@@ -125,6 +140,9 @@ declare global {
     function files(): PVFFile[];
     function find(path: string): PVFFile | null;
     function glob(pattern: string): PVFFile[];
+    function createFile(path: string, dataType?: PVFDataType, text?: string): PVFFile;
+    function copyFile(from: string, to: string, overwrite?: boolean): PVFFile;
+    function deleteFile(path: string): boolean;
     function log(...values: unknown[]): void;
     function progress(done: number, total: number, message?: string): void;
     const modifiedCount: number;

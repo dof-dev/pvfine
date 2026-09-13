@@ -253,6 +253,67 @@ func (b *gojaBindings) bindPVF() error {
 	}); err != nil {
 		return err
 	}
+	if err := setFunction(b.vm, pvfObject, "createFile", func(call goja.FunctionCall) (goja.Value, error) {
+		filePath, err := requiredString(call.Argument(0), "路径")
+		if err != nil {
+			return nil, err
+		}
+		dataType := int64(pvf.TypeScript)
+		if !isMissingValue(call.Argument(1)) {
+			dataType, err = requiredInteger(call.Argument(1), "文件类型")
+			if err != nil {
+				return nil, err
+			}
+		}
+		text := ""
+		if !isMissingValue(call.Argument(2)) {
+			text, err = requiredString(call.Argument(2), "文本")
+			if err != nil {
+				return nil, err
+			}
+		}
+		file, err := b.host.CreateFile(filePath, int32(dataType), text)
+		if err != nil {
+			return nil, err
+		}
+		return b.fileObject(file), nil
+	}); err != nil {
+		return err
+	}
+	if err := setFunction(b.vm, pvfObject, "copyFile", func(call goja.FunctionCall) (goja.Value, error) {
+		from, err := requiredString(call.Argument(0), "源路径")
+		if err != nil {
+			return nil, err
+		}
+		to, err := requiredString(call.Argument(1), "目标路径")
+		if err != nil {
+			return nil, err
+		}
+		overwrite := false
+		if !isMissingValue(call.Argument(2)) {
+			overwrite = call.Argument(2).ToBoolean()
+		}
+		file, err := b.host.CopyFile(from, to, overwrite)
+		if err != nil {
+			return nil, err
+		}
+		return b.fileObject(file), nil
+	}); err != nil {
+		return err
+	}
+	if err := setFunction(b.vm, pvfObject, "deleteFile", func(call goja.FunctionCall) (goja.Value, error) {
+		filePath, err := requiredString(call.Argument(0), "路径")
+		if err != nil {
+			return nil, err
+		}
+		removed, err := b.host.DeleteFile(filePath)
+		if err != nil {
+			return nil, err
+		}
+		return b.vm.ToValue(removed), nil
+	}); err != nil {
+		return err
+	}
 	if err := setFunction(b.vm, pvfObject, "log", func(call goja.FunctionCall) (goja.Value, error) {
 		b.host.Log(LogLevelInfo, formatArguments(call.Arguments))
 		return goja.Undefined(), nil
@@ -356,7 +417,7 @@ func (b *gojaBindings) fileObject(file *FileHandle) *goja.Object {
 			return nil, fmt.Errorf("write 需要 PVFDocument")
 		}
 		document := b.documents[object]
-		if document == nil || document.host != b.host || document.file == nil || document.file.Index() != file.Index() {
+		if document == nil || document.host != b.host || document.file == nil || document.file.Path() != file.Path() {
 			return nil, fmt.Errorf("文档不属于当前文件或事务")
 		}
 		if err := file.Write(document.document); err != nil {

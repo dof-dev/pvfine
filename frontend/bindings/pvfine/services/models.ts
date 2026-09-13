@@ -406,6 +406,12 @@ export interface ScriptApplyResult {
     "fileIndexes": number[] | null;
     "modifiedCount": number;
     "revision": number;
+
+    /**
+     * Structural reports whether the commit changed the entry table, which
+     * means every previously previewed file index is now stale.
+     */
+    "structural": boolean;
 }
 
 export interface ScriptCompileResult {
@@ -436,6 +442,11 @@ export interface ScriptFile {
 }
 
 export interface ScriptFilePreview {
+    /**
+     * ChangeKey is the stable selection key. Structural changes shift entry
+     * indexes, so the frontend must select rows by this key, not FileIndex.
+     */
+    "changeKey": string;
     "fileIndex": number;
     "path": string;
     "status": string;

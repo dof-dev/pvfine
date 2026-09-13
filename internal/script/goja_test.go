@@ -54,14 +54,16 @@ func TestGojaRuntimeStructuredScript(t *testing.T) {
 	if result.Status != RunStatusCompleted || result.Error != nil {
 		t.Fatalf("run result = %#v error=%#v", result, result.Error)
 	}
-	indexes, err := tx.ChangedIndexes()
-	if err != nil || len(indexes) != 2 {
-		t.Fatalf("changed indexes = %#v err=%v", indexes, err)
+	changes, err := tx.Changes()
+	if err != nil || len(changes) != 2 {
+		t.Fatalf("changes = %#v err=%v", changes, err)
 	}
-	for _, index := range indexes {
-		text, textErr := tx.Stage().Text(index)
-		if textErr != nil || !strings.Contains(text, "150") && !strings.Contains(text, "250") {
-			t.Fatalf("staged text = %q err=%v", text, textErr)
+	for _, change := range changes {
+		if change.Kind != pvf.ChangeKindChanged {
+			t.Fatalf("change kind = %q", change.Kind)
+		}
+		if !strings.Contains(change.AfterText, "150") && !strings.Contains(change.AfterText, "250") {
+			t.Fatalf("staged text = %q", change.AfterText)
 		}
 	}
 	if archive.ModifiedCount() != 0 {
@@ -93,8 +95,8 @@ file.write(document);
 	if len(logs) != 1 || logs[0].Level != LogLevelWarn || !strings.Contains(logs[0].Message, "orphan-close") {
 		t.Fatalf("warning logs = %#v", logs)
 	}
-	if indexes, changedErr := tx.ChangedIndexes(); changedErr != nil || len(indexes) != 0 {
-		t.Fatalf("warning-only write changed indexes = %#v err=%v", indexes, changedErr)
+	if changes, changedErr := tx.Changes(); changedErr != nil || len(changes) != 0 {
+		t.Fatalf("warning-only write changed entries = %#v err=%v", changes, changedErr)
 	}
 }
 
@@ -136,8 +138,7 @@ func TestGojaCompileDiagnostics(t *testing.T) {
 
 func TestGojaRuntimeDuplicateSelectionAndExactValue(t *testing.T) {
 	built := pvf.New()
-	index, err := built.AddFileText("equipment/item.equ", "[price]\n100\n[price]\n200", pvf.TypeScript)
-	if err != nil {
+	if _, err := built.AddFileText("equipment/item.equ", "[price]\n100\n[price]\n200", pvf.TypeScript); err != nil {
 		t.Fatal(err)
 	}
 	var data bytes.Buffer
@@ -161,9 +162,12 @@ func TestGojaRuntimeDuplicateSelectionAndExactValue(t *testing.T) {
 	if err != nil || result.Status != RunStatusCompleted {
 		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
 	}
-	text, err := tx.Stage().Text(index)
-	if err != nil || !strings.Contains(text, "3.5") || strings.Contains(text, "200") {
-		t.Fatalf("staged duplicate text = %q err=%v", text, err)
+	changes, err := tx.Changes()
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("staged duplicate changes = %#v err=%v", changes, err)
+	}
+	if text := changes[0].AfterText; !strings.Contains(text, "3.5") || strings.Contains(text, "200") {
+		t.Fatalf("staged duplicate text = %q", text)
 	}
 }
 
@@ -202,9 +206,9 @@ try { unicode.write(document); throw new Error("cross-file document was accepted
 	if err != nil || result.Status != RunStatusCompleted {
 		t.Fatalf("unicode result = %#v error=%#v err=%v", result, result.Error, err)
 	}
-	text, err := tx.Stage().Text(0)
-	if err != nil || text != "更新" {
-		t.Fatalf("unicode staged text = %q err=%v", text, err)
+	changes, changeErr := tx.Changes()
+	if changeErr != nil || len(changes) != 1 || changes[0].Path != "text/name.str" || changes[0].AfterText != "更新" {
+		t.Fatalf("unicode staged change = %#v err=%v", changes, changeErr)
 	}
 	if archive.ModifiedCount() != 0 {
 		t.Fatal("unicode runtime changed live archive")
@@ -234,8 +238,8 @@ func TestGojaRuntimeRollbackAndSecurity(t *testing.T) {
 	// The service owns rollback by dropping the transaction; the staged change
 	// is intentionally observable here so the test proves it never crossed the
 	// transaction boundary.
-	if indexes, changedErr := tx.ChangedIndexes(); changedErr != nil || len(indexes) != 1 {
-		t.Fatalf("staged rollback candidate = %#v err=%v", indexes, changedErr)
+	if changes, changedErr := tx.Changes(); changedErr != nil || len(changes) != 1 {
+		t.Fatalf("staged rollback candidate = %#v err=%v", changes, changedErr)
 	}
 }
 
@@ -265,5 +269,206 @@ func TestPathPatternMatch(t *testing.T) {
 		if got := PathPatternMatch(test.pattern, test.value); got != test.want {
 			t.Errorf("PathPatternMatch(%q, %q) = %v, want %v", test.pattern, test.value, got, test.want)
 		}
+	}
+}
+
+func TestGojaRuntimeCreateCopyDeleteFiles(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const created = pvf.createFile("equipment/new.equ", pvf.types.script, "[price]\n500");
+	if (!created || created.path !== "equipment/new.equ") throw new Error("create did not return a handle");
+	if (created.type !== pvf.types.script) throw new Error("wrong created type");
+	const found = pvf.find("equipment/new.equ");
+	if (!found || !found.text().includes("500")) throw new Error("created file not found");
+
+	const copied = pvf.copyFile("equipment/a.equ", "equipment/copy.equ");
+	if (!copied || copied.type !== pvf.types.script) throw new Error("copy lost its data type");
+	if (!pvf.find("equipment/copy.equ").text().includes("100")) throw new Error("copy content mismatch");
+
+	let rejected = false;
+	try { pvf.copyFile("equipment/a.equ", "equipment/b.equ"); } catch { rejected = true; }
+	if (!rejected) throw new Error("copy overwrote without the overwrite flag");
+
+	pvf.copyFile("equipment/a.equ", "equipment/b.equ", true);
+	if (!pvf.find("equipment/b.equ").text().includes("100")) throw new Error("overwrite did not apply");
+
+	if (pvf.deleteFile("equipment/b.equ") !== true) throw new Error("delete reported no removal");
+	if (pvf.find("equipment/b.equ") !== null) throw new Error("deleted file still resolves");
+	if (pvf.deleteFile("equipment/b.equ") !== false) throw new Error("second delete should be a no-op");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+
+	changes, err := tx.Changes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := make(map[string]string, len(changes))
+	for _, change := range changes {
+		kinds[change.Normalized] = change.Kind
+	}
+	if kinds["equipment/new.equ"] != pvf.ChangeKindCreated {
+		t.Fatalf("new file kind = %q changes=%#v", kinds["equipment/new.equ"], changes)
+	}
+	if kinds["equipment/copy.equ"] != pvf.ChangeKindCreated {
+		t.Fatalf("copy kind = %q changes=%#v", kinds["equipment/copy.equ"], changes)
+	}
+	// b.equ was overwritten first and then deleted, so the final intent is a
+	// removal; the overwrite itself was asserted inside the script.
+	if kinds["equipment/b.equ"] != pvf.ChangeKindDeleted {
+		t.Fatalf("deleted file kind = %q changes=%#v", kinds["equipment/b.equ"], changes)
+	}
+	if archive.ModifiedCount() != 0 {
+		t.Fatalf("runtime changed live archive: %d", archive.ModifiedCount())
+	}
+}
+
+func TestGojaRuntimeDeleteThenCreateSamePath(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	pvf.deleteFile("equipment/a.equ");
+	const recreated = pvf.createFile("equipment/a.equ", pvf.types.script, "[price]\n999");
+	if (recreated.text().includes("100")) throw new Error("recreated file kept old content");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	changes, err := tx.Changes()
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("changes = %#v err=%v", changes, err)
+	}
+	if changes[0].Kind != pvf.ChangeKindCreated || !strings.Contains(changes[0].AfterText, "999") {
+		t.Fatalf("recreated change = %#v", changes[0])
+	}
+}
+
+func TestGojaRuntimeCreateThenDeleteLeavesNoChange(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	pvf.createFile("equipment/temporary.equ", pvf.types.script, "[price]\n1");
+	if (pvf.deleteFile("equipment/temporary.equ") !== true) throw new Error("delete failed");
+	if (pvf.modifiedCount !== 0) throw new Error("create+delete should net to zero, got " + pvf.modifiedCount);
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	if changes, changeErr := tx.Changes(); changeErr != nil || len(changes) != 0 {
+		t.Fatalf("create+delete staged a change = %#v err=%v", changes, changeErr)
+	}
+	// The live archive must not gain or lose an entry on commit.
+	before := archive.FileCount()
+	if _, err := tx.Commit(map[string]struct{}{"equipment/temporary.equ": {}}); err != nil {
+		t.Fatal(err)
+	}
+	if archive.FileCount() != before {
+		t.Fatalf("file count = %d want %d", archive.FileCount(), before)
+	}
+}
+
+func TestGojaRuntimeStaleHandleAfterDelete(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const stale = pvf.find("equipment/a.equ");
+	pvf.deleteFile("equipment/b.equ");
+	let rejected = false;
+	try { stale.setText("should not land"); } catch (error) {
+		if (!String(error).includes("句柄已失效")) throw error;
+		rejected = true;
+	}
+	if (!rejected) throw new Error("stale handle was accepted after a delete");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	changes, err := tx.Changes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range changes {
+		if change.Normalized == "equipment/a.equ" {
+			t.Fatalf("stale handle mutated an unrelated entry: %#v", change)
+		}
+	}
+}
+
+func TestGojaRuntimeMultipleDeletesUsePathIdentity(t *testing.T) {
+	built := pvf.New()
+	for _, path := range []string{"equipment/a.equ", "equipment/b.equ", "equipment/c.equ"} {
+		if _, err := built.AddFileText(path, "[price]\n1", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var data bytes.Buffer
+	if err := built.SaveTo(&data); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := pvf.Parse(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	// Delete from the middle outward so every removal renumbers later entries;
+	// path-addressed staging must still remove exactly the requested paths.
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	pvf.deleteFile("equipment/a.equ");
+	pvf.deleteFile("equipment/c.equ");
+	if (pvf.find("equipment/a.equ") !== null || pvf.find("equipment/c.equ") !== null) {
+		throw new Error("deleted paths still resolve");
+	}
+	const survivor = pvf.find("equipment/b.equ");
+	if (!survivor) throw new Error("survivor disappeared");
+	survivor.setText("[price]\n77");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	if _, err := tx.Commit(map[string]struct{}{
+		"equipment/a.equ": {},
+		"equipment/c.equ": {},
+		"equipment/b.equ": {},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := archive.Find("equipment/a.equ"); ok {
+		t.Fatal("a.equ survived commit")
+	}
+	if _, ok := archive.Find("equipment/c.equ"); ok {
+		t.Fatal("c.equ survived commit")
+	}
+	survivor, ok := archive.Find("equipment/b.equ")
+	if !ok {
+		t.Fatal("b.equ was removed by mistake")
+	}
+	if text, textErr := archive.Text(survivor); textErr != nil || !strings.Contains(text, "77") {
+		t.Fatalf("survivor text = %q err=%v", text, textErr)
+	}
+}
+
+func TestGojaRuntimeCreateRejectsInvalidPaths(t *testing.T) {
+	archive := scriptTestArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	for (const path of ["", "  ", "../escape.equ", "dir/../escape.equ", "equipment/a.equ"]) {
+		let rejected = false;
+		try { pvf.createFile(path, pvf.types.script); } catch { rejected = true; }
+		if (!rejected) throw new Error("create accepted " + JSON.stringify(path));
+	}
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+	if changes, changeErr := tx.Changes(); changeErr != nil || len(changes) != 0 {
+		t.Fatalf("invalid create staged a change = %#v err=%v", changes, changeErr)
 	}
 }

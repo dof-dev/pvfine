@@ -32,6 +32,8 @@ const (
 	ScriptErrorTimeout   = "timeout"
 
 	ScriptFileChanged = "changed"
+	ScriptFileAdded   = "added"
+	ScriptFileDeleted = "deleted"
 	ScriptFileSkipped = "skipped"
 	ScriptFileError   = "error"
 
@@ -164,14 +166,17 @@ type ScriptPreviewPage struct {
 }
 
 type ScriptFilePreview struct {
-	FileIndex     int32            `json:"fileIndex"`
-	Path          string           `json:"path"`
-	Status        string           `json:"status"`
-	MatchCount    int              `json:"matchCount"`
-	Reason        string           `json:"reason,omitempty"`
-	Warnings      []string         `json:"warnings,omitempty"`
-	Diff          []*BatchDiffLine `json:"diff,omitempty"`
-	DiffTruncated bool             `json:"diffTruncated,omitempty"`
+	// ChangeKey is the stable selection key. Structural changes shift entry
+	// indexes, so the frontend must select rows by this key, not FileIndex.
+	ChangeKey  string           `json:"changeKey"`
+	FileIndex  int32            `json:"fileIndex"`
+	Path       string           `json:"path"`
+	Status     string           `json:"status"`
+	MatchCount int              `json:"matchCount"`
+	Reason     string           `json:"reason,omitempty"`
+	Warnings   []string         `json:"warnings,omitempty"`
+	Diff       []*BatchDiffLine `json:"diff,omitempty"`
+	DiffTruncated bool          `json:"diffTruncated,omitempty"`
 }
 
 type ScriptApplyResult struct {
@@ -179,6 +184,9 @@ type ScriptApplyResult struct {
 	FileIndexes   []int32 `json:"fileIndexes"`
 	ModifiedCount int     `json:"modifiedCount"`
 	Revision      uint64  `json:"revision"`
+	// Structural reports whether the commit changed the entry table, which
+	// means every previously previewed file index is now stale.
+	Structural bool `json:"structural"`
 }
 
 type ScriptFile struct {
@@ -201,6 +209,8 @@ type scriptPlan struct {
 type scriptPlanRow struct {
 	preview   ScriptFilePreview
 	afterText string
+	// change is the staged mutation used to build the commit payload.
+	change scriptengine.Change
 }
 
 // Compile validates script syntax without reading the current archive.
@@ -338,10 +348,10 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 			return result, nil
 		}
 
-		changedIndexes, changedErr := tx.ChangedIndexes()
-		if changedErr != nil {
+		changes, changesErr := tx.Changes()
+		if changesErr != nil {
 			tx.Rollback()
-			return ScriptRunResult{}, changedErr
+			return ScriptRunResult{}, changesErr
 		}
 		plan := &scriptPlan{
 			id:            nextScriptPlanID(),
@@ -350,40 +360,40 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 			revision:      revision,
 			transaction:   tx,
 			scannedFiles:  runtimeResult.ScannedFiles,
-			modifiedFiles: len(changedIndexes),
-			rows:          make([]scriptPlanRow, 0, len(changedIndexes)),
+			modifiedFiles: len(changes),
+			rows:          make([]scriptPlanRow, 0, len(changes)),
 		}
-		for _, index := range changedIndexes {
-			beforeText, beforeErr := tx.OriginalText(index)
-			if beforeErr != nil {
-				tx.Rollback()
-				return ScriptRunResult{}, beforeErr
+		for _, change := range changes {
+			status := ScriptFileChanged
+			switch change.Kind {
+			case pvf.ChangeKindCreated:
+				status = ScriptFileAdded
+			case pvf.ChangeKindDeleted:
+				status = ScriptFileDeleted
 			}
-			afterText, afterErr := tx.Stage().Text(index)
-			if afterErr != nil {
-				tx.Rollback()
-				return ScriptRunResult{}, afterErr
+			row := scriptPlanRow{change: change, afterText: change.AfterText}
+			row.preview = ScriptFilePreview{
+				ChangeKey:  change.Normalized,
+				Path:       change.Path,
+				Status:     status,
+				MatchCount: 1,
 			}
-			plan.rows = append(plan.rows, scriptPlanRow{
-				preview: ScriptFilePreview{
-					FileIndex:  index,
-					Path:       tx.Stage().Path(index),
-					Status:     ScriptFileChanged,
-					MatchCount: 1,
-					Diff:       nil,
-				},
-				afterText: afterText,
-			})
-			plan.rows[len(plan.rows)-1].preview.Diff,
-				plan.rows[len(plan.rows)-1].preview.DiffTruncated = buildBatchDiff(beforeText, afterText)
+			if row.preview.Path == "" {
+				row.preview.Path = change.Normalized
+			}
+			// Structural rows have no stable entry index; only an in-place
+			// payload edit can reference the entry it came from.
+			row.preview.FileIndex = -1
+			if status == ScriptFileChanged {
+				if index, ok := a.Find(change.Path); ok {
+					row.preview.FileIndex = index
+				}
+			}
+			row.preview.Diff, row.preview.DiffTruncated = buildBatchDiff(change.BeforeText, change.AfterText)
+			plan.rows = append(plan.rows, row)
 		}
 		sort.SliceStable(plan.rows, func(left, right int) bool {
-			leftPath := strings.ToLower(plan.rows[left].preview.Path)
-			rightPath := strings.ToLower(plan.rows[right].preview.Path)
-			if leftPath != rightPath {
-				return leftPath < rightPath
-			}
-			return plan.rows[left].preview.FileIndex < plan.rows[right].preview.FileIndex
+			return plan.rows[left].preview.ChangeKey < plan.rows[right].preview.ChangeKey
 		})
 
 		s.c.mu.Lock()
@@ -460,8 +470,10 @@ func (s *ScriptService) PreviewPage(planID string, cursor, limit int) (*ScriptPr
 	}, nil
 }
 
-// Apply commits exactly the selected changed rows from one script plan.
-func (s *ScriptService) Apply(planID string, fileIndexes []int32) (ScriptApplyResult, error) {
+// Apply commits exactly the selected changed rows from one script plan. Rows
+// are addressed by ChangeKey because created and deleted entries shift the
+// entry indexes the other rows were previewed with.
+func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyResult, error) {
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
@@ -478,50 +490,53 @@ func (s *ScriptService) Apply(planID string, fileIndexes []int32) (ScriptApplyRe
 		s.c.mu.Unlock()
 		return ScriptApplyResult{}, err
 	}
-	if len(fileIndexes) == 0 {
+	if len(changeKeys) == 0 {
 		s.c.mu.Unlock()
 		return ScriptApplyResult{}, fmt.Errorf("没有选中的脚本变更文件")
 	}
-	rowsByIndex := make(map[int32]*scriptPlanRow, len(plan.rows))
+	rowsByKey := make(map[string]*scriptPlanRow, len(plan.rows))
 	for index := range plan.rows {
 		row := &plan.rows[index]
-		rowsByIndex[row.preview.FileIndex] = row
+		rowsByKey[row.preview.ChangeKey] = row
 	}
-	selected := make(map[int32]struct{}, len(fileIndexes))
-	ordered := make([]int32, 0, len(fileIndexes))
-	for _, index := range fileIndexes {
-		if _, exists := selected[index]; exists {
+	selected := make(map[string]struct{}, len(changeKeys))
+	ordered := make([]string, 0, len(changeKeys))
+	paths := make([]string, 0, len(changeKeys))
+	for _, key := range changeKeys {
+		if _, exists := selected[key]; exists {
 			continue
 		}
-		row, exists := rowsByIndex[index]
-		if !exists || row.preview.Status != ScriptFileChanged {
+		row, exists := rowsByKey[key]
+		if !exists {
 			s.c.mu.Unlock()
-			return ScriptApplyResult{}, fmt.Errorf("文件 %d 不是可应用的脚本结果", index)
+			return ScriptApplyResult{}, fmt.Errorf("变更 %q 不是可应用的脚本结果", key)
 		}
-		selected[index] = struct{}{}
-		ordered = append(ordered, index)
+		selected[key] = struct{}{}
+		ordered = append(ordered, key)
+		paths = append(paths, row.change.Path)
 	}
 	var before pvfversion.ContentSnapshot
 	if s.c.versionRepo != nil {
-		paths := make([]string, 0, len(ordered))
-		for _, index := range ordered {
-			paths = append(paths, plan.archive.Path(index))
-		}
 		before, err = pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
 		if err != nil {
 			s.c.mu.Unlock()
 			return ScriptApplyResult{}, err
 		}
 	}
-	if err := plan.transaction.Commit(selected); err != nil {
+	structural, err := plan.transaction.Commit(selected)
+	if err != nil {
 		s.c.mu.Unlock()
 		return ScriptApplyResult{}, err
 	}
-	if s.c.versionRepo != nil {
-		paths := make([]string, 0, len(ordered))
-		for _, index := range ordered {
-			paths = append(paths, plan.archive.Path(index))
+	// A structural commit changes the entry table, so every derived index must
+	// be rebuilt before the new tree can be served.
+	if structural {
+		if err := s.c.rebuildArchiveIndexesLocked(plan.archive); err != nil {
+			s.c.mu.Unlock()
+			return ScriptApplyResult{}, err
 		}
+	}
+	if s.c.versionRepo != nil {
 		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
 		if snapshotErr != nil {
 			s.c.mu.Unlock()
@@ -536,11 +551,23 @@ func (s *ScriptService) Apply(planID string, fileIndexes []int32) (ScriptApplyRe
 			return ScriptApplyResult{}, recordErr
 		}
 	}
-	if s.c.editorText == nil {
-		s.c.editorText = make(map[int32]string)
-	}
-	for _, index := range ordered {
-		s.c.editorText[index] = rowsByIndex[index].afterText
+	// After a structural commit every index is rebuilt, so resolve each
+	// surviving path against the new table instead of the previewed index.
+	appliedIndexes := make([]int32, 0, len(ordered))
+	for _, key := range ordered {
+		row := rowsByKey[key]
+		if row.preview.Status != ScriptFileChanged {
+			continue
+		}
+		index, ok := plan.archive.Find(row.change.Path)
+		if !ok {
+			continue
+		}
+		if s.c.editorText == nil {
+			s.c.editorText = make(map[int32]string)
+		}
+		s.c.editorText[index] = row.afterText
+		appliedIndexes = append(appliedIndexes, index)
 	}
 	s.c.batchRevision++
 	s.c.batchPlan = nil
@@ -555,20 +582,25 @@ func (s *ScriptService) Apply(planID string, fileIndexes []int32) (ScriptApplyRe
 
 	emitEvent("archive:advanced-search-stale", map[string]any{"script": true})
 	emitEvent("archive:batch-applied", map[string]any{
-		"fileIndexes": ordered, "modifiedCount": info.ModifiedCount,
-		"revision": revision, "source": "script",
+		"fileIndexes": appliedIndexes, "modifiedCount": info.ModifiedCount,
+		"revision": revision, "source": "script", "structural": structural,
 	})
 	emitEvent("archive:script-applied", map[string]any{
-		"fileIndexes": ordered, "modifiedCount": info.ModifiedCount,
-		"revision": revision,
+		"fileIndexes": appliedIndexes, "modifiedCount": info.ModifiedCount,
+		"revision": revision, "structural": structural,
 	})
+	// Only a structural commit changes the entry table, so the tree and open
+	// tabs must be re-resolved; a payload-only apply keeps every index valid.
+	if structural {
+		emitEvent("archive:changed", info)
+	}
 	if versioned {
 		emitVersionState(s.c, "script-applied")
 	}
 	s.c.startSearchIndex()
 	return ScriptApplyResult{
-		AppliedFiles: int32(len(ordered)), FileIndexes: ordered,
-		ModifiedCount: info.ModifiedCount, Revision: revision,
+		AppliedFiles: int32(len(ordered)), FileIndexes: appliedIndexes,
+		ModifiedCount: info.ModifiedCount, Revision: revision, Structural: structural,
 	}, nil
 }
 

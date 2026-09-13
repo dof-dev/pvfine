@@ -16,10 +16,12 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Apply commits exactly the selected changed rows from one script plan.
+ * Apply commits exactly the selected changed rows from one script plan. Rows
+ * are addressed by ChangeKey because created and deleted entries shift the
+ * entry indexes the other rows were previewed with.
  */
-export function Apply(planID: string, fileIndexes: number[] | null): $CancellablePromise<$models.ScriptApplyResult> {
-    return $Call.ByID(1069361246, planID, fileIndexes);
+export function Apply(planID: string, changeKeys: string[] | null): $CancellablePromise<$models.ScriptApplyResult> {
+    return $Call.ByID(1069361246, planID, changeKeys);
 }
 
 /**
