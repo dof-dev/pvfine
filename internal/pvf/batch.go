@@ -722,6 +722,7 @@ func (a *Archive) cloneForBatch() *Archive {
 		data:                    a.data,
 		hdr:                     a.hdr,
 		guard:                   a.guard,
+		keys:                    a.keys,
 		sourcePath:              a.sourcePath,
 		tableOff:                a.tableOff,
 		hashOff:                 a.hashOff,

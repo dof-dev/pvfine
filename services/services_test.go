@@ -762,7 +762,7 @@ func TestArchiveServiceTreeAndSearch(t *testing.T) {
 	c := testArchive(t)
 	svc := NewArchiveService(c)
 
-	if svc.Info().FileCount != 1008171 {
+	if svc.Info().FileCount != 1057625 {
 		t.Fatalf("file count = %d", svc.Info().FileCount)
 	}
 	root, err := svc.ListChildren("")

@@ -75,6 +75,6 @@ func (a *Archive) buildHashTable() []byte {
 		buf = append(buf, v[:]...)
 	}
 
-	crypt(keyHash, magicMain, buf)
+	cryptSeed(a.keys.hash.seed, a.keys.hash.magic, buf)
 	return buf
 }

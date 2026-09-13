@@ -43,6 +43,7 @@ type Archive struct {
 	data  []byte // original file bytes (nil for archives built from scratch)
 	hdr   Header
 	guard bool
+	keys  keySet // per-section LCG seeds (standard or recovered)
 
 	sourcePath string // file the archive was opened from
 
@@ -107,32 +108,51 @@ func Parse(data []byte) (*Archive, error) {
 	// The guard XOR only touches bytes [24:28] (the FileCount field), so the
 	// signature alone cannot tell the variants apart — the decoded section
 	// layout must validate as well.
+	a.keys = standardKeys()
+	found := false
 	for _, guard := range [...]bool{true, false} {
 		b := raw
 		if guard {
 			applyGuard(b[:])
 		}
-		crypt(keyHead, magicMain, b[:])
-		if binary.LittleEndian.Uint32(b[:]) != MagicSignature {
-			continue
+		for _, magic := range [...]uint32{magicMain, magicAlt} {
+			bb := b
+			crypt(keyHead, magic, bb[:])
+			if binary.LittleEndian.Uint32(bb[:]) != MagicSignature {
+				continue
+			}
+			hdr := decodeHeader(bb)
+			if hdr.FileCount < 0 || hdr.Padding < 0 || hdr.BodySize < 0 ||
+				hdr.GroupCount < 0 || hdr.HashTableSize < 0 || hdr.NameTableSize < 0 {
+				continue
+			}
+			declared := int64(headerSize) + int64(hdr.FileCount)*0x18 +
+				int64(hdr.HashTableSize) + int64(hdr.NameTableSize) +
+				int64(hdr.GroupCount)*8 + int64(hdr.BodySize)
+			if declared > int64(len(data)) {
+				continue
+			}
+			a.guard = guard
+			a.hdr = hdr
+			a.keys.header = sectionKey{keySeed(keyHead), magic}
+			found = true
+			break
 		}
-		hdr := decodeHeader(b)
-		if hdr.FileCount < 0 || hdr.Padding < 0 || hdr.BodySize < 0 ||
-			hdr.GroupCount < 0 || hdr.HashTableSize < 0 || hdr.NameTableSize < 0 {
-			continue
+		if found {
+			break
 		}
-		declared := headerSize + int(hdr.FileCount)*0x18 +
-			int(hdr.HashTableSize) + int(hdr.NameTableSize) +
-			int(hdr.GroupCount)*8 + int(hdr.BodySize)
-		if declared > len(data) {
-			continue
+	}
+	if !found {
+		// Variant archives derive their section seeds differently. The header
+		// is recovered from the signature plus the section-size equation, then
+		// the remaining seeds are recovered from the sections themselves.
+		hdr, guard, keys, ok := recoverHeader(data)
+		if !ok {
+			return nil, ErrBadSignature
 		}
 		a.guard = guard
 		a.hdr = hdr
-		break
-	}
-	if a.hdr.Signature != MagicSignature {
-		return nil, ErrBadSignature
+		a.keys = keys
 	}
 
 	// Section layout.
@@ -170,9 +190,19 @@ func Parse(data []byte) (*Archive, error) {
 
 	// GRPI (cumulative compressed chunk sizes).
 	if a.grpiSize > 0 {
+		grpiRaw := data[a.grpiOff : a.grpiOff+a.grpiSize]
 		grpi := make([]byte, a.grpiSize)
-		copy(grpi, data[a.grpiOff:a.grpiOff+a.grpiSize])
-		crypt(keyGrpi, magicMain, grpi)
+		copy(grpi, grpiRaw)
+		cryptSeed(a.keys.grpi.seed, a.keys.grpi.magic, grpi)
+		if !a.grpiLooksSane(grpi) {
+			// Non-standard seed: recover it from the BodySize anchor and the
+			// monotonicity invariants of the cumulative size table.
+			if key, ok := recoverGRPISeed(grpiRaw, int(a.hdr.GroupCount), a.hdr.BodySize); ok {
+				a.keys.grpi = key
+				copy(grpi, grpiRaw)
+				cryptSeed(key.seed, key.magic, grpi)
+			}
+		}
 		a.groups = make([]groupItem, a.hdr.GroupCount)
 		for i := range a.groups {
 			a.groups[i].compSize = int32(binary.LittleEndian.Uint32(grpi[i*8:]))
@@ -182,6 +212,15 @@ func Parse(data []byte) (*Archive, error) {
 
 	// String pools.
 	a.parseNameTable(data[a.nameOff : a.nameOff+a.nameSize])
+
+	// Body seed: for variants the standard key fails, and chunk 0's zlib
+	// header plus GRPI's original size let it be recovered from the data.
+	if !a.bodyKeyWorks() {
+		if key, ok := recoverZlibSeed(a.firstChunkSpan(), a.firstChunkOrigSize()); ok {
+			a.keys.body = key
+			a.keys.bodyRecovered = true
+		}
+	}
 
 	// Path index (case-insensitive, mirrors the reference GM tool).
 	for i := range a.items {
@@ -198,6 +237,7 @@ func New() *Archive {
 	renderer := defaultScriptRenderer()
 	return &Archive{
 		hdr:                     Header{Signature: MagicSignature},
+		keys:                    standardKeys(),
 		strA:                    []byte{0},
 		strW:                    []byte{0, 0},
 		poolsDirty:              true,

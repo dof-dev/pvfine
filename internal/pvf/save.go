@@ -215,7 +215,7 @@ func (a *Archive) rebuild() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		crypt(keyBody, magicMain, enc)
+		cryptSeed(a.keys.body.seed, a.keys.body.magic, enc)
 		cumulative += int32(len(enc))
 		outs = append(outs, chunkOut{enc: enc, origSize: int32(len(rebuilt)), compSize: cumulative})
 	}
@@ -236,7 +236,7 @@ func (a *Archive) rebuild() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		crypt(keyBody, magicMain, enc)
+		cryptSeed(a.keys.body.seed, a.keys.body.magic, enc)
 		cumulative += int32(len(enc))
 		outs = append(outs, chunkOut{enc: enc, origSize: int32(nb.Len()), compSize: cumulative})
 	}
@@ -272,7 +272,7 @@ func (a *Archive) rebuild() ([]byte, error) {
 		binary.LittleEndian.PutUint32(grpi[i*8:], uint32(outs[i].compSize))
 		binary.LittleEndian.PutUint32(grpi[i*8+4:], uint32(outs[i].origSize))
 	}
-	crypt(keyGrpi, magicMain, grpi)
+	cryptSeed(a.keys.grpi.seed, a.keys.grpi.magic, grpi)
 
 	// Header.
 	a.hdr.FileCount = int32(len(a.items))
@@ -281,7 +281,7 @@ func (a *Archive) rebuild() ([]byte, error) {
 	a.hdr.HashTableSize = int32(len(hashBytes))
 	a.hdr.NameTableSize = int32(len(nameBytes))
 	hdr := encodeHeader(a.hdr)
-	crypt(keyHead, magicMain, hdr)
+	cryptSeed(a.keys.header.seed, a.keys.header.magic, hdr)
 	if a.guard {
 		applyGuard(hdr)
 	}
@@ -419,7 +419,7 @@ func (a *Archive) adoptRebuilt(out []byte) {
 	a.groups = make([]groupItem, a.hdr.GroupCount)
 	grpi := make([]byte, a.grpiSize)
 	copy(grpi, out[a.grpiOff:a.grpiOff+a.grpiSize])
-	crypt(keyGrpi, magicMain, grpi)
+	cryptSeed(a.keys.grpi.seed, a.keys.grpi.magic, grpi)
 	for i := range a.groups {
 		a.groups[i].compSize = int32(binary.LittleEndian.Uint32(grpi[i*8:]))
 		a.groups[i].origSize = int32(binary.LittleEndian.Uint32(grpi[i*8+4:]))

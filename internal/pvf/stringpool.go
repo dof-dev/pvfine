@@ -15,9 +15,9 @@ import (
 func (a *Archive) parseNameTable(nb []byte) {
 	idx := 8
 	for _, sec := range [...]struct {
-		key  string
+		key  sectionKey
 		xorC uint32
-	}{{keyStrA, xorStrA}, {keyStrW, xorStrW}} {
+	}{{a.keys.strA, xorStrA}, {a.keys.strW, xorStrW}} {
 		if idx+8 > len(nb) {
 			return
 		}
@@ -31,13 +31,30 @@ func (a *Archive) parseNameTable(nb []byte) {
 		enc := make([]byte, encSize)
 		copy(enc, nb[idx:idx+int(encSize)])
 		idx += int(encSize)
-		crypt(sec.key, magicAlt, enc)
+		rawLen := int(int32(cnt2 ^ uint32(encSize)))
+		cryptSeed(sec.key.seed, sec.key.magic, enc)
 		raw, err := zlibDecompress(enc)
 		if err != nil {
-			continue
+			// Non-standard seed: the pool is a zlib stream, so its header gives
+			// two known plaintext bytes and rawLen pins the inflated length.
+			enc2 := make([]byte, encSize)
+			copy(enc2, nb[idx-int(encSize):idx])
+			recovered, ok := recoverZlibSeed(enc2, rawLen)
+			if !ok {
+				continue
+			}
+			cryptSeed(recovered.seed, recovered.magic, enc2)
+			raw, err = zlibDecompress(enc2)
+			if err != nil {
+				continue
+			}
+			if sec.xorC == xorStrA {
+				a.keys.strA = recovered
+			} else {
+				a.keys.strW = recovered
+			}
 		}
-		_ = cnt2 // rawLen ^ encSize; zlib decoder validates the real length
-		if sec.key == keyStrA {
+		if sec.xorC == xorStrA {
 			a.strA = raw
 		} else {
 			a.strW = raw

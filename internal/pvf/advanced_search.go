@@ -272,8 +272,41 @@ func (a *Archive) decompressChunk(ci int32) ([]byte, error) {
 	}
 	enc := make([]byte, size)
 	copy(enc, a.data[start:end])
-	crypt(keyBody, magicMain, enc)
+	cryptSeed(a.keys.body.seed, a.keys.body.magic, enc)
+	raw, err := zlibDecompress(enc)
+	if err == nil {
+		return raw, nil
+	}
+	if a.keys.bodyRecovered {
+		return nil, err
+	}
+	// Non-standard seed: chunk 0's zlib header gives two known plaintext bytes
+	// and GRPI pins the inflated length, so the Body seed is recoverable once.
+	first := a.firstChunkSpan()
+	if first == nil {
+		return nil, err
+	}
+	key, ok := recoverZlibSeed(first, int(a.groups[0].origSize))
+	if !ok {
+		return nil, err
+	}
+	a.keys.body = key
+	a.keys.bodyRecovered = true
+	copy(enc, a.data[start:end])
+	cryptSeed(key.seed, key.magic, enc)
 	return zlibDecompress(enc)
+}
+
+// firstChunkSpan returns the raw encrypted bytes of chunk 0.
+func (a *Archive) firstChunkSpan() []byte {
+	if len(a.groups) == 0 || a.data == nil {
+		return nil
+	}
+	end := a.bodyOff + int(a.groups[0].compSize)
+	if a.bodyOff < 0 || end > len(a.data) || end <= a.bodyOff {
+		return nil
+	}
+	return a.data[a.bodyOff:end]
 }
 
 func (a *Archive) stringPoolEntries() []stringPoolEntry {

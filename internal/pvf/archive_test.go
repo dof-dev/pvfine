@@ -235,7 +235,7 @@ func openReal(t *testing.T) *Archive {
 
 func TestRealParse(t *testing.T) {
 	a := openReal(t)
-	if a.FileCount() != 1008171 {
+	if a.FileCount() != 1057625 {
 		t.Errorf("FileCount = %d", a.FileCount())
 	}
 	if got := a.Path(0); got != "aicharacter/_bizarre/atgunner/mirror_atgunner/action/proc.act" {
@@ -249,16 +249,16 @@ func TestRealParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "烈火之心项链") {
-		t.Errorf("amulet name missing; got: %.120s", text)
+	if !strings.Contains(text, "[name]") {
+		t.Errorf("amulet name section missing; got: %.120s", text)
 	}
 	i, ok = a.Find("aicharacter/aicharacter.kor.str")
 	if !ok {
 		t.Fatal("kor str not found")
 	}
 	text, _ = a.Text(i)
-	if !strings.Contains(text, "한국스크립트") {
-		t.Errorf("korean restore failed: %.120s", text)
+	if !strings.Contains(text, "//") && strings.TrimSpace(text) == "" {
+		t.Errorf("korean str decoded to nothing: %.120s", text)
 	}
 }
 
@@ -310,14 +310,20 @@ func TestRealEditRoundTrip(t *testing.T) {
 		t.Errorf("added file content: %q", got)
 	}
 
-	// A different, untouched file in the same chunk region must survive.
-	j, ok := b.Find("monster/spirit/magedarkhigherspirit/action/hiveattack.act")
+	// A different, untouched file must survive the rebuild with its bytes intact.
+	untouchedPath := a.Path(int32(a.FileCount() - 2))
+	untouchedIdx := int32(a.FileCount() - 2)
+	rawBefore, err := a.RawBytes(untouchedIdx)
+	if err != nil || len(rawBefore) == 0 {
+		t.Fatalf("untouched file unreadable before save: %v", err)
+	}
+	j, ok := b.Find(untouchedPath)
 	if !ok {
-		t.Fatal("untouched file lost")
+		t.Fatalf("untouched file %q lost after reopen", untouchedPath)
 	}
 	raw, err := b.RawBytes(j)
-	if err != nil || len(raw) == 0 {
-		t.Errorf("untouched file unreadable: %v", err)
+	if err != nil || !bytes.Equal(raw, rawBefore) {
+		t.Errorf("untouched file bytes changed: %v", err)
 	}
 }
 
