@@ -259,6 +259,48 @@ func TestListFileAnnotationsResolveNamesAndTargets(t *testing.T) {
 	}
 }
 
+func TestListFileAnnotationsIgnoreNestedNameSection(t *testing.T) {
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"equipment": {
+				ListPath: "equipment/equipment.lst", IDToken: 0, PathToken: 1,
+				RecordTokens: 2, NameSection: "name",
+			},
+		},
+		Rules: []annotationrules.Rule{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := pvf.New()
+	listIndex := mustAddText(t, a, "equipment/equipment.lst", "1008 `character/nested-first.equ` 1009 `character/nested-only.equ`", pvf.TypeScript)
+	mustAddText(t, a, "equipment/character/nested-first.equ", "[info]\n[name]\n`嵌套名`\n[/info]\n[name]\n`顶层名`", pvf.TypeScript)
+	mustAddText(t, a, "equipment/character/nested-only.equ", "[info]\n[name]\n`仅嵌套名`\n[/info]", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	meta, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Annotations) != 2 {
+		t.Fatalf("list annotations = %#v", meta.Annotations)
+	}
+	if meta.Annotations[0].Title != "顶层名" {
+		t.Fatalf("nested-first title = %q, want 顶层名", meta.Annotations[0].Title)
+	}
+	// Without a top-level [name] the link stays useful via the path fallback
+	// instead of borrowing the nested section's value.
+	if title := meta.Annotations[1].Title; !strings.Contains(title, "nested-only.equ") {
+		t.Fatalf("nested-only title = %q, want path fallback", title)
+	}
+}
+
 func TestUnindexedListFileLinksResolveRelativePaths(t *testing.T) {
 	emptyEngine, err := annotationrules.Compile(annotationrules.Document{
 		Version: 1, Relations: map[string]annotationrules.RelationSpec{}, Rules: []annotationrules.Rule{},

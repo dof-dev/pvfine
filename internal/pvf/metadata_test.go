@@ -319,6 +319,50 @@ func TestScriptName(t *testing.T) {
 	}
 }
 
+func TestScriptNameIgnoresNestedNameSection(t *testing.T) {
+	a := New()
+
+	// A nested [name] is a sub-record name and must not shadow the file name
+	// even when it appears first in the document.
+	topLevelLast, err := a.AddFileText(
+		"npc/nested-first.npc",
+		"[info]\n[name]\n`嵌套名`\n[/info]\n[name]\n`顶层名`",
+		TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok, err := a.ScriptName(topLevelLast); err != nil || !ok || name != "顶层名" {
+		t.Fatalf("nested-first name = %q, ok = %v, err = %v", name, ok, err)
+	}
+
+	nestedOnly, err := a.AddFileText(
+		"npc/nested-only.npc",
+		"[info]\n[name]\n`嵌套名`\n[/info]\n[grade]\n1",
+		TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok, err := a.ScriptName(nestedOnly); err != nil || ok || name != "" {
+		t.Fatalf("nested-only name = %q, ok = %v, err = %v", name, ok, err)
+	}
+
+	// Sibling unpaired sections are still top level, so a legacy [name] keeps
+	// resolving without a closing tag.
+	unpaired, err := a.AddFileText(
+		"npc/unpaired.npc",
+		"[name]\n`平级名`\n[grade]\n1",
+		TypeScript,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok, err := a.ScriptName(unpaired); err != nil || !ok || name != "平级名" {
+		t.Fatalf("unpaired name = %q, ok = %v, err = %v", name, ok, err)
+	}
+}
+
 func TestScriptMetadata(t *testing.T) {
 	a := New()
 	index, err := a.AddFileText(

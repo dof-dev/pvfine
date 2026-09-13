@@ -354,7 +354,9 @@ func TestItemShopSearchAndListAnnotationsUseNPCName(t *testing.T) {
 	listIndex := mustAddText(t, a, itemShopListPath, "500 `EquipmentShop7.shp`", pvf.TypeScript)
 	shopIndex := mustAddText(t, a, "itemshop/(r)equipmentshop7.shp", "[NPC]\n200", pvf.TypeScript)
 	mustAddText(t, a, npcListPath, "200 `merchant.npc`", pvf.TypeScript)
-	npcIndex := mustAddText(t, a, "npc/merchant.npc", "[name]\n`测试商人`", pvf.TypeScript)
+	// The nested [name] is a decoy: item-shop NPC names must come from the
+	// file's top-level [name] section only.
+	npcIndex := mustAddText(t, a, "npc/merchant.npc", "[face]\n[name]\n`嵌套诱饵`\n[/face]\n[name]\n`测试商人`", pvf.TypeScript)
 	if err := c.setArchive(a); err != nil {
 		t.Fatal(err)
 	}

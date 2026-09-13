@@ -394,6 +394,7 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 	type metadataSection struct {
 		name   string
 		paired bool
+		depth  int
 		values []metadataToken
 	}
 
@@ -434,7 +435,7 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 					continue
 				}
 				sectionIndex := len(sections)
-				sections = append(sections, metadataSection{name: name, paired: pairedNames[name]})
+				sections = append(sections, metadataSection{name: name, paired: pairedNames[name], depth: depth})
 				if pairedNames[name] {
 					stack = append(stack, sectionIndex)
 				} else {
@@ -464,6 +465,11 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 		name := strings.ToLower(strings.TrimSpace(section.name))
 		switch name {
 		case "name":
+			// Entity names only come from top-level sections; a nested [name]
+			// belongs to an embedded sub-record, not to the file itself.
+			if section.depth != 0 {
+				continue
+			}
 			if metadata.HasName {
 				continue
 			}

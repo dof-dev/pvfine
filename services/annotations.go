@@ -347,9 +347,15 @@ func normalizeAnnotationContext(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// firstSectionValue returns the first direct value of a top-level section.
+// Nested sections are skipped: they describe sub-records, so their values must
+// not be mistaken for the file's own name or reference id.
 func firstSectionValue(text, section string) string {
 	for _, element := range pvf.ParseScriptView(text).Elements {
-		if element.Kind == pvf.ScriptElementToken && element.Index == 0 && strings.EqualFold(element.Section, section) {
+		if element.Kind != pvf.ScriptElementToken || element.Index != 0 || len(element.SectionPath) != 1 {
+			continue
+		}
+		if strings.EqualFold(element.Section, section) {
 			return element.Value
 		}
 	}
