@@ -678,6 +678,70 @@ func TestGojaRuntimeListRollbackLeavesLiveArchiveUntouched(t *testing.T) {
 	}
 }
 
+func TestGojaRuntimeListForEachIteratesInFileOrder(t *testing.T) {
+	// Ids are deliberately out of numeric order so the test can prove the
+	// callback follows the .lst file order rather than sorted keys.
+	built := pvf.New()
+	if _, err := built.AddFileText(
+		"equipment/equipment.lst",
+		"3000 `character/a.equ` 1008 `character/b.equ` 2000 `character/c.equ`",
+		pvf.TypeScript,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"equipment/character/a.equ", "equipment/character/b.equ", "equipment/character/c.equ"} {
+		if _, err := built.AddFileText(path, "[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var data bytes.Buffer
+	if err := built.SaveTo(&data); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := pvf.Parse(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const seen = [];
+	pvf.lst("equipment/equipment.lst").forEach((id, path) => {
+		seen.push(id + "=" + path);
+	});
+	const expected = ["3000=character/a.equ", "1008=character/b.equ", "2000=character/c.equ"];
+	if (JSON.stringify(seen) !== JSON.stringify(expected)) {
+		throw new Error("forEach order = " + JSON.stringify(seen));
+	}
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
+func TestGojaRuntimeListForEachValidationAndMutation(t *testing.T) {
+	archive := scriptListArchive(t)
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+	const lst = pvf.lst("equipment/equipment.lst");
+
+	// A missing or non-callable argument is an error.
+	let rejected = false;
+	try { lst.forEach("not-a-function"); } catch { rejected = true; }
+	if (!rejected) throw new Error("forEach accepted a non-function");
+
+	// The callback may edit the list it is iterating; the snapshot stays stable.
+	const touched = [];
+	lst.forEach((id) => { touched.push(id); lst.unset(id); });
+	if (touched.length !== 2) throw new Error("forEach did not visit every entry");
+	if (Object.keys(lst.get()).length !== 0) throw new Error("entries survived unset");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
 func TestGojaRuntimeListAcceptsNumericIDs(t *testing.T) {
 	archive := scriptListArchive(t)
 	tx := NewTransaction(archive)

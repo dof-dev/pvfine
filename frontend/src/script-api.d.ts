@@ -131,6 +131,11 @@ export interface PVFList {
   /** 返回 id 到路径的映射；同一 id 有多条记录时只保留第一条。 */
   get(): PVFListPairMap;
   /**
+   * 按 .lst 文件顺序遍历每个条目。因为 JS 对象会把整数形式的键重排，
+   * 想按文件顺序处理时应当用 forEach 而不是遍历 get() 的结果。
+   */
+  forEach(callback: (id: string, path: string) => void): void;
+  /**
    * 写入一条 id 到路径的记录：id 已存在则原地改写其路径，
    * 不存在则追加到末尾。同一 id 的重复记录会合并为一条。
    */

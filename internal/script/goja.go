@@ -458,6 +458,31 @@ func (b *gojaBindings) listObject(list *ListHandle) *goja.Object {
 		}
 		return result, nil
 	})
+	_ = setFunction(b.vm, object, "forEach", func(call goja.FunctionCall) (goja.Value, error) {
+		callback, ok := goja.AssertFunction(call.Argument(0))
+		if !ok {
+			return nil, fmt.Errorf("forEach 需要回调函数")
+		}
+		// Iterate in .lst file order, which get() cannot express because JS
+		// objects reorder integer-like keys.
+		pairs, err := list.Get()
+		if err != nil {
+			return nil, err
+		}
+		for _, pair := range pairs {
+			if err := list.api.checkContext(); err != nil {
+				return nil, err
+			}
+			if _, err := callback(
+				goja.Undefined(),
+				b.vm.ToValue(pair.ID),
+				b.vm.ToValue(pair.Path),
+			); err != nil {
+				return nil, err
+			}
+		}
+		return goja.Undefined(), nil
+	})
 	_ = setFunction(b.vm, object, "set", func(call goja.FunctionCall) (goja.Value, error) {
 		id, err := listIDString(call.Argument(0))
 		if err != nil {

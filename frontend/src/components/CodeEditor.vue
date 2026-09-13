@@ -537,6 +537,7 @@ function scriptCompletionSource(
         { label: "pvf.deleteFile", type: "function", detail: "(path) => boolean" },
         { label: "pvf.lst", type: "function", detail: "(path) => PVFList" },
         { label: "list.get", type: "function", detail: "() => Record<string, string>" },
+        { label: "list.forEach", type: "function", detail: "(id, path) => void，按文件顺序" },
         { label: "list.set", type: "function", detail: "(id, path) => void" },
         { label: "list.mset", type: "function", detail: "(entries) => void" },
         { label: "list.unset", type: "function", detail: "(id) => boolean" },
