@@ -120,9 +120,7 @@ func TestSyntheticSearchIndex(t *testing.T) {
 	if status.Skipped != 1 {
 		t.Fatalf("skipped = %d, want 1", status.Skipped)
 	}
-	if status.OpenDurationMs <= 0 || status.BuildDurationMs <= 0 {
-		t.Fatalf("timing = %#v, want positive open and index durations", status)
-	}
+	assertIndexTimingsRecorded(t, status)
 
 	byID, err := svc.Search("1008", 0, 20)
 	if err != nil {

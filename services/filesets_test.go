@@ -47,9 +47,7 @@ func TestFileSetServiceRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(loaded, want) {
 		t.Fatalf("loaded = %#v, want %#v", loaded, want)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("file mode = %v, err = %v", info.Mode().Perm(), err)
-	}
+	assertPrivateFileMode(t, path)
 }
 
 func TestFileSetServiceMissingFile(t *testing.T) {

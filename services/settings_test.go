@@ -44,9 +44,7 @@ func TestSettingsServiceDefaultsAndRoundTrip(t *testing.T) {
 	if loaded != settings {
 		t.Fatalf("loaded = %#v, want %#v", loaded, settings)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("settings mode = %v, err = %v", info.Mode().Perm(), err)
-	}
+	assertPrivateFileMode(t, path)
 }
 
 func TestSettingsServiceRejectsInvalidPlacement(t *testing.T) {

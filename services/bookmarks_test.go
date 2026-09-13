@@ -95,10 +95,7 @@ func TestBookmarkServiceRoundTripNestedGroups(t *testing.T) {
 	if custom.Entries[0].Name != "root.txt" {
 		t.Fatalf("default entry name = %#v", custom.Entries[0])
 	}
-	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("bookmark file mode = %v, err = %v", info.Mode().Perm(), err)
-	}
+	assertPrivateFileMode(t, path)
 }
 
 func TestBookmarkServiceRejectsBuiltinMutationInProduction(t *testing.T) {
