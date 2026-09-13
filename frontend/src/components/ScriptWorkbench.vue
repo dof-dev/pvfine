@@ -219,6 +219,12 @@ function isSelected(changeKey: string): boolean {
   return script.selectedKeys.has(changeKey);
 }
 
+/** 文件集整组共用一个勾选框，任意一行都映射到同一个 key。 */
+function isFileSetSelected(): boolean {
+  const key = script.fileSetSelectKey;
+  return !!key && script.selectedKeys.has(key);
+}
+
 function rowStatusLabel(status: string): string {
   if (status === "added") return "新增";
   if (status === "deleted") return "删除";
@@ -639,11 +645,46 @@ onBeforeUnmount(() => {
           </div>
           <NScrollbar class="script-preview-scroll">
             <NEmpty
-              v-if="script.rows.length === 0"
+              v-if="script.rows.length === 0 && script.fileSetRows.length === 0"
               size="small"
               :description="script.filtered ? `没有匹配「${script.filter}」的文件` : '运行脚本后显示文件 diff'"
             />
             <template v-else>
+              <div
+                v-for="row in script.fileSetRows"
+                :key="`fileset-${row.name}`"
+                class="script-preview-row"
+              >
+                <label class="script-preview-file">
+                  <input
+                    type="checkbox"
+                    :checked="isFileSetSelected()"
+                    :disabled="script.stale"
+                    @change="script.toggleSelected(row.changeKey)"
+                  />
+                  <span class="script-preview-path" :title="row.name">文件集 · {{ row.name }}</span>
+                  <NTag size="tiny" :bordered="false" :type="row.status === 'added' ? 'info' : 'success'">
+                    {{ row.status === "added" ? "新建" : "已修改" }}
+                  </NTag>
+                </label>
+                <div class="script-fileset-delta">
+                  <NText depth="3">{{ row.count }} 个路径</NText>
+                  <span v-if="row.added?.length" class="script-fileset-added">+{{ row.added.length }}</span>
+                  <span v-if="row.removed?.length" class="script-fileset-removed">-{{ row.removed.length }}</span>
+                </div>
+                <div v-if="row.added?.length" class="script-diff">
+                  <div v-for="(path, index) in row.added" :key="`add-${index}`" class="script-fileset-line script-fileset-line--add">
+                    <span class="script-diff-marker">+</span>
+                    <span class="script-diff-text">{{ path }}</span>
+                  </div>
+                </div>
+                <div v-if="row.removed?.length" class="script-diff">
+                  <div v-for="(path, index) in row.removed" :key="`remove-${index}`" class="script-fileset-line script-fileset-line--remove">
+                    <span class="script-diff-marker">-</span>
+                    <span class="script-diff-text">{{ path }}</span>
+                  </div>
+                </div>
+              </div>
               <div v-for="row in script.rows" :key="row.changeKey" class="script-preview-row">
                 <label class="script-preview-file">
                   <input
@@ -1175,6 +1216,34 @@ onBeforeUnmount(() => {
 .script-diff-line--add {
   color: var(--pvf-success-hover);
   background: var(--pvf-surface-success);
+}
+/* 文件集 diff 只有标记和路径两列，不能套用 diff 的 4 列网格。 */
+.script-fileset-delta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 5px 26px;
+  font-size: 11px;
+}
+.script-fileset-added {
+  color: var(--pvf-success-hover);
+}
+.script-fileset-removed {
+  color: var(--pvf-error-hover);
+}
+.script-fileset-line {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-height: 19px;
+  padding: 0 6px;
+}
+.script-fileset-line--add {
+  color: var(--pvf-success-hover);
+  background: var(--pvf-surface-success);
+}
+.script-fileset-line--remove {
+  color: var(--pvf-error-hover);
+  background: var(--pvf-surface-error);
 }
 .script-diff-line-number {
   padding-right: 8px;

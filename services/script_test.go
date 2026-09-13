@@ -51,7 +51,7 @@ func newScriptTestService(t *testing.T) (*core, *ScriptService, int32, int32) {
 	if err := c.setArchive(a); err != nil {
 		t.Fatal(err)
 	}
-	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir(), newFileSetService(filepath.Join(t.TempDir(), "file-sets.json")))
 	t.Cleanup(c.closeArchive)
 	return c, svc, first, second
 }
@@ -156,7 +156,7 @@ func TestScriptServicePreviewPageFiltersByPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.closeArchive)
-	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir(), newFileSetService(filepath.Join(t.TempDir(), "file-sets.json")))
 
 	result, err := svc.Run(nil, ScriptRunRequest{Source: `
 for (const file of pvf.glob("**/*")) {
@@ -243,7 +243,7 @@ func TestScriptServiceSelectableChangeKeysRespectsFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.closeArchive)
-	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir(), newFileSetService(filepath.Join(t.TempDir(), "file-sets.json")))
 
 	result, err := svc.Run(nil, ScriptRunRequest{Source: `
 for (const file of pvf.glob("**/*")) file.setText("[price]\n9");
@@ -382,7 +382,7 @@ func TestScriptServiceListEditFlowsThroughPreviewAndApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.closeArchive)
-	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir())
+	svc := newScriptService(c, scriptengine.NewGojaRuntime(), t.TempDir(), newFileSetService(filepath.Join(t.TempDir(), "file-sets.json")))
 
 	listIndex, _ := c.archive.Find("equipment/equipment.lst")
 	before, err := c.archive.RawBytes(listIndex)
@@ -513,7 +513,7 @@ func TestScriptServiceCancelsOnArchiveCloseAndRejectsConcurrentRun(t *testing.T)
 	}
 	t.Cleanup(c.closeArchive)
 	runtime := &blockingScriptRuntime{started: make(chan struct{})}
-	svc := newScriptService(c, runtime, t.TempDir())
+	svc := newScriptService(c, runtime, t.TempDir(), newFileSetService(filepath.Join(t.TempDir(), "file-sets.json")))
 	done := make(chan ScriptRunResult, 1)
 	errDone := make(chan error, 1)
 	go func() {
@@ -545,7 +545,7 @@ func TestScriptServiceCancelsOnArchiveCloseAndRejectsConcurrentRun(t *testing.T)
 
 func TestScriptDirectoryValidationAndAtomicSave(t *testing.T) {
 	directory := t.TempDir()
-	svc := newScriptService(NewCore(), scriptengine.NewGojaRuntime(), directory)
+	svc := newScriptService(NewCore(), scriptengine.NewGojaRuntime(), directory, newFileSetService(filepath.Join(directory, "file-sets.json")))
 	if err := svc.SaveScript("z.pvf.js", "z"); err != nil {
 		t.Fatal(err)
 	}

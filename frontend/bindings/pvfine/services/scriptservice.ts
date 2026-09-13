@@ -92,7 +92,8 @@ export function ScriptDirectory(): $CancellablePromise<string> {
 /**
  * SelectableChangeKeys returns the change keys of every row matching filter
  * that can be applied. The frontend uses this so "apply selected" covers the
- * whole filtered set even when only the loaded pages were ever previewed.
+ * whole filtered set even when only the loaded pages were ever previewed. The
+ * file set key is filter-independent: a fileset name is not an archive path.
  */
 export function SelectableChangeKeys(planID: string, filter: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(503571914, planID, filter);

@@ -120,6 +120,9 @@ var assets embed.FS
 func main() {
 	core := services.NewCore()
 	settingsService := services.NewSettingsService()
+	// One file set service backs both the sidebar and the script API, so a
+	// scripted change and a manual save target the same document.
+	fileSetService := services.NewFileSetService()
 
 	app := application.New(application.Options{
 		Name:             "pvfine",
@@ -129,14 +132,14 @@ func main() {
 			application.NewService(services.NewArchiveService(core)),
 			application.NewService(services.NewEditorService(core, settingsService)),
 			application.NewService(services.NewBatchService(core)),
-			application.NewService(services.NewScriptService(core)),
+			application.NewService(services.NewScriptService(core, fileSetService)),
 			application.NewService(services.NewVersionService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewRenderingService(core)),
 			application.NewService(services.NewPreviewService(core)),
 			application.NewService(services.NewImageService(core, settingsService)),
 			application.NewService(settingsService),
-			application.NewService(services.NewFileSetService()),
+			application.NewService(fileSetService),
 			application.NewService(services.NewBookmarkService()),
 		},
 		Assets: application.AssetOptions{

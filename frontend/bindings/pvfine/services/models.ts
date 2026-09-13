@@ -412,6 +412,11 @@ export interface ScriptApplyResult {
      * means every previously previewed file index is now stale.
      */
     "structural": boolean;
+
+    /**
+     * AppliedFileSets counts the file set mutations written to user config.
+     */
+    "appliedFileSets": number;
 }
 
 export interface ScriptCompileResult {
@@ -457,6 +462,27 @@ export interface ScriptFilePreview {
     "diffTruncated"?: boolean;
 }
 
+/**
+ * ScriptFileSetPreview describes one staged file set mutation.
+ */
+export interface ScriptFileSetPreview {
+    "changeKey": string;
+    "name": string;
+    "status": string;
+
+    /**
+     * Added and Removed are the path-level difference against the persisted set,
+     * so the UI can show what a setAll actually changed.
+     */
+    "added"?: string[] | null;
+    "removed"?: string[] | null;
+
+    /**
+     * Count is the resulting entry total after the change.
+     */
+    "count": number;
+}
+
 export interface ScriptLog {
     "level": string;
     "message": string;
@@ -479,6 +505,18 @@ export interface ScriptPreviewPage {
     "scannedFiles": number;
     "modifiedFiles": number;
     "rows": (ScriptFilePreview | null)[] | null;
+
+    /**
+     * FileSetRows lists the staged file set mutations. They are not diffed rows,
+     * but the apply step must show and select them alongside archive changes.
+     */
+    "fileSetRows"?: (ScriptFileSetPreview | null)[] | null;
+
+    /**
+     * FileSetSelectKey is the change key the frontend selects to apply every
+     * file set mutation, mirroring how archive rows use ChangeKey.
+     */
+    "fileSetSelectKey"?: string;
 }
 
 export interface ScriptRunRequest {
@@ -492,6 +530,7 @@ export interface ScriptRunResult {
     "planId"?: string;
     "scannedFiles": number;
     "modifiedFiles": number;
+    "fileSetChanges": number;
     "durationMs": number;
     "logs": (ScriptLog | null)[] | null;
     "error"?: ScriptError | null;

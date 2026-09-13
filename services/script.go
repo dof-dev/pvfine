@@ -57,6 +57,10 @@ type ScriptService struct {
 	c       *core
 	runtime scriptengine.ScriptRuntime
 
+	// fileSets is the same persistence-backed service the sidebar saves through,
+	// so a scripted change lands in file-sets.json instead of a private copy.
+	fileSets *FileSetService
+
 	mu      sync.Mutex
 	running bool
 	cancel  context.CancelFunc
@@ -67,19 +71,19 @@ type ScriptService struct {
 
 // NewScriptService creates the script service under the same user config root
 // used by SettingsService and the other user-managed resources.
-func NewScriptService(c *core) *ScriptService {
+func NewScriptService(c *core, fileSets *FileSetService) *ScriptService {
 	directory, err := os.UserConfigDir()
 	if err != nil {
-		return &ScriptService{c: c, runtime: scriptengine.NewGojaRuntime(), initErr: fmt.Errorf("获取脚本目录失败: %w", err)}
+		return &ScriptService{c: c, runtime: scriptengine.NewGojaRuntime(), fileSets: fileSets, initErr: fmt.Errorf("获取脚本目录失败: %w", err)}
 	}
-	return newScriptService(c, scriptengine.NewGojaRuntime(), filepath.Join(directory, "pvfine", "scripts"))
+	return newScriptService(c, scriptengine.NewGojaRuntime(), filepath.Join(directory, "pvfine", "scripts"), fileSets)
 }
 
-func newScriptService(c *core, runtime scriptengine.ScriptRuntime, directory string) *ScriptService {
+func newScriptService(c *core, runtime scriptengine.ScriptRuntime, directory string, fileSets *FileSetService) *ScriptService {
 	if runtime == nil {
 		runtime = scriptengine.NewGojaRuntime()
 	}
-	return &ScriptService{c: c, runtime: runtime, directory: directory}
+	return &ScriptService{c: c, runtime: runtime, fileSets: fileSets, directory: directory}
 }
 
 // invalidateScriptLocked aborts a running VM and releases any retained
@@ -126,14 +130,15 @@ type ScriptRunRequest struct {
 }
 
 type ScriptRunResult struct {
-	RunID         string       `json:"runId"`
-	Status        string       `json:"status"`
-	PlanID        string       `json:"planId,omitempty"`
-	ScannedFiles  int          `json:"scannedFiles"`
-	ModifiedFiles int          `json:"modifiedFiles"`
-	DurationMs    int64        `json:"durationMs"`
-	Logs          []*ScriptLog `json:"logs"`
-	Error         *ScriptError `json:"error,omitempty"`
+	RunID          string       `json:"runId"`
+	Status         string       `json:"status"`
+	PlanID         string       `json:"planId,omitempty"`
+	ScannedFiles   int          `json:"scannedFiles"`
+	ModifiedFiles  int          `json:"modifiedFiles"`
+	FileSetChanges int          `json:"fileSetChanges"`
+	DurationMs     int64        `json:"durationMs"`
+	Logs           []*ScriptLog `json:"logs"`
+	Error          *ScriptError `json:"error,omitempty"`
 }
 
 type ScriptError struct {
@@ -168,20 +173,39 @@ type ScriptPreviewPage struct {
 	ScannedFiles  int                  `json:"scannedFiles"`
 	ModifiedFiles int                  `json:"modifiedFiles"`
 	Rows          []*ScriptFilePreview `json:"rows"`
+	// FileSetRows lists the staged file set mutations. They are not diffed rows,
+	// but the apply step must show and select them alongside archive changes.
+	FileSetRows []*ScriptFileSetPreview `json:"fileSetRows,omitempty"`
+	// FileSetSelectKey is the change key the frontend selects to apply every
+	// file set mutation, mirroring how archive rows use ChangeKey.
+	FileSetSelectKey string `json:"fileSetSelectKey,omitempty"`
+}
+
+// ScriptFileSetPreview describes one staged file set mutation.
+type ScriptFileSetPreview struct {
+	ChangeKey string `json:"changeKey"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	// Added and Removed are the path-level difference against the persisted set,
+	// so the UI can show what a setAll actually changed.
+	Added   []string `json:"added,omitempty"`
+	Removed []string `json:"removed,omitempty"`
+	// Count is the resulting entry total after the change.
+	Count int `json:"count"`
 }
 
 type ScriptFilePreview struct {
 	// ChangeKey is the stable selection key. Structural changes shift entry
 	// indexes, so the frontend must select rows by this key, not FileIndex.
-	ChangeKey  string           `json:"changeKey"`
-	FileIndex  int32            `json:"fileIndex"`
-	Path       string           `json:"path"`
-	Status     string           `json:"status"`
-	MatchCount int              `json:"matchCount"`
-	Reason     string           `json:"reason,omitempty"`
-	Warnings   []string         `json:"warnings,omitempty"`
-	Diff       []*BatchDiffLine `json:"diff,omitempty"`
-	DiffTruncated bool          `json:"diffTruncated,omitempty"`
+	ChangeKey     string           `json:"changeKey"`
+	FileIndex     int32            `json:"fileIndex"`
+	Path          string           `json:"path"`
+	Status        string           `json:"status"`
+	MatchCount    int              `json:"matchCount"`
+	Reason        string           `json:"reason,omitempty"`
+	Warnings      []string         `json:"warnings,omitempty"`
+	Diff          []*BatchDiffLine `json:"diff,omitempty"`
+	DiffTruncated bool             `json:"diffTruncated,omitempty"`
 }
 
 type ScriptApplyResult struct {
@@ -192,6 +216,8 @@ type ScriptApplyResult struct {
 	// Structural reports whether the commit changed the entry table, which
 	// means every previously previewed file index is now stale.
 	Structural bool `json:"structural"`
+	// AppliedFileSets counts the file set mutations written to user config.
+	AppliedFileSets int `json:"appliedFileSets"`
 }
 
 type ScriptFile struct {
@@ -209,6 +235,12 @@ type scriptPlan struct {
 	rows          []scriptPlanRow
 	scannedFiles  int
 	modifiedFiles int
+
+	// fileSets is the run's baseline snapshot, retained so the apply step can
+	// tell an edit from a create when merging into the persisted document.
+	fileSets *scriptengine.FileSetStage
+
+	fileSetRows []*ScriptFileSetPreview
 }
 
 type scriptPlanRow struct {
@@ -332,6 +364,10 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 			})
 		}
 		host := scriptengine.NewBatchAPI(runCtx, tx, appendLog, appendProgress)
+		// File sets are a user-config resource, not archive content, so the run
+		// reads them through the same service the sidebar saves through and
+		// stages its edits for the apply step.
+		host.SetFileSetStage(scriptengine.NewFileSetStage(s.loadFileSetSnapshot()))
 		emitEvent("script:state", map[string]any{"runId": runID, "status": "running"})
 		runtimeResult, runErr := s.runtime.Run(runCtx, request.Source, host)
 		if runErr != nil {
@@ -367,7 +403,13 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 			scannedFiles:  runtimeResult.ScannedFiles,
 			modifiedFiles: len(changes),
 			rows:          make([]scriptPlanRow, 0, len(changes)),
+			fileSets:      host.FileSetStage(),
 		}
+		// A run that only touched file sets has no archive change to apply, but
+		// the plan is still worth retaining: the user must be able to review and
+		// apply it.
+		plan.fileSetRows = buildFileSetPreviewRows(plan.fileSets)
+		result.FileSetChanges = len(plan.fileSetRows)
 		for _, change := range changes {
 			status := ScriptFileChanged
 			switch change.Kind {
@@ -474,14 +516,19 @@ func (s *ScriptService) PreviewPage(planID, filter string, cursor, limit int) (*
 	if end < len(matched) {
 		next = end
 	}
-	return &ScriptPreviewPage{
+	page := &ScriptPreviewPage{
 		PlanID: plan.id, NextCursor: next,
 		Filter:        strings.TrimSpace(filter),
 		MatchedFiles:  len(matched),
 		ScannedFiles:  plan.scannedFiles,
 		ModifiedFiles: plan.modifiedFiles,
 		Rows:          rows,
-	}, nil
+		FileSetRows:   plan.fileSetRows,
+	}
+	if len(plan.fileSetRows) > 0 {
+		page.FileSetSelectKey = fileSetChangeKey
+	}
+	return page, nil
 }
 
 // matchingScriptRows returns the plan rows whose path contains filter. An empty
@@ -507,7 +554,8 @@ func matchingScriptRows(plan *scriptPlan, filter string) []*scriptPlanRow {
 
 // SelectableChangeKeys returns the change keys of every row matching filter
 // that can be applied. The frontend uses this so "apply selected" covers the
-// whole filtered set even when only the loaded pages were ever previewed.
+// whole filtered set even when only the loaded pages were ever previewed. The
+// file set key is filter-independent: a fileset name is not an archive path.
 func (s *ScriptService) SelectableChangeKeys(planID, filter string) ([]string, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
@@ -522,6 +570,9 @@ func (s *ScriptService) SelectableChangeKeys(planID, filter string) ([]string, e
 			row.preview.Status == ScriptFileDeleted {
 			keys = append(keys, row.preview.ChangeKey)
 		}
+	}
+	if len(plan.fileSetRows) > 0 {
+		keys = append(keys, fileSetChangeKey)
 	}
 	return keys, nil
 }
@@ -558,8 +609,20 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 	selected := make(map[string]struct{}, len(changeKeys))
 	ordered := make([]string, 0, len(changeKeys))
 	paths := make([]string, 0, len(changeKeys))
+	// File set changes are applied separately from archive changes: they write
+	// user config, not the PVF overlay. The key addresses the whole group, which
+	// is what the preview panel's single checkbox selects.
+	applyFileSets := false
 	for _, key := range changeKeys {
 		if _, exists := selected[key]; exists {
+			continue
+		}
+		if key == fileSetChangeKey {
+			if len(plan.fileSetRows) == 0 {
+				s.c.mu.Unlock()
+				return ScriptApplyResult{}, fmt.Errorf("变更 %q 不是可应用的脚本结果", key)
+			}
+			applyFileSets = true
 			continue
 		}
 		row, exists := rowsByKey[key]
@@ -571,8 +634,16 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 		ordered = append(ordered, key)
 		paths = append(paths, row.change.Path)
 	}
+	if len(ordered) == 0 && !applyFileSets {
+		s.c.mu.Unlock()
+		return ScriptApplyResult{}, fmt.Errorf("没有选中的脚本变更文件")
+	}
+	var fileSetChanges []scriptengine.FileSetChange
+	if applyFileSets && plan.fileSets != nil {
+		fileSetChanges = plan.fileSets.Changes()
+	}
 	var before pvfversion.ContentSnapshot
-	if s.c.versionRepo != nil {
+	if len(paths) > 0 && s.c.versionRepo != nil {
 		before, err = pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
 		if err != nil {
 			s.c.mu.Unlock()
@@ -592,7 +663,7 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 			return ScriptApplyResult{}, err
 		}
 	}
-	if s.c.versionRepo != nil {
+	if len(paths) > 0 && s.c.versionRepo != nil {
 		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(plan.archive, paths)
 		if snapshotErr != nil {
 			s.c.mu.Unlock()
@@ -606,6 +677,13 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 			s.c.mu.Unlock()
 			return ScriptApplyResult{}, recordErr
 		}
+	}
+	// Persist file set changes only after the archive commit succeeded, so a
+	// rejected commit cannot leave user config ahead of the archive.
+	appliedFileSets, fileSetErr := s.applyFileSetChanges(fileSetChanges)
+	if fileSetErr != nil {
+		s.c.mu.Unlock()
+		return ScriptApplyResult{}, fileSetErr
 	}
 	// After a structural commit every index is rebuilt, so resolve each
 	// surviving path against the new table instead of the previewed index.
@@ -650,6 +728,11 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 	if structural {
 		emitEvent("archive:changed", info)
 	}
+	// File sets live in user config, not the archive, so the sidebar's in-memory
+	// copy is stale after an apply and must reload.
+	if appliedFileSets > 0 {
+		emitEvent("fileset:changed", map[string]any{"count": appliedFileSets, "source": "script"})
+	}
 	if versioned {
 		emitVersionState(s.c, "script-applied")
 	}
@@ -657,6 +740,7 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 	return ScriptApplyResult{
 		AppliedFiles: int32(len(ordered)), FileIndexes: appliedIndexes,
 		ModifiedCount: info.ModifiedCount, Revision: revision, Structural: structural,
+		AppliedFileSets: appliedFileSets,
 	}, nil
 }
 

@@ -75,6 +75,7 @@ export type {
     ScriptError,
     ScriptFile,
     ScriptFilePreview,
+    ScriptFileSetPreview,
     ScriptLog,
     ScriptPreviewPage,
     ScriptRunRequest,

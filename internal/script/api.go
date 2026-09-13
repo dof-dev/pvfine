@@ -19,6 +19,11 @@ type BatchAPI struct {
 	logFn      func(LogEntry)
 	progressFn func(Progress)
 
+	// fileSets is the baseline snapshot plus staged mutations for the user's
+	// file sets. It stays nil when the service did not supply one, which makes
+	// every file set call fail rather than silently operate on nothing.
+	fileSets *FileSetStage
+
 	scannedFiles int
 }
 
@@ -28,6 +33,23 @@ func NewBatchAPI(ctx context.Context, tx *Transaction, logFn func(LogEntry), pro
 		ctx = context.Background()
 	}
 	return &BatchAPI{ctx: ctx, tx: tx, logFn: logFn, progressFn: progressFn}
+}
+
+// SetFileSetStage attaches the file set snapshot and staging area for one run.
+func (a *BatchAPI) SetFileSetStage(stage *FileSetStage) {
+	if a == nil {
+		return
+	}
+	a.fileSets = stage
+}
+
+// FileSetStage returns the attached staging area, or nil when file sets are
+// unavailable for this run.
+func (a *BatchAPI) FileSetStage() *FileSetStage {
+	if a == nil {
+		return nil
+	}
+	return a.fileSets
 }
 
 func (a *BatchAPI) checkContext() error {
@@ -396,6 +418,100 @@ func normalizeListPath(entryPath string) (string, error) {
 		return "", fmt.Errorf("列表条目路径无效: %q", entryPath)
 	}
 	return raw, nil
+}
+
+// OpenFileSet resolves one file set from the run's staged view. A set created
+// earlier in the same run is visible here, because the stage merges the
+// baseline snapshot with pending mutations. found is false for an unknown name,
+// which the script sees as null.
+func (a *BatchAPI) OpenFileSet(name string) (*FileSetHandle, bool, error) {
+	if err := a.checkContext(); err != nil {
+		return nil, false, err
+	}
+	if a.fileSets == nil {
+		return nil, false, fmt.Errorf("当前运行不支持文件集")
+	}
+	normalized := NormalizeFileSetName(name)
+	if normalized == "" {
+		return nil, false, fmt.Errorf("文件集名称不能为空")
+	}
+	if _, ok := a.fileSets.Lookup(normalized); !ok {
+		return nil, false, nil
+	}
+	return &FileSetHandle{api: a, name: normalized}, true, nil
+}
+
+// CreateFileSet stages a new file set with the supplied entry paths.
+func (a *BatchAPI) CreateFileSet(name string, paths []string) (*FileSetHandle, error) {
+	if err := a.checkContext(); err != nil {
+		return nil, err
+	}
+	if a.fileSets == nil {
+		return nil, fmt.Errorf("当前运行不支持文件集")
+	}
+	fileSet, err := a.fileSets.Create(name, paths)
+	if err != nil {
+		return nil, err
+	}
+	return &FileSetHandle{api: a, name: fileSet.Name}, nil
+}
+
+// FileSetHandle is the narrow Go host object behind a JavaScript PVFFileSet.
+type FileSetHandle struct {
+	api  *BatchAPI
+	name string
+}
+
+// Name returns the resolved set name.
+func (h *FileSetHandle) Name() string {
+	if h == nil {
+		return ""
+	}
+	return h.name
+}
+
+// Get returns the staged entry paths in stored order.
+func (h *FileSetHandle) Get() ([]string, error) {
+	fileSet, err := h.current()
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(fileSet.Entries))
+	for _, entry := range fileSet.Entries {
+		paths = append(paths, entry.Path)
+	}
+	return paths, nil
+}
+
+// Set replaces the entire entry list, preserving metadata of surviving paths.
+func (h *FileSetHandle) Set(paths []string) (int, error) {
+	if err := h.api.checkContext(); err != nil {
+		return 0, err
+	}
+	fileSet, err := h.api.fileSets.Replace(h.name, paths)
+	if err != nil {
+		return 0, err
+	}
+	return len(fileSet.Entries), nil
+}
+
+// current re-resolves the set on every call: an earlier call in the same run
+// may have replaced or created it after this handle was captured.
+func (h *FileSetHandle) current() (FileSet, error) {
+	if h == nil || h.api == nil {
+		return FileSet{}, fmt.Errorf("文件集句柄无效")
+	}
+	if err := h.api.checkContext(); err != nil {
+		return FileSet{}, err
+	}
+	if h.api.fileSets == nil {
+		return FileSet{}, fmt.Errorf("当前运行不支持文件集")
+	}
+	fileSet, ok := h.api.fileSets.Lookup(h.name)
+	if !ok {
+		return FileSet{}, fmt.Errorf("文件集不存在: %s", h.name)
+	}
+	return fileSet, nil
 }
 
 // Log records a message and forwards it to the service event sink.

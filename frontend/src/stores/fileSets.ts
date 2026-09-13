@@ -209,6 +209,29 @@ export const useFileSetStore = defineStore("fileSets", () => {
     return loadPromise;
   }
 
+  /**
+   * 脚本应用文件集变更后重新读取磁盘内容。本地有未保存改动时不覆盖，
+   * 改为提示冲突：否则脚本的写入会被下一次保存反向覆盖，或直接丢掉用户的编辑。
+   */
+  async function reload(): Promise<void> {
+    if (!loaded.value) {
+      await load();
+      return;
+    }
+    if (dirty.value) {
+      loadError.value = "脚本已修改文件集，但本地有未保存的改动，未自动刷新，请先保存或放弃";
+      return;
+    }
+    try {
+      const document = await FileSetService.LoadFileSets();
+      applyDocument(document, true);
+      loadError.value = "";
+    } catch (error: any) {
+      loadError.value = String(error?.message ?? error);
+      console.error("reload file sets failed", error);
+    }
+  }
+
   async function save(): Promise<void> {
     if (saving.value) return;
     await load();
@@ -222,7 +245,16 @@ export const useFileSetStore = defineStore("fileSets", () => {
     }
   }
 
-  function applyDocument(document: FileSetDocument): void {
+  /**
+   * 用磁盘文档替换内存状态。keepActive 为 true 时（脚本写入后的重载）保留
+   * 用户当前选中的文件集，避免刷新把视图切回默认集。
+   *
+   * 保留 id "default" 的记录就是内置「默认文件集」本身：名字和内容都以磁盘
+   * 为准，不再改名成「默认文件集（已保存）」。这样侧边栏显示的名字和
+   * 脚本 pvf.fileset(name) 取到的名字始终是同一个。
+   */
+  function applyDocument(document: FileSetDocument, keepActive = false): void {
+    const previousActive = activeSetId.value;
     const storedSets = (document.fileSets ?? []).filter(
       (fileSet): fileSet is StoredFileSet => !!fileSet
     );
@@ -230,19 +262,19 @@ export const useFileSetStore = defineStore("fileSets", () => {
       .map(fromStoredFileSet)
       .filter((fileSet): fileSet is FileSet => !!fileSet);
 
+    let defaultSet = createFileSet("default", "默认文件集");
     const persistedDefault = nextSets.find((fileSet) => fileSet.id === "default");
     if (persistedDefault) {
-      if (persistedDefault.entries.length === 0 && persistedDefault.name === "默认文件集") {
-        nextSets.splice(nextSets.indexOf(persistedDefault), 1);
-      } else {
-        persistedDefault.id = nextSetID(nextSets);
-        if (persistedDefault.name === "默认文件集") {
-          persistedDefault.name = uniqueSetName("默认文件集（已保存）", nextSets);
-        }
+      nextSets.splice(nextSets.indexOf(persistedDefault), 1);
+      // 名为「默认文件集」的空记录等同于未保存的内置默认集，不必单独保留。
+      if (persistedDefault.entries.length > 0 || persistedDefault.name !== "默认文件集") {
+        defaultSet = persistedDefault;
       }
     }
-    fileSets.value = [createFileSet("default", "默认文件集"), ...nextSets];
-    activeSetId.value = "default";
+    fileSets.value = [defaultSet, ...nextSets];
+    const survived =
+      keepActive && fileSets.value.some((fileSet) => fileSet.id === previousActive);
+    activeSetId.value = survived ? previousActive : "default";
     recomputeCounters();
     dirty.value = false;
     mutationVersion++;
@@ -327,22 +359,6 @@ export const useFileSetStore = defineStore("fileSets", () => {
     }
     nextSetId = maxID + 1;
     nextSetNumber = Math.max(2, maxNumber + 1);
-  }
-
-  function nextSetID(sets: FileSet[]): string {
-    let number = 1;
-    const ids = new Set(sets.map((fileSet) => fileSet.id));
-    while (ids.has(`set-${number}`)) number++;
-    return `set-${number}`;
-  }
-
-  function uniqueSetName(base: string, sets: FileSet[]): string {
-    const names = new Set(sets.map((fileSet) => fileSet.name));
-    if (!names.has(base)) return base;
-    let number = 2;
-    let name = `${base} ${number}`;
-    while (names.has(name)) name = `${base} ${++number}`;
-    return name;
   }
 
   async function onArchiveOpened(event: any): Promise<void> {
@@ -432,6 +448,11 @@ export const useFileSetStore = defineStore("fileSets", () => {
     if (archivePath) void resolveEntries(archivePath);
   });
   Events.On("archive:closed", onArchiveClosed);
+  // 脚本应用文件集变更后 file-sets.json 已改写，这份内存副本必须重载；
+  // 否则用户看到的仍是旧内容，下次保存还会把脚本的改动覆盖回去。
+  Events.On("fileset:changed", () => {
+    void reload();
+  });
 
   return {
     fileSets,
@@ -445,6 +466,7 @@ export const useFileSetStore = defineStore("fileSets", () => {
     dirty,
     loadError,
     load,
+    reload,
     save,
     createSet,
     renameSet,

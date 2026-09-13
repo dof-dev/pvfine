@@ -328,6 +328,39 @@ func (b *gojaBindings) bindPVF() error {
 	}); err != nil {
 		return err
 	}
+	if err := setFunction(b.vm, pvfObject, "fileset", func(call goja.FunctionCall) (goja.Value, error) {
+		name, err := requiredString(call.Argument(0), "文件集名称")
+		if err != nil {
+			return nil, err
+		}
+		fileSet, found, err := b.host.OpenFileSet(name)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return goja.Null(), nil
+		}
+		return b.fileSetObject(fileSet), nil
+	}); err != nil {
+		return err
+	}
+	if err := setFunction(b.vm, pvfObject, "createFileset", func(call goja.FunctionCall) (goja.Value, error) {
+		name, err := requiredString(call.Argument(0), "文件集名称")
+		if err != nil {
+			return nil, err
+		}
+		paths, err := optionalPathArray(call.Argument(1))
+		if err != nil {
+			return nil, err
+		}
+		fileSet, err := b.host.CreateFileSet(name, paths)
+		if err != nil {
+			return nil, err
+		}
+		return b.fileSetObject(fileSet), nil
+	}); err != nil {
+		return err
+	}
 	if err := setFunction(b.vm, pvfObject, "log", func(call goja.FunctionCall) (goja.Value, error) {
 		b.host.Log(LogLevelInfo, formatArguments(call.Arguments))
 		return goja.Undefined(), nil
@@ -543,6 +576,34 @@ func (b *gojaBindings) listObject(list *ListHandle) *goja.Object {
 			return goja.Null(), nil
 		}
 		return b.vm.ToValue(id), nil
+	})
+	return object
+}
+
+func (b *gojaBindings) fileSetObject(fileSet *FileSetHandle) *goja.Object {
+	object := b.vm.NewObject()
+	_ = defineReadOnly(object, "name", b.vm.ToValue(fileSet.Name()))
+	_ = setFunction(b.vm, object, "getAll", func(goja.FunctionCall) (goja.Value, error) {
+		paths, err := fileSet.Get()
+		if err != nil {
+			return nil, err
+		}
+		items := make([]interface{}, 0, len(paths))
+		for _, path := range paths {
+			items = append(items, path)
+		}
+		return b.vm.NewArray(items...), nil
+	})
+	_ = setFunction(b.vm, object, "setAll", func(call goja.FunctionCall) (goja.Value, error) {
+		paths, err := requiredPathArray(call.Argument(0))
+		if err != nil {
+			return nil, err
+		}
+		count, err := fileSet.Set(paths)
+		if err != nil {
+			return nil, err
+		}
+		return b.vm.ToValue(count), nil
 	})
 	return object
 }
@@ -1141,6 +1202,39 @@ func sectionPath(value goja.Value) ([]string, error) {
 		return nil, fmt.Errorf("section 路径不能为空")
 	}
 	return result, nil
+}
+
+// requiredPathArray reads a mandatory array of path strings.
+func requiredPathArray(value goja.Value) ([]string, error) {
+	if isMissingValue(value) {
+		return nil, fmt.Errorf("路径列表必须是数组")
+	}
+	return pathArrayItems(value)
+}
+
+// optionalPathArray reads an optional array of path strings; a missing value
+// means an empty list so createFileset(name) can create an empty set.
+func optionalPathArray(value goja.Value) ([]string, error) {
+	if isMissingValue(value) {
+		return nil, nil
+	}
+	return pathArrayItems(value)
+}
+
+func pathArrayItems(value goja.Value) ([]string, error) {
+	items, err := arrayArguments(value)
+	if err != nil {
+		return nil, fmt.Errorf("路径列表必须是数组")
+	}
+	paths := make([]string, 0, len(items))
+	for index, item := range items {
+		path, err := requiredString(item, fmt.Sprintf("路径列表第 %d 项", index+1))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
 }
 
 func isMissingValue(value goja.Value) bool {

@@ -8,6 +8,7 @@ import type {
   ScriptDiagnostic,
   ScriptFile,
   ScriptFilePreview,
+  ScriptFileSetPreview,
   ScriptLog,
   ScriptPreviewPage,
   ScriptRunResult,
@@ -56,6 +57,9 @@ export const useScriptStore = defineStore("script", () => {
   const logs = ref<ScriptLog[]>([]);
   const progress = ref({ done: 0, total: 0, message: "", currentPath: "" });
   const rows = ref<ScriptFilePreview[]>([]);
+  // 文件集变更不是归档 diff，单独展示；但应用时和归档变更一起勾选。
+  const fileSetRows = ref<ScriptFileSetPreview[]>([]);
+  const fileSetSelectKey = ref("");
   const planId = ref("");
   const nextCursor = ref(-1);
   const scannedFiles = ref(0);
@@ -78,7 +82,16 @@ export const useScriptStore = defineStore("script", () => {
     // refreshes the total count while the all-pages mode uses exclusions.
     const loadedSelectedCount = selectedKeys.value.size;
     if (selectionMode === "all") {
-      return Math.max(0, matchedFiles.value - excludedKeys.size);
+      // 归档行按路径筛选，"全选"意味着所有匹配项减去被排除的那些。
+      // 文件集那一组不受路径筛选影响，单独按是否被排除计数：把它和归档
+      // 行混在一起算会因为 excludedKeys 同时含有两类 key 而重复扣减。
+      const fileSetKey = fileSetSelectKey.value;
+      const fileSetSelected = fileSetKey && !excludedKeys.has(fileSetKey) ? 1 : 0;
+      let archiveExcluded = 0;
+      for (const key of excludedKeys) {
+        if (key !== fileSetKey) archiveExcluded++;
+      }
+      return Math.max(0, matchedFiles.value - archiveExcluded + fileSetSelected);
     }
     return loadedSelectedCount;
   });
@@ -109,6 +122,8 @@ export const useScriptStore = defineStore("script", () => {
       filterTimer = null;
     }
     rows.value = [];
+    fileSetRows.value = [];
+    fileSetSelectKey.value = "";
     planId.value = "";
     nextCursor.value = -1;
     scannedFiles.value = 0;
@@ -343,6 +358,13 @@ export const useScriptStore = defineStore("script", () => {
     );
     if (append) rows.value.push(...pageRows);
     else rows.value = pageRows;
+    // 文件集行只随第一页返回，翻页时不要覆盖已有内容。
+    if (!append) {
+      fileSetRows.value = (page.fileSetRows ?? []).filter(
+        (item): item is ScriptFileSetPreview => !!item,
+      );
+      fileSetSelectKey.value = page.fileSetSelectKey ?? "";
+    }
     const selected = new Set(selectedKeys.value);
     for (const row of pageRows) {
       if (
@@ -352,6 +374,14 @@ export const useScriptStore = defineStore("script", () => {
       ) {
         selected.add(row.changeKey);
       }
+    }
+    if (
+      !append &&
+      fileSetSelectKey.value &&
+      selectionMode === "all" &&
+      !excludedKeys.has(fileSetSelectKey.value)
+    ) {
+      selected.add(fileSetSelectKey.value);
     }
     selectedKeys.value = selected;
     planId.value = page.planId;
@@ -376,6 +406,8 @@ export const useScriptStore = defineStore("script", () => {
     error.value = "";
     compileResult.value = null;
     rows.value = [];
+    fileSetRows.value = [];
+    fileSetSelectKey.value = "";
     planId.value = "";
     nextCursor.value = -1;
     filter.value = "";
@@ -435,9 +467,11 @@ export const useScriptStore = defineStore("script", () => {
   function selectAll(): void {
     selectionMode = "all";
     excludedKeys.clear();
-    selectedKeys.value = new Set(
-      rows.value.filter((row) => isSelectable(row)).map((row) => row.changeKey),
-    );
+    const selected = rows.value
+      .filter((row) => isSelectable(row))
+      .map((row) => row.changeKey);
+    if (fileSetSelectKey.value) selected.push(fileSetSelectKey.value);
+    selectedKeys.value = new Set(selected);
   }
 
   function clearSelection(): void {
@@ -520,7 +554,7 @@ export const useScriptStore = defineStore("script", () => {
     const data = eventData(event);
     if (!data?.runId) return;
     if (runResult.value?.runId && data.runId !== runResult.value.runId) return;
-    if (!runResult.value) runResult.value = { runId: data.runId, status: "running", scannedFiles: 0, modifiedFiles: 0, durationMs: 0, logs: [] };
+    if (!runResult.value) runResult.value = { runId: data.runId, status: "running", scannedFiles: 0, modifiedFiles: 0, fileSetChanges: 0, durationMs: 0, logs: [] };
     logs.value.push({ level: String(data.level ?? "info"), message: String(data.message ?? "") });
   }
 
@@ -597,6 +631,8 @@ export const useScriptStore = defineStore("script", () => {
     logs,
     progress,
     rows,
+    fileSetRows,
+    fileSetSelectKey,
     planId,
     nextCursor,
     scannedFiles,

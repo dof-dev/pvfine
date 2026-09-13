@@ -148,10 +148,41 @@ export interface PVFList {
   getId(path: string): string | null;
 }
 
+/**
+ * 一个文件集的读写句柄。
+ *
+ * 文件集保存在用户配置目录，与当前归档无关：路径不会随归档切换而失效，
+ * 未命中当前归档的条目在侧边栏显示为失效但仍会保留。句柄按名称寻址，
+ * 因为 id 由持久化层分配，脚本看不到也不需要。
+ */
+export interface PVFFileSet {
+  readonly name: string;
+
+  /** 返回集合内的路径列表，顺序与存储一致。 */
+  getAll(): string[];
+  /**
+   * 用给定的路径列表整体替换集合内容，返回替换后的条目数。
+   * 路径会做规范化（反斜杠转正斜杠、去首尾斜杠）并去重，空路径被忽略；
+   * 不校验路径是否存在于当前归档。已存在路径会保留其名称与 id 等元数据。
+   */
+  setAll(paths: string[]): number;
+}
+
 export interface PVFNamespace {
   files(): PVFFile[];
   find(path: string): PVFFile | null;
   glob(pattern: string): PVFFile[];
+  /**
+   * 按名称查找文件集，不存在时返回 null。名称首尾空白会被忽略；
+   * 同一脚本内新建的文件集也能查到。内置的「默认文件集」始终存在
+   * （即使从未保存过），可以直接读改。
+   */
+  fileset(name: string): PVFFileSet | null;
+  /**
+   * 新建文件集，paths 省略时创建空集合。名称已存在时报错
+   * （包括内置的「默认文件集」）；路径规则与 PVFFileSet.setAll 相同。
+   */
+  createFileset(name: string, paths?: string[]): PVFFileSet;
   /**
    * 在当前归档中新建文件。dataType 省略时默认为 pvf.types.script；
    * text 是脚本可读的初始内容。路径中不存在的目录会随文件一起创建；
@@ -179,6 +210,8 @@ declare global {
     function files(): PVFFile[];
     function find(path: string): PVFFile | null;
     function glob(pattern: string): PVFFile[];
+    function fileset(name: string): PVFFileSet | null;
+    function createFileset(name: string, paths?: string[]): PVFFileSet;
     function createFile(path: string, dataType?: PVFDataType, text?: string): PVFFile;
     function copyFile(from: string, to: string, overwrite?: boolean): PVFFile;
     function deleteFile(path: string): boolean;
