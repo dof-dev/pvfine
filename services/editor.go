@@ -128,6 +128,14 @@ func (s *EditorService) SetText(index int32, text string) error {
 	return err
 }
 
+// SetPlaceholderText rewrites the display text behind one `<table::key>`
+// placeholder of a script. index is the script being edited; tableIndex and key
+// come from the placeholder annotation. Only the `.str` payload changes — the
+// script keeps its placeholder, so no stored script data is altered.
+func (s *EditorService) SetPlaceholderText(index int32, tableIndex int32, key string, text string) error {
+	return s.c.setPlaceholderText(index, tableIndex, key, text)
+}
+
 // Save 把全部内存修改写回源文件(原子写:临时文件 + rename)。
 func (s *EditorService) Save() (ArchiveInfo, error) {
 	s.c.mu.Lock()

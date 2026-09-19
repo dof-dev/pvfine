@@ -1,6 +1,8 @@
 package services
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -154,6 +156,149 @@ func TestPreviewServiceParseEQUPreservesDisplayLineBreaks(t *testing.T) {
 	}
 	if !strings.Contains(result.BaseExplain, "第一行\n第二行") || !strings.Contains(result.FlavorText, "第一段\n  第二段") {
 		t.Fatalf("line breaks = base %q, flavor %q", result.BaseExplain, result.FlavorText)
+	}
+}
+
+func TestPreviewServiceParseEQUResolvesNamePlaceholder(t *testing.T) {
+	a := pvf.New()
+	strTable := make([]byte, 0, 64)
+	for _, r := range "equip_name_1>白色兽语腰带 [A款]\r\n" {
+		strTable = append(strTable, byte(r), byte(r>>8))
+	}
+	if _, err := a.AddFileText("list/n_string.lst", "1 `String/Test.uv.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Test.uv.str", strTable, pvf.TypeScript)
+	equIndex, err := a.AddFileText("equipment/test.equ",
+		"[name]\n{8=`<1::equip_name_1>`}\n[name2]\n{8=`<1::equip_name_1>`}\n[rarity]\n4", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	result, err := NewPreviewService(c).ParseEQU(equIndex,
+		"[name]\n{8=`<1::equip_name_1>`}\n[name2]\n{8=`<1::equip_name_1>`}\n[rarity]\n4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "白色兽语腰带 [A款]" {
+		t.Fatalf("name = %q", result.Name)
+	}
+	if result.Name2 != "白色兽语腰带 [A款]" {
+		t.Fatalf("name2 = %q", result.Name2)
+	}
+}
+
+// TestPreviewServiceParseEQURealPaged110Name runs the whole display path on the
+// retail Paged110 archive: the .equ stores a placeholder, the preview shows the
+// string-table text, and a name the localization left empty is answered by the
+// Korean overlay and flagged.
+func TestPreviewServiceParseEQURealPaged110Name(t *testing.T) {
+	archive := filepath.Join("..", "testdata", "110US.pvf")
+	if _, err := os.Stat(archive); err != nil {
+		t.Skip("testdata/110US.pvf not present")
+	}
+	if _, err := os.Stat(filepath.Join("..", "testdata", "sk.dat")); err != nil {
+		t.Skip("testdata/sk.dat not present")
+	}
+	a, err := pvf.Open(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	for _, tc := range []struct{ path, want string }{
+		{"character/demoniclancer/avatar/belt/514530375.equ", "白色兽语腰带 [A款]"},
+		{"equipment/character/archer/avatar/belt/117530002.equ", "稀有克隆装扮腰部"},
+		{"equipment/character/archer/avatar/belt/117530006.equ", "포니 비즈 뱅글[A타입]（未翻译）"},
+	} {
+		index, ok := a.Find(tc.path)
+		if !ok {
+			t.Errorf("%s not found", tc.path)
+			continue
+		}
+		text, err := a.Text(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(text, "::") {
+			t.Errorf("%s carries no placeholder: %q", tc.path, text)
+			continue
+		}
+		result, err := NewPreviewService(c).ParseEQU(index, text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Name != tc.want {
+			t.Errorf("%s -> name %q, want %q", tc.path, result.Name, tc.want)
+		}
+	}
+}
+
+// TestPreviewServiceParseEQUMarksOverlayFallback covers the untranslated case:
+// the base localization lists the key with an empty value, so the name comes
+// from the Korean overlay and is flagged for the reader.
+func TestPreviewServiceParseEQUMarksOverlayFallback(t *testing.T) {
+	a := pvf.New()
+	encode := func(s string) []byte {
+		out := make([]byte, 0, len(s)*2)
+		for _, r := range s {
+			out = append(out, byte(r), byte(r>>8))
+		}
+		return out
+	}
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Equipment.uv.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddFileText("list/n_string_kor.lst", "3 `String/Equipment.kor.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Equipment.uv.str", encode("name_1=\r\n"), pvf.TypeScript)
+	a.AddFile("String/Equipment.kor.str", encode("name_1>포니 비즈 뱅글[A타입]\r\n"), pvf.TypeScript)
+	equIndex, err := a.AddFileText("equipment/test.equ", "[name]\n{8=`<3::name_1>`}", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	result, err := NewPreviewService(c).ParseEQU(equIndex, "[name]\n{8=`<3::name_1>`}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "포니 비즈 뱅글[A타입]（未翻译）" {
+		t.Fatalf("name = %q", result.Name)
+	}
+}
+
+func TestPreviewServiceParseEQUKeepsUnknownPlaceholder(t *testing.T) {
+	a := pvf.New()
+	equIndex, err := a.AddFileText("equipment/test.equ", "[name]\n{8=`<9::missing>`}", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	result, err := NewPreviewService(c).ParseEQU(equIndex, "[name]\n{8=`<9::missing>`}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "<9::missing>" {
+		t.Fatalf("name = %q", result.Name)
 	}
 }
 

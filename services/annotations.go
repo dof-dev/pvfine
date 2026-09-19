@@ -19,6 +19,15 @@ type EditorAnnotation struct {
 	RuleIDs         []string        `json:"ruleIds,omitempty"`
 	Image           *ImageReference `json:"image,omitempty"`
 	InlineImage     bool            `json:"inlineImage,omitempty"`
+	Placeholder     *PlaceholderRef `json:"placeholder,omitempty"`
+}
+
+// PlaceholderRef identifies the string-table entry a placeholder annotation
+// resolves through, so the editor can offer to rewrite that text.
+type PlaceholderRef struct {
+	TableIndex int32  `json:"tableIndex"`
+	Key        string `json:"key"`
+	Fallback   bool   `json:"fallback,omitempty"`
 }
 
 type TreeAnnotation struct {
@@ -86,6 +95,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		})
 	}
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
+	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations)
 	c.editorAnnotation = editorAnnotationCache{
 		valid:       true,
 		fileIndex:   index,
@@ -93,6 +103,56 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		annotations: cloneEditorAnnotations(annotations),
 	}
 	return annotations, nil
+}
+
+// appendPlaceholderAnnotationsLocked surfaces the text behind the newer
+// clients' `<table::key>` placeholders. The editor keeps showing (and writing)
+// the placeholder itself — rewriting it would change the stored data — and the
+// resolved text is attached as a display-only tag next to it. The tag carries
+// the table index and key so it can be edited in place (SetPlaceholderText).
+func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotations []EditorAnnotation) []EditorAnnotation {
+	if c.archive == nil {
+		return annotations
+	}
+	for _, element := range view.Elements {
+		if element.Kind != pvf.ScriptElementToken {
+			continue
+		}
+		index, key, ok := pvf.ParsePlaceholder(element.Value)
+		if !ok {
+			continue
+		}
+		resolution, found := c.archive.ResolveStringTable(index, key)
+		if !found {
+			continue
+		}
+		text := resolution.Text
+		if resolution.Fallback {
+			text += untranslatedMark
+		}
+		annotation := EditorAnnotation{
+			Start:   int32(element.Start),
+			End:     int32(element.End),
+			Title:   text,
+			Content: element.Value + "\n" + resolution.Source,
+			Type:    "placeholder",
+			Placeholder: &PlaceholderRef{
+				TableIndex: int32(index),
+				Key:        key,
+				Fallback:   resolution.Fallback,
+			},
+		}
+		// Link to the string table itself when the editor can open it.
+		if sourceIndex, ok := c.archive.Find(resolution.Source); ok && c.archive.File(sourceIndex).DataSize <= maxEditableBytes {
+			annotation.TargetFileIndex = sourceIndex
+			annotation.Content += "\n\nCmd/Ctrl+单击打开字符串表；单击标签可修改译文"
+		} else {
+			annotation.TargetFileIndex = -1
+			annotation.Content += "\n\n单击标签可修改译文（表过大，不会整文件打开）"
+		}
+		annotations = append(annotations, annotation)
+	}
+	return annotations
 }
 
 // appendUnindexedListLinksLocked makes the path token in an otherwise

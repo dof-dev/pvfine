@@ -82,10 +82,39 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 		}
 		return nil, fmt.Errorf("标注引擎未初始化")
 	}
-	return buildEquipmentPreview(
+	doc := buildEquipmentPreview(
 		s.c.archive.Path(fileIndex), text, s.c.annotationEngine,
 		s.c.resolveAnnotationReferenceContextLocked,
-	), nil
+	)
+	// Newer clients store `<table::key>` placeholders instead of display text.
+	doc.Name = resolvePreviewText(s.c.archive, doc.Name)
+	doc.Name2 = resolvePreviewText(s.c.archive, doc.Name2)
+	return doc, nil
+}
+
+// untranslatedMark is appended to a name that only a language overlay could
+// answer: this client's own localization has no text for that key (its entry is
+// an empty `key=`), so the fallback text is the Korean/translated original
+// rather than what the game displays.
+const untranslatedMark = "（未翻译）"
+
+// resolvePreviewText turns a raw name value into display text: an optional
+// `{N=`...`}` block marker is unwrapped and `<table::key>` placeholders are
+// resolved through the archive's string tables.
+func resolvePreviewText(a *pvf.Archive, text string) string {
+	s := strings.TrimSpace(text)
+	if s == "" {
+		return text
+	}
+	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+		if eq := strings.IndexByte(s, '='); eq > 0 {
+			s = strings.Trim(strings.TrimSpace(s[eq+1:len(s)-1]), "`")
+		}
+	}
+	if a == nil {
+		return s
+	}
+	return a.ResolvePlaceholdersMarked(s, untranslatedMark)
 }
 
 func buildEquipmentPreview(filePath, text string, engine *annotationrules.Engine, resolver annotationrules.ContextResolver) *EquipmentPreviewDocument {

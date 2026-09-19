@@ -204,7 +204,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 		if !c.indexCurrent(a, gen, ctx) {
 			return
 		}
-		listIndex, ok := c.findArchiveEntry(a, gen, ctx, spec.listPath)
+		listIndex, ok := c.findArchiveList(a, gen, ctx, spec.listPath)
 		if !ok {
 			continue
 		}
@@ -453,6 +453,113 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		return false, "", nil
 	}
 
+	updated, name, visuals := c.refreshIndexedRecordsLocked(index, previousVisuals, hadPreviousVisuals)
+	c.mu.Unlock()
+	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+	if versioned {
+		emitVersionState(c, "edited")
+	}
+	if updated {
+		emitEvent("archive:index-updated", map[string]any{
+			"fileIndex":  index,
+			"name":       name,
+			"icon":       cloneImageReference(visuals.icon),
+			"fieldImage": cloneImageReference(visuals.fieldImage),
+		})
+	}
+	return updated, name, nil
+}
+
+// setPlaceholderText rewrites the string-table text behind one `<table::key>`
+// placeholder and refreshes the name of the file that carries it, so the
+// explorer and the search results pick the new text up immediately.
+//
+// The script that holds the placeholder is untouched: only the `.str` payload
+// changes, which is where this client keeps the display text.
+func (c *core) setPlaceholderText(index int32, tableIndex int32, key, text string) error {
+	c.mu.Lock()
+	if c.archive == nil {
+		c.mu.Unlock()
+		return ErrNoArchive
+	}
+	if err := c.ensureVersionReadyLocked(); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	if index < 0 || index >= c.archive.FileCount() {
+		err := fmt.Errorf("文件索引越界: %d", index)
+		c.mu.Unlock()
+		return err
+	}
+	tableFileIndex, ok := c.archive.StringTableEntryIndex(int(tableIndex), key)
+	if !ok {
+		c.mu.Unlock()
+		return fmt.Errorf("找不到字符串表条目 <%d::%s>", tableIndex, key)
+	}
+	tablePath := c.archive.Path(tableFileIndex)
+	var before pvfversion.ContentSnapshot
+	if c.versionRepo != nil {
+		var err error
+		before, err = pvfversion.ContentSnapshotFromArchive(c.archive, []string{tablePath})
+		if err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	if err := c.archive.SetStringTableEntryAt(tableFileIndex, key, text); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	if c.versionRepo != nil {
+		after, err := pvfversion.ContentSnapshotFromArchive(c.archive, []string{tablePath})
+		if err != nil {
+			c.mu.Unlock()
+			return err
+		}
+		if err := c.recordVersionMutationLocked("编辑字符串表", before, after); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	c.batchRevision++
+	c.batchPlan = nil
+	c.invalidateScriptLocked()
+	versioned := c.versionRepo != nil
+	c.annotationRelations = make(map[string]map[string]*relationTarget)
+	c.editorAnnotation = editorAnnotationCache{}
+	c.invalidateAdvancedSearchLocked()
+	previousVisuals, hadPreviousVisuals := c.visualsByFile[index]
+	delete(c.visualsByFile, index)
+	updated, name, visuals := false, "", fileVisuals{}
+	if c.indexStatus.State == IndexStateReady {
+		updated, name, visuals = c.refreshIndexedRecordsLocked(index, previousVisuals, hadPreviousVisuals)
+	} else {
+		if c.indexDirty == nil {
+			c.indexDirty = make(map[int32]struct{})
+		}
+		c.indexDirty[index] = struct{}{}
+	}
+	c.mu.Unlock()
+	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+	if versioned {
+		emitVersionState(c, "edited")
+	}
+	if updated {
+		emitEvent("archive:index-updated", map[string]any{
+			"fileIndex":  index,
+			"name":       name,
+			"icon":       cloneImageReference(visuals.icon),
+			"fieldImage": cloneImageReference(visuals.fieldImage),
+		})
+	}
+	return nil
+}
+
+// refreshIndexedRecordsLocked re-reads one file's name and images from the
+// archive and updates its search records and tree tags. It reports whether
+// anything changed. The caller must hold c.mu and must already have deleted any
+// stale entry from c.visualsByFile.
+func (c *core) refreshIndexedRecordsLocked(index int32, previousVisuals fileVisuals, hadPreviousVisuals bool) (bool, string, fileVisuals) {
 	recordIndexes := c.searchByFile[index]
 	metadata, err := readIndexedMetadataFromArchive(c.archive, index, c.archive.Path(index), nil)
 	if err != nil {
@@ -483,23 +590,10 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 			updated = true
 		}
 	}
-	if isNPCEntryPath(path) && c.refreshItemShopNamesLocked() {
+	if isNPCEntryPath(c.archive.Path(index)) && c.refreshItemShopNamesLocked() {
 		updated = true
 	}
-	c.mu.Unlock()
-	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
-	if versioned {
-		emitVersionState(c, "edited")
-	}
-	if updated {
-		emitEvent("archive:index-updated", map[string]any{
-			"fileIndex":  index,
-			"name":       name,
-			"icon":       cloneImageReference(visuals.icon),
-			"fieldImage": cloneImageReference(visuals.fieldImage),
-		})
-	}
-	return updated, name, nil
+	return updated, name, visuals
 }
 
 func (c *core) publishIndexProgress(a *pvf.Archive, gen uint64, ctx context.Context, done, total, skipped int, last *time.Time) {
@@ -563,6 +657,17 @@ func (c *core) findArchiveEntry(a *pvf.Archive, gen uint64, ctx context.Context,
 	return a.Find(name)
 }
 
+// findArchiveList resolves a `.lst` relation path, tolerating the list layout
+// difference between client generations (see Archive.FindList).
+func (c *core) findArchiveList(a *pvf.Archive, gen uint64, ctx context.Context, listPath string) (int32, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		return 0, false
+	}
+	return a.FindList(listPath)
+}
+
 func (c *core) findListTarget(a *pvf.Archive, gen uint64, ctx context.Context, listPath, relativePath string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -610,11 +715,23 @@ func readIndexedNameFromArchive(a *pvf.Archive, index int32, listPath string, np
 	return metadata.Name, metadata.HasName, err
 }
 
+// markedName is the name shown by the explorer, the search results and the
+// editor's tree tags. It is the placeholder-resolved text, flagged when this
+// client's own localization has no text for the key and only a language overlay
+// could answer, so a Korean name is never mistaken for the client's own text.
+func markedName(metadata pvf.ScriptMetadata) string {
+	if metadata.Name == "" || !metadata.NameFallback {
+		return metadata.Name
+	}
+	return metadata.Name + untranslatedMark
+}
+
 func readIndexedMetadataFromArchive(a *pvf.Archive, index int32, listPath string, npcNames map[string]string) (pvf.ScriptMetadata, error) {
 	metadata, err := a.ScriptMetadata(index)
 	if err != nil {
 		return pvf.ScriptMetadata{}, err
 	}
+	metadata.Name = markedName(metadata)
 	if metadata.HasName && strings.TrimSpace(metadata.Name) != "" {
 		return metadata, nil
 	}
@@ -683,7 +800,7 @@ func (c *core) fileVisualsLocked(index int32) fileVisuals {
 
 func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
 	result := make(map[string]string)
-	listIndex, ok := a.Find(npcListPath)
+	listIndex, ok := a.FindList(npcListPath)
 	if !ok {
 		return result
 	}
@@ -696,12 +813,12 @@ func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
 		if !ok {
 			continue
 		}
-		name, ok, err := a.ScriptName(targetIndex)
-		if err != nil || !ok || strings.TrimSpace(name) == "" {
+		metadata, err := a.ScriptMetadata(targetIndex)
+		if err != nil || !metadata.HasName || strings.TrimSpace(metadata.Name) == "" {
 			continue
 		}
 		if _, exists := result[pair.ID]; !exists {
-			result[pair.ID] = name
+			result[pair.ID] = markedName(metadata)
 		}
 	}
 	return result
@@ -898,15 +1015,32 @@ func findListTargetInArchive(a *pvf.Archive, listPath, relative string) (string,
 	return "", 0, false
 }
 
+// listPathCandidates returns the archive paths a `.lst` entry may denote. The
+// 90US layout stores entry paths relative to the list's own directory
+// (`equipment/equipment.lst` + `character/a.equ`), while the 110US layout
+// stores archive-root-relative paths (`list/equipment.lst` +
+// `equipment/character/a.equ`). Both readings are tried, each also with the
+// `(r)` override file name the client falls back to.
 func listPathCandidates(listPath, relative string) ([]string, bool) {
 	targetPath, ok := resolveListPath(listPath, relative)
 	if !ok {
 		return nil, false
 	}
 	candidates := []string{targetPath}
-	base := path.Base(targetPath)
-	if !strings.HasPrefix(strings.ToLower(base), "(r)") {
-		candidates = append(candidates, path.Join(path.Dir(targetPath), "(r)"+base))
+	appendOverride := func(candidate string) {
+		base := path.Base(candidate)
+		if strings.HasPrefix(strings.ToLower(base), "(r)") {
+			return
+		}
+		candidates = append(candidates, path.Join(path.Dir(candidate), "(r)"+base))
+	}
+	appendOverride(targetPath)
+	root := strings.Trim(strings.ReplaceAll(strings.TrimSpace(relative), "\\", "/"), "/")
+	if root != "" && !strings.Contains(root, "..") {
+		if cleaned := path.Clean(root); cleaned != "." && cleaned != targetPath {
+			candidates = append(candidates, cleaned)
+			appendOverride(cleaned)
+		}
 	}
 	return candidates, true
 }
