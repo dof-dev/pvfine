@@ -207,6 +207,7 @@ export interface EditorAnnotation {
     "ruleIds"?: string[] | null;
     "image"?: ImageReference | null;
     "inlineImage"?: boolean;
+    "placeholder"?: PlaceholderRef | null;
 }
 
 /**
@@ -382,6 +383,16 @@ export interface IndexStatus {
     "error": string;
     "openDurationMs": number;
     "buildDurationMs": number;
+}
+
+/**
+ * PlaceholderRef identifies the string-table entry a placeholder annotation
+ * resolves through, so the editor can offer to rewrite that text.
+ */
+export interface PlaceholderRef {
+    "tableIndex": number;
+    "key": string;
+    "fallback"?: boolean;
 }
 
 /**

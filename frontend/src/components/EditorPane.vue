@@ -6,6 +6,8 @@ import {
   NDropdown,
   NEmpty,
   NIcon,
+  NInput,
+  NModal,
   NSpin,
   NTag,
   NTabPane,
@@ -33,7 +35,7 @@ import {
 import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore } from "../stores/explorer";
 import { useBookmarkStore } from "../stores/bookmarks";
-import CodeEditor from "./CodeEditor.vue";
+import CodeEditor, { type PlaceholderEditRequest } from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 import ImageThumbnail from "./ImageThumbnail.vue";
 import PreviewHost from "./previews/PreviewHost.vue";
@@ -71,6 +73,51 @@ const tabContextMenu = ref({
 
 type DropEdge = "left" | "right" | "top" | "bottom";
 const dragMime = "application/x-pvfine-editor-tab";
+
+/** 「修改占位符译文」对话框状态。 */
+const placeholderEdit = reactive({
+  show: false,
+  index: -1,
+  tableIndex: 0,
+  key: "",
+  value: "",
+  fallback: false,
+  saving: false,
+});
+
+function openPlaceholderEdit(tabIndex: number, request: PlaceholderEditRequest): void {
+  placeholderEdit.show = true;
+  placeholderEdit.index = tabIndex;
+  placeholderEdit.tableIndex = request.tableIndex;
+  placeholderEdit.key = request.key;
+  placeholderEdit.value = request.value;
+  placeholderEdit.fallback = request.fallback;
+  placeholderEdit.saving = false;
+}
+
+async function confirmPlaceholderEdit(): Promise<void> {
+  if (placeholderEdit.saving) return;
+  const value = placeholderEdit.value.trim();
+  if (!value) {
+    message.warning("译文不能为空");
+    return;
+  }
+  placeholderEdit.saving = true;
+  try {
+    await editor.setPlaceholderText(
+      placeholderEdit.index,
+      placeholderEdit.tableIndex,
+      placeholderEdit.key,
+      value
+    );
+    placeholderEdit.show = false;
+    message.success("已写入字符串表（保存后生效）");
+  } catch (error) {
+    message.error(String(error));
+  } finally {
+    placeholderEdit.saving = false;
+  }
+}
 
 const pane = computed(() => editor.panes.find((item) => item.id === paneId));
 const paneTabs = computed(() => {
@@ -636,6 +683,7 @@ function onDrop(event: DragEvent): void {
             :theme-id="props.themeId"
             @change="(text: string) => editor.updateContent(tab.index, text)"
             @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
+            @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
           />
           <PreviewHost
             v-if="previewProviderFor(tab)"
@@ -657,10 +705,66 @@ function onDrop(event: DragEvent): void {
       @select="onTabContextMenuSelect"
       @clickoutside="hideTabContextMenu"
     />
+    <NModal
+      v-model:show="placeholderEdit.show"
+      preset="card"
+      :title="`修改译文 <${placeholderEdit.tableIndex}::${placeholderEdit.key}>`"
+      style="width: 480px"
+      :mask-closable="!placeholderEdit.saving"
+    >
+      <div class="placeholder-edit">
+        <div class="placeholder-edit-hint">
+          只改字符串表里的这一条，脚本里的占位符不动；保存归档后生效。
+        </div>
+        <NInput
+          v-model:value="placeholderEdit.value"
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          placeholder="输入显示文本"
+          @keydown.enter.exact.prevent="confirmPlaceholderEdit"
+        />
+        <div v-if="placeholderEdit.fallback" class="placeholder-edit-warn">
+          该译文目前来自语言覆盖层（标记为「未翻译」），修改后会写入覆盖层那一份。
+        </div>
+      </div>
+      <template #footer>
+        <div class="placeholder-edit-footer">
+          <NButton size="small" :disabled="placeholderEdit.saving" @click="placeholderEdit.show = false">
+            取消
+          </NButton>
+          <NButton
+            size="small"
+            type="primary"
+            :loading="placeholderEdit.saving"
+            @click="confirmPlaceholderEdit"
+          >
+            确定
+          </NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <style scoped>
+.placeholder-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.placeholder-edit-hint {
+  color: var(--pvf-text-muted);
+  font-size: 12px;
+}
+.placeholder-edit-warn {
+  color: var(--pvf-warning, var(--pvf-text-secondary));
+  font-size: 12px;
+}
+.placeholder-edit-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .editor-pane-view {
   position: relative;
   height: 100%;

@@ -525,6 +525,29 @@ export const useEditorStore = defineStore("editor", () => {
     return saved;
   }
 
+  /**
+   * 改写某个 `<表号::键名>` 占位符背后的显示文本。
+   * 只改字符串表(.str)的对应条目,脚本里的占位符保持不变。
+   */
+  async function setPlaceholderText(
+    index: number,
+    tableIndex: number,
+    key: string,
+    text: string
+  ): Promise<void> {
+    await EditorService.SetPlaceholderText(index, tableIndex, key, text);
+    const annotations = (await EditorService.GetAnnotations(index)) ?? [];
+    const current = tabs.value.find((item) => item.index === index);
+    if (current) {
+      current.annotations = annotations.filter(
+        (annotation): annotation is EditorAnnotation => !!annotation
+      );
+      current.modified = true;
+    }
+    await useExplorerStore().refreshTreeTags();
+    await useArchiveStore().refreshInfo();
+  }
+
   /** 保存到源文件 */
   async function save() {
     const archive = useArchiveStore();
@@ -844,6 +867,7 @@ export const useEditorStore = defineStore("editor", () => {
     closeSplit,
     setSplitRatio,
     updateContent,
+    setPlaceholderText,
     saveTab,
     saveActiveTab,
     saveAllDirty,

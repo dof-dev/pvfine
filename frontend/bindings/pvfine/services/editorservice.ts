@@ -65,6 +65,16 @@ export function SaveAsDialog(): $CancellablePromise<string> {
 }
 
 /**
+ * SetPlaceholderText rewrites the display text behind one `<table::key>`
+ * placeholder of a script. index is the script being edited; tableIndex and key
+ * come from the placeholder annotation. Only the `.str` payload changes — the
+ * script keeps its placeholder, so no stored script data is altered.
+ */
+export function SetPlaceholderText(index: number, tableIndex: number, key: string, text: string): $CancellablePromise<void> {
+    return $Call.ByID(62517930, index, tableIndex, key, text);
+}
+
+/**
  * SetText 把编辑后的文本写入内存 overlay(不落盘)。
  */
 export function SetText(index: number, text: string): $CancellablePromise<void> {

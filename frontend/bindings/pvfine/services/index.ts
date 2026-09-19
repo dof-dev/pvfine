@@ -67,6 +67,7 @@ export type {
     ImportPreviewEntry,
     ImportResult,
     IndexStatus,
+    PlaceholderRef,
     PreviewIssue,
     RenderingReloadResult,
     ScriptApplyResult,

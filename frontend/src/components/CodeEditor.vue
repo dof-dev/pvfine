@@ -60,7 +60,16 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "change", text: string): void;
   (e: "open-reference", fileIndex: number): void;
+  (e: "edit-placeholder", request: PlaceholderEditRequest): void;
 }>();
+
+/** 一次「修改占位符译文」请求:点击标签后由父组件弹框处理。 */
+export interface PlaceholderEditRequest {
+  tableIndex: number;
+  key: string;
+  value: string;
+  fallback: boolean;
+}
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
@@ -103,7 +112,8 @@ class AnnotationWidget extends WidgetType {
     readonly annotation: EditorAnnotation,
     readonly openReference: (fileIndex: number) => void,
     readonly showTooltip: (annotation: EditorAnnotation, element: HTMLElement) => void,
-    readonly hideTooltip: () => void
+    readonly hideTooltip: () => void,
+    readonly editPlaceholder: (request: PlaceholderEditRequest) => void
   ) {
     super();
   }
@@ -124,13 +134,16 @@ class AnnotationWidget extends WidgetType {
     const tag = document.createElement("span");
     const imageReference = this.annotation.image;
     const inlineImage = !!(imageReference && this.annotation.inlineImage);
+    const placeholder = this.annotation.placeholder;
     tag.className = inlineImage
       ? "cm-annotation-inline-image"
       : `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
     if (!inlineImage) tag.textContent = this.annotation.title;
-    const tooltip = this.annotation.targetFileIndex >= 0
-      ? `${this.annotation.content || this.annotation.title}\n\nCmd/Ctrl+单击可以跳转`
-      : this.annotation.content;
+    const hints = [
+      this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开来源字符串表" : "",
+      placeholder ? "单击修改译文" : "",
+    ].filter(Boolean);
+    const tooltip = hintText(this.annotation, hints);
     tag.setAttribute("aria-label", tooltip || this.annotation.title);
     tag.contentEditable = "false";
     if (imageReference && inlineImage) {
@@ -152,6 +165,22 @@ class AnnotationWidget extends WidgetType {
     if (tooltip || this.annotation.image) {
       tag.addEventListener("mouseenter", () => this.showTooltip(this.annotation, tag));
       tag.addEventListener("mouseleave", this.hideTooltip);
+    }
+    if (placeholder) {
+      tag.classList.add("cm-annotation-tag--editable");
+      tag.setAttribute("role", "button");
+      tag.setAttribute("tabindex", "0");
+      tag.addEventListener("click", (event) => {
+        if (event.metaKey || event.ctrlKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.editPlaceholder({
+          tableIndex: placeholder.tableIndex,
+          key: placeholder.key,
+          value: this.annotation.title,
+          fallback: !!placeholder.fallback,
+        });
+      });
     }
     if (this.annotation.targetFileIndex >= 0) {
       tag.classList.add("cm-annotation-tag--link");
@@ -183,6 +212,11 @@ interface InlineImageSlot {
   pending: boolean;
   loaded: boolean;
   loadedGeneration: number;
+}
+
+/** 标注标签的 tooltip:标注内容 + 可用操作提示。 */
+function hintText(annotation: EditorAnnotation, hints: string[]): string {
+  return [annotation.content || annotation.title, ...hints].filter(Boolean).join("\n\n");
 }
 
 const inlineImageSlots = new Map<HTMLElement, InlineImageSlot>();
@@ -357,7 +391,8 @@ function annotationDecorations(
             annotation,
             (fileIndex) => emit("open-reference", fileIndex),
             showAnnotationTooltip,
-            scheduleHideTooltip
+            scheduleHideTooltip,
+            (request) => emit("edit-placeholder", request)
           ),
           side: 1,
         }).range(position)
@@ -728,6 +763,19 @@ watch(
   color: var(--pvf-editor-annotation-reference-text);
   background: var(--pvf-editor-annotation-reference-surface);
   border-color: var(--pvf-editor-annotation-reference-border);
+}
+/* 字符串表占位符的译文：文档里仍是占位符，这里只做展示。 */
+.code-editor :deep(.cm-annotation-tag--placeholder) {
+  font-style: italic;
+  border-style: dashed;
+}
+.code-editor :deep(.cm-annotation-tag--editable) {
+  cursor: pointer;
+}
+.code-editor :deep(.cm-annotation-tag--editable:hover) {
+  filter: brightness(1.15);
+  text-decoration: underline dotted var(--pvf-editor-annotation-link);
+  text-underline-offset: 2px;
 }
 .code-editor :deep(.cm-annotation-inline-image) {
   display: inline-flex;
