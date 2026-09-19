@@ -357,12 +357,12 @@ func recoverZlibSeed(cipher []byte, wantLen int) (sectionKey, bool) {
 		found bool
 		wg    sync.WaitGroup
 		next  = make(chan job)
+		// stop is closed once a worker wins, releasing the producer if it is
+		// blocked trying to hand out more work.
+		stop     = make(chan struct{})
+		stopOnce sync.Once
 	)
-	stopped := func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return found
-	}
+	halt := func() { stopOnce.Do(func() { close(stop) }) }
 	// accept re-checks a validated seed under the lock so the first winner wins.
 	accept := func(seed, magic uint32) {
 		mu.Lock()
@@ -370,6 +370,7 @@ func recoverZlibSeed(cipher []byte, wantLen int) (sectionKey, bool) {
 			found, best = true, sectionKey{seed, magic}
 		}
 		mu.Unlock()
+		halt()
 	}
 
 	worker := func() {
@@ -378,11 +379,11 @@ func recoverZlibSeed(cipher []byte, wantLen int) (sectionKey, bool) {
 			xLow := uint16(c0^0x78) | uint16(c1^j.b1)<<8
 			base := uint32(xLow) << 16
 			for i := j.from; i < j.to; i++ {
-				// Check for a winner periodically: a solved seed makes the rest
-				// of the search pointless, and the probe is far more expensive
-				// than this lock.
-				if (i-j.from)&0xFF == 0 && stopped() {
+				// A solved seed makes the rest of the search pointless.
+				select {
+				case <-stop:
 					return
+				default:
 				}
 				// Derive the state for index i directly rather than
 				// materialising all 65536 states for every job.
@@ -407,14 +408,17 @@ func recoverZlibSeed(cipher []byte, wantLen int) (sectionKey, bool) {
 	for i := 0; i < workers; i++ {
 		go worker()
 	}
+	// The producer exits on either finishing the queue or a winner; both paths
+	// close next so the workers always terminate.
 	go func() {
+		defer close(next)
 		for _, j := range jobs {
-			if stopped() {
-				break
+			select {
+			case next <- j:
+			case <-stop:
+				return
 			}
-			next <- j
 		}
-		close(next)
 	}()
 	wg.Wait()
 	return best, found
