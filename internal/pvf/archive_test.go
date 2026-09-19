@@ -235,8 +235,8 @@ func openReal(t *testing.T) *Archive {
 
 func TestRealParse(t *testing.T) {
 	a := openReal(t)
-	// The fixture has more than one revision, so assert on structure rather than
-	// a version-specific count.
+	// The fixture is a local game revision and changes between builds, so assert
+	// on structure rather than a version-specific count.
 	if a.FileCount() < 100000 {
 		t.Errorf("FileCount = %d, want a large archive", a.FileCount())
 	}
@@ -313,8 +313,8 @@ func TestRealEditRoundTrip(t *testing.T) {
 	}
 
 	// A different, untouched file must survive the rebuild with its bytes intact.
-	untouchedPath := a.Path(int32(a.FileCount() - 2))
 	untouchedIdx := int32(a.FileCount() - 2)
+	untouchedPath := a.Path(untouchedIdx)
 	rawBefore, err := a.RawBytes(untouchedIdx)
 	if err != nil || len(rawBefore) == 0 {
 		t.Fatalf("untouched file unreadable before save: %v", err)
