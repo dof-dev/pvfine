@@ -661,6 +661,42 @@ NUL 填充摘出来，插在填充**之前**，再把填充补回去；顺带支
 3. 另一份同版本客户端的同名文件：若同一个 **新 id** 在别处已有条目，就能直接读出
    正确值甚至拟合函数。
 
+## 2.17 中文写进脚本后游戏内乱码的原因（字符串池选错）
+
+现象：在 90CN 归档里给物品写中文名（或改任何非 ASCII 文本），保存后进游戏显示乱码。
+
+原因：**客户端只从 sTrW（UTF-16 池）读非 ASCII 文本**，而旧实现把一切新字符串都
+append 到 sTrA（UTF-8 池）并用偶偏移引用。我们自己读得回来（两边都认），客户端却按
+自己的约定取不到这段文本。
+
+实测两代归档的既有文本，规则 100% 一致：
+
+| 归档 | ASCII → sTrA（偶偏移） | 非 ASCII → sTrW（奇偏移） | 反例 |
+|---|---|---|---|
+| `D:\Games\dxf\90CN\Script.pvf`（Protected 变体，105 万文件） | 9,904 条 | 1,141 条 | 0 |
+| `testdata/110US.pvf`（Paged110） | 0（它的 sTrA 为空） | 24,821 条（ASCII 也在 sTrW） | 0 |
+
+例：`equipment/character/swordman/avatar/cap/chn_equ_special_avatar_swordman_cap_101550507.equ`
+的 `羽林将军的黑色头饰` 存在 `off=871953`（奇 → sTrW）。
+
+修复（`internal/pvf/stringpool.go` + `script_document.go`）：
+
+1. 先按原样查两个池的索引，命中就沿用原偏移（不动既有文本）；
+2. 未命中：非 ASCII → sTrW；ASCII → 归档 sTrA 非空则进 sTrA，否则进 sTrW
+   （110US 的 sTrA 为空，该客户端把所有字符串都放 sTrW）。
+
+顺带修掉 TypeUnicode 的另一半问题：韩服转制的 `.str` 载荷是「EUC-KR 字节按 CP437
+字体逐字映射」的伪画形式，编辑器读的时候会还原成可读韩文，但保存时旧代码写回普通
+UTF-16LE → 客户端读到的就不是它要的字节。现在 `SetText` 检测原载荷是否伪画，是则用
+`EncodeKoreanMojibake` 伪画回写，读写一致。
+
+> 注意：90CN 的 sTrA 里本来就有 13.7 万个非 ASCII 字节（历史遗留），所以回归测试
+> 校验的是「新增文本没有让 sTrA 的非 ASCII 字节变多」，而不是「sTrA 纯 ASCII」。
+
+测试：`TestStringOffsetPoolConvention`、`TestSetTextKeepsPaintedKoreanPayloads`、
+`TestVariantChineseNameEncoding`（真实 90CN：把某物品名改成 `测试中文名称` → 保存 →
+重开：名字正确、落在 sTrW、sTrA 非 ASCII 未增加）。
+
 ## 3. 复现用脚本（当时临时创建，已删除）
 
 分析时用过：

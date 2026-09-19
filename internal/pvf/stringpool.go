@@ -175,8 +175,18 @@ func (a *Archive) ensureStringIndexesLocked() {
 	}
 }
 
-// StringOffset returns the magic offset of s, appending it to the UTF-8 pool
-// when missing. It is the inverse of ResolveString.
+// StringOffset returns the magic offset of s, appending it to a pool when
+// missing. It is the inverse of ResolveString.
+//
+// The pool is chosen the way every known client build stores its own text:
+// non-ASCII goes to the UTF-16 pool, and ASCII goes to the UTF-8 pool when the
+// archive actually uses one (the 90US builds keep ASCII paths and tags there).
+// A 110US-style archive has an empty UTF-8 pool and keeps everything in the
+// UTF-16 pool, so ASCII follows it there.
+//
+// Writing CJK text into the UTF-8 pool is what made freshly entered Chinese show
+// up as mojibake in game: the client resolves non-ASCII strings from the UTF-16
+// pool, so a UTF-8 entry is not the text it expects.
 func (a *Archive) StringOffset(s string) int32 {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
@@ -187,6 +197,9 @@ func (a *Archive) StringOffset(s string) int32 {
 	if off, ok := a.strWIdx[s]; ok {
 		return off
 	}
+	if !isASCIIString(s) || !a.hasUTF8PoolLocked() {
+		return a.appendUTF16StringLocked(s)
+	}
 	old := len(a.strA)
 	a.strA = append(a.strA, s...)
 	a.strA = append(a.strA, 0)
@@ -196,7 +209,7 @@ func (a *Archive) StringOffset(s string) int32 {
 	return off
 }
 
-// UnicodeStringOffset is StringOffset for the UTF-16 pool.
+// UnicodeStringOffset is StringOffset forced to the UTF-16 pool.
 func (a *Archive) UnicodeStringOffset(s string) int32 {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
@@ -207,15 +220,36 @@ func (a *Archive) UnicodeStringOffset(s string) int32 {
 	if off, ok := a.strAIdx[s]; ok {
 		return off
 	}
+	return a.appendUTF16StringLocked(s)
+}
+
+// hasUTF8PoolLocked reports whether the archive stores anything in the UTF-8
+// pool. An empty pool means this build keeps all of its strings in the UTF-16
+// pool (the 110US containers do).
+func (a *Archive) hasUTF8PoolLocked() bool {
+	return len(a.strA) > 0
+}
+
+func isASCIIString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 0x7F {
+			return false
+		}
+	}
+	return true
+}
+
+// appendUTF16StringLocked appends s to the UTF-16 pool and returns its magic
+// offset. The caller must hold cacheMu.
+func (a *Archive) appendUTF16StringLocked(s string) int32 {
 	old := len(a.strW)
 	if old&1 != 0 {
 		a.strW = append(a.strW, 0)
 		old++
 	}
-	u16 := utf16.Encode([]rune(s))
-	for _, u := range u16 {
+	for _, unit := range utf16.Encode([]rune(s)) {
 		var b [2]byte
-		binary.LittleEndian.PutUint16(b[:], u)
+		binary.LittleEndian.PutUint16(b[:], unit)
 		a.strW = append(a.strW, b[:]...)
 	}
 	a.strW = append(a.strW, 0, 0)

@@ -117,6 +117,29 @@ sTrW: u32 encSize ^ 0x9A82F037 ; u32 rawLen ^ encSize ; encSize 字节密文
 - 偶数 → sTrA,字节偏移 = `off >> 1`
 - 奇数 → sTrW,字节偏移 = `(off >> 1) * 2`
 
+### 5.1 写入时该放哪个池(新文本必须遵守,否则游戏里乱码)
+
+客户端**只从 sTrW 读非 ASCII 文本**,所以新输入的中文/韩文必须写进 sTrW(奇偏移)。
+实测两代归档的既有文本都严格遵循这条:
+
+| 归档 | ASCII → sTrA(偶) | 非 ASCII → sTrW(奇) | 反例 |
+|---|---|---|---|
+| `90CN\Script.pvf`(Protected 变体,105 万文件) | 9,904 条 | 1,141 条 | 0 |
+| `testdata/110US.pvf`(Paged110) | 0(其 sTrA 为空) | 24,821 条(ASCII 也在 sTrW) | 0 |
+
+因此写入规则(`StringOffset` / `scriptStringOffset`):
+
+1. 先按原样查两个池的索引,命中就沿用原偏移;
+2. 未命中时:**非 ASCII → sTrW**;ASCII → 若归档的 sTrA 非空则进 sTrA,否则也进 sTrW
+   (110US 的 sTrA 为空,该客户端把所有字符串都放在 sTrW)。
+
+> 旧实现把一切都 append 到 sTrA,于是新输入的中文被写成 UTF-8、用偶偏移引用,
+> 客户端按自己的约定取不到这段文本 → 游戏里显示乱码。已修,并有回归测试
+> (`TestStringOffsetPoolConvention`、`TestVariantChineseNameEncoding`)。
+>
+> 另外 90CN 的 sTrA 里本来就有 13.7 万个非 ASCII 字节(历史遗留),所以校验方式是
+> 「新增文本没有让 sTrA 的非 ASCII 字节变多」,而不是「sTrA 纯 ASCII」。
+
 ## 6. DataType 1 脚本格式
 
 Token 流,每个 token 5 字节:`u8 type + i32 value`。
@@ -138,6 +161,11 @@ UTF-16LE 明文。本文件存在韩服转制痕迹:内容实为 **EUC-KR 字节
 字体映射进 UTF-16 码位**(如 `한국` = `C7 D1` → `╟╤`)。
 还原:每个字符 `chr.encode('cp437')` 拼回字节流 → `cp949` 解码。
 `pvflib.py` 已内置自动检测与还原(`_fix_korean_mojibake`)。
+
+**写回**:编辑器读到的是还原后的可读韩文,保存时按**原载荷是否伪画**决定编码 ——
+`SetText` 对 TypeUnicode 会在原载荷通过 `looksLikeCP437Painting` 时用
+`EncodeKoreanMojibake` 重新伪画回写,否则写普通 UTF-16LE。这样「打开→改→保存」
+不会把可读韩文变成乱码(检测基于整段载荷的前 2000 字符,短载荷可能判不出)。
 
 ## 8. HashTable(供客户端按路径查找)
 

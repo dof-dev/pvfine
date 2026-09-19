@@ -1,12 +1,10 @@
 package pvf
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
-	"unicode/utf16"
 )
 
 // ScriptTokenType is the semantic type of one TypeScript token.
@@ -933,24 +931,18 @@ func (a *Archive) scriptStringOffset(value string, pool ScriptStringPool) int32 
 		if offset, ok := a.strWIdx[value]; ok {
 			return offset
 		}
-		old := len(a.strW)
-		if old&1 != 0 {
-			a.strW = append(a.strW, 0)
-			old++
-		}
-		for _, unit := range utf16.Encode([]rune(value)) {
-			var encoded [2]byte
-			binary.LittleEndian.PutUint16(encoded[:], unit)
-			a.strW = append(a.strW, encoded[:]...)
-		}
-		a.strW = append(a.strW, 0, 0)
-		offset := int32((old>>1)<<1 | 1)
-		a.strWIdx[value] = offset
-		a.poolsDirty = true
-		return offset
+		return a.appendUTF16StringLocked(value)
 	}
 	if offset, ok := a.strAIdx[value]; ok {
 		return offset
+	}
+	if offset, ok := a.strWIdx[value]; ok {
+		return offset
+	}
+	// Same rule as StringOffset: non-ASCII text belongs in the UTF-16 pool, and
+	// an archive without a UTF-8 pool keeps everything there.
+	if !isASCIIString(value) || !a.hasUTF8PoolLocked() {
+		return a.appendUTF16StringLocked(value)
 	}
 	old := len(a.strA)
 	a.strA = append(a.strA, value...)

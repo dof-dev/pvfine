@@ -109,16 +109,24 @@ func (a *Archive) SetScriptRenderer(engine *rendering.Engine) {
 }
 
 // SetText re-encodes text for entry i according to its data type and queues
-// the result. For TypeUnicode this writes plain UTF-16LE; use SetRawBytes to
-// preserve exotic byte-level forms.
+// the result. For TypeUnicode the text is written back in the byte-level form
+// the archive already uses: a Korean-server payload whose characters are EUC-KR
+// bytes painted through the CP437 font table is re-encoded that way, so opening
+// such a file, editing it and saving it does not turn readable Korean into
+// mojibake. Use SetRawBytes to preserve any other exotic byte-level form.
 func (a *Archive) SetText(i int32, text string) error {
 	if i < 0 || i >= int32(len(a.items)) {
 		return ErrBadIndex
 	}
 	switch a.items[i].typ {
 	case TypeUnicode:
-		raw := utf16le(text)
-		a.overlay[i] = raw
+		if a.payloadIsPainted(i) {
+			if encoded, err := EncodeKoreanMojibake(text); err == nil {
+				a.overlay[i] = encoded
+				return nil
+			}
+		}
+		a.overlay[i] = utf16le(text)
 		return nil
 	case TypeScript:
 		raw, err := a.encodeScript(text)
@@ -254,6 +262,16 @@ func u16le(b []byte) []uint16 {
 		out[i] = binary.LittleEndian.Uint16(b[i*2:])
 	}
 	return out
+}
+
+// payloadIsPainted reports whether entry i currently holds a Korean-server
+// payload: EUC-KR bytes painted through the CP437 font table.
+func (a *Archive) payloadIsPainted(i int32) bool {
+	raw, err := a.RawBytes(i)
+	if err != nil || len(raw) < 2 {
+		return false
+	}
+	return looksLikeCP437Painting(string(utf16.Decode(u16le(raw))))
 }
 
 func splitDirName(p string) (dir, name string) {
