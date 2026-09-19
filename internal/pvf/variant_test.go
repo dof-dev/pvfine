@@ -308,3 +308,78 @@ func TestRealVariantParse(t *testing.T) {
 		t.Error("no sampled script entry decompiled to text")
 	}
 }
+
+// TestVariantNewItemRecipe walks the new-item workflow on a real variant-family
+// archive supplied via PVF_TESTFILE: add a file, register it in the equipment
+// list, save and reopen. This is the case that used to be blocked by the HASH
+// section — the archive's HASH key is now known (wideSeed("hash")) and the
+// section is regenerated, so a structural edit no longer writes a stale table.
+func TestVariantNewItemRecipe(t *testing.T) {
+	p := os.Getenv(testFileEnv)
+	if p == "" {
+		t.Skipf("%s not set; skipping", testFileEnv)
+	}
+	a, err := Open(p)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if a.keys.hash.seed == 0 {
+		t.Fatal("HASH seed was not established")
+	}
+	if a.paged110 {
+		t.Skip("Paged110 archive: covered by the Paged110 round-trip tests")
+	}
+
+	listIndex, ok := a.FindList("equipment/equipment.lst")
+	if !ok {
+		t.Skip("fixture has no equipment list")
+	}
+	listPath := a.Path(listIndex)
+	// Entries are relative to the list's own directory in this layout.
+	newPath := "equipment/character/common/amulet/zz_recipe_test.equ"
+	if _, err := a.AddFileText(newPath, "[name]\n`配方测试装备`\n[rarity]\n4", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetListPair(listIndex, "900000001", "character/common/amulet/zz_recipe_test.equ"); err != nil {
+		t.Fatalf("registering the new file: %v", err)
+	}
+
+	out := filepath.Join(t.TempDir(), "recipe.pvf")
+	if err := a.SaveAs(out); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+	b, err := Open(out)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	index, ok := b.Find(newPath)
+	if !ok {
+		t.Fatalf("added entry missing after %s round trip", listPath)
+	}
+	if text, err := b.Text(index); err != nil || !strings.Contains(text, "配方测试装备") {
+		t.Errorf("added entry unreadable: err=%v text=%q", err, text)
+	}
+	if name, ok := b.ItemName(index); !ok || name != "配方测试装备" {
+		t.Errorf("added entry name = %q, %v", name, ok)
+	}
+	reopenedList, ok := b.FindList("equipment/equipment.lst")
+	if !ok {
+		t.Fatal("equipment list missing after reopen")
+	}
+	pairs, err := b.ScriptListPairs(reopenedList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := false
+	for _, pair := range pairs {
+		if pair.ID == "900000001" && strings.Contains(strings.ToLower(pair.Path), "zz_recipe_test") {
+			registered = true
+		}
+	}
+	if !registered {
+		t.Error("new file is not registered in the equipment list")
+	}
+	if b.keys.hash.seed == 0 {
+		t.Error("HASH seed lost after the round trip")
+	}
+}
