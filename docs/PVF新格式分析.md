@@ -606,6 +606,61 @@ NUL 填充摘出来，插在填充**之前**，再把填充补回去；顺带支
 - 代价：结构性编辑要重新压缩名称池（110US 的 UTF-16 池解压后 401 MB，实测约 35 s）；
   只改文件内容的编辑不触发池重建。
 
+## 2.16 `list/*_indexhash.etc`（新增物品要写的第三个文件）
+
+110US 的 `list/` 下每个列表都配了一个 `<列表名>_indexhash.etc`（13 个，90US 完全没有）：
+
+| 列表 | 索引文件 | 列表条目 | 索引条目 |
+|---|---|---|---|
+| `list/equipment.lst` | `list/equipment_indexhash.etc` | 361,348 | 413,119 |
+| `list/stackable.lst` | `list/stackable_indexhash.etc` | 139,533 | 139,754 |
+| `list/monster.lst` | `list/monster_indexhash.etc` | 13,731 | 16,751 |
+| `list/npc.lst` | `list/npc_indexhash.etc` | 3,361 | 3,977 |
+| `list/appendage.lst` | `list/appendage_indexhash.etc`（另有 `_v5.etc`） | 7,843 | 8,345 |
+
+**结构（已确认）**：和 `.lst` 同一套 token 流，`(type 0 整数 id)(type 6 字符串)`，
+每条 10 字节。第二个 token 不是 int，而是**字符串**；字符串内容是**十进制数字**
+（一个 uint32；因为可能超过 2^31，所以没有用有符号 int token 存）。
+
+**这个数字是什么（已排除的假设）**：
+
+- 不是路径/名字的常见哈希：crc32(IEEE/Castagnoli/Koopman)、fnv1/fnv1a、djb2、sdbm、
+  java、jenkins、bkdr、LCG 系列（用容器自己的 `0x343FD/0x269EC3` 等）等 ~30 种函数
+  × 路径/目录/文件名/去扩展名/小写/id 文本/`name_<id>`/UTF-16 字节 ≈ 0 命中（每项 400–2000 样本）。
+- 不是路径相关：`stackable` 与 `appendage_v5` 共有 3160 个 id，**路径完全不同但数值完全相同**。
+- 不是 id 的线性函数（`A*id+B` 只在前两条上成立）；也不是另一条记录的 token/偏移。
+- 它只跟 **id** 有关：`stackable` / `monster` / `dnf` / `appendage` / `appendage_v5`
+  之间共有 163–6094 个 id，数值 100% 相同（`equipment` 的 id 是真实物品 ID，与这些
+  “序数 id”列表没有可比样本）。`id=0 → 0`。
+
+**覆盖率**：索引文件是列表的**严格超集** —— 五组样本里「在列表里但索引没有」的
+条目都是 **0**，而多余条目（历史残留）有几百到 5 万。也就是说：原厂工具每次维护列表时
+都会顺带把索引补齐，而**我们自己新增的 id 就会缺这一条** —— 这正是「新增道具失败」
+最可疑的地方，但我们无法凭空算出那个数字。
+
+**已实现的工具**（`internal/pvf/indexhash.go`）：
+
+- `IndexHashCompanionPath(listPath)`：`list/x.lst` → `list/x_indexhash.etc`。
+- `IndexHashPairs(path)`：解析成 `{ID, Value}`。
+- `IndexHashGaps(listPath)`：**列出「在列表里、但索引里没有」的 id**（新增物品后
+  这里就会出现你新加的 id）。
+- `SetIndexHashEntry(path, id, value)`：按原文件的写法追加/更新一条
+  （值写成十进制文本再取字符串池偏移，其余条目逐字节保留）。
+- `IndexHashSiblingPaths(listPath)`：附带 `_v5` 变体时一并列出。
+- 测试：`TestIndexHashReadWrite`（读写/更新/追加/字节结构）与
+  `TestIndexHashRealArchive`（零售 110US：两个列表的 gaps 都是 0；注册一个新 id
+  后 gaps 恰好是那个 id，写入后归零）。
+
+**还没解决**：那个 uint32 的生成函数。要对上新条目，需要下面任一条件：
+
+1. 在游戏里试验：先只加 `.lst`（现状）→ 看物品是否出现；再把索引条目用
+   邻近条目的数值补上 → 再看。这能判定客户端是否校验这个值。
+2. 找到写这批 `.etc` 的工具（本机 `D:\Games\dxf\tools` 里的工具与 `DFO.exe`、
+   服务端二进制都没有 "indexhash" 字样，客户端也不含 `n_string`/`equipment.lst`
+   这类字面量，所以文件名是运行时拼的，无法用字符串搜索定位）。
+3. 另一份同版本客户端的同名文件：若同一个 **新 id** 在别处已有条目，就能直接读出
+   正确值甚至拟合函数。
+
 ## 3. 复现用脚本（当时临时创建，已删除）
 
 分析时用过：

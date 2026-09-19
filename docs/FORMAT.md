@@ -247,3 +247,15 @@ Paged110 的 `.equ`/`.stk` 不直接存显示文本,`[name]` 等字段是 type 8
 `ScriptMetadata` 支持 8/10 token 并对名称做占位符解析,所以搜索索引、文件树标签
 用的是显示文本而不是 `<表号::键名>`(只由覆盖层答出的还会加 `（未翻译）`)。
 
+### 9.3 `list/*_indexhash.etc`(列表的伴随索引)
+
+110US 的每个列表还配一个 `<列表名>_indexhash.etc`(90US 没有)。格式与 `.lst` 相同:
+`(type 0 整数 id)(type 6 字符串)`,每条 10 字节;第二个 token 的字符串内容是**十进制
+uint32**(超过 2^31 所以用字符串存)。实测该值**只与 id 有关**(不同列表里同一 id 的
+值相同,即使路径完全不同),不是路径哈希、也不是常见哈希函数,生成函数仍未解出。
+索引文件是列表的**严格超集**(原厂工具维护列表时会顺带补齐),因此新增 id 会缺条目。
+
+工具:`Archive.IndexHashCompanionPath` / `IndexHashPairs` / `IndexHashGaps` /
+`IndexHashSiblingPaths` / `SetIndexHashEntry`(值写成十进制文本,其余条目字节不变)。
+详见 `docs/PVF新格式分析.md` §2.16。
+
