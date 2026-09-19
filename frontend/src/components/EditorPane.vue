@@ -25,6 +25,7 @@ import {
   Save24Regular,
   SplitHorizontal24Regular,
   SplitVertical24Regular,
+  TextAddT24Regular,
 } from "@vicons/fluent";
 import {
   useEditorStore,
@@ -74,7 +75,7 @@ const tabContextMenu = ref({
 type DropEdge = "left" | "right" | "top" | "bottom";
 const dragMime = "application/x-pvfine-editor-tab";
 
-/** 「修改占位符译文」对话框状态。 */
+/** 「修改/创建占位符译文」对话框状态。 */
 const placeholderEdit = reactive({
   show: false,
   index: -1,
@@ -82,6 +83,7 @@ const placeholderEdit = reactive({
   key: "",
   value: "",
   fallback: false,
+  missing: false,
   saving: false,
 });
 
@@ -90,8 +92,9 @@ function openPlaceholderEdit(tabIndex: number, request: PlaceholderEditRequest):
   placeholderEdit.index = tabIndex;
   placeholderEdit.tableIndex = request.tableIndex;
   placeholderEdit.key = request.key;
-  placeholderEdit.value = request.value;
+  placeholderEdit.value = request.missing ? "" : request.value;
   placeholderEdit.fallback = request.fallback;
+  placeholderEdit.missing = request.missing;
   placeholderEdit.saving = false;
 }
 
@@ -110,12 +113,95 @@ async function confirmPlaceholderEdit(): Promise<void> {
       placeholderEdit.key,
       value
     );
+    if (placeholderEdit.missing) {
+      // 新建表项时顺手把引用插到光标处，省得手写 {8=`<表号::键名>`}。
+      const inserted = insertPlaceholderReference(
+        placeholderEdit.index,
+        placeholderEdit.tableIndex,
+        placeholderEdit.key
+      );
+      placeholderEdit.show = false;
+      message.success(
+        inserted
+          ? "已创建字符串表条目并插入引用（保存后生效）"
+          : "已创建字符串表条目（未找到可插入的光标位置）"
+      );
+      return;
+    }
     placeholderEdit.show = false;
     message.success("已写入字符串表（保存后生效）");
   } catch (error) {
     message.error(String(error));
   } finally {
     placeholderEdit.saving = false;
+  }
+}
+
+/** 编辑器实例(按标签索引),用于在光标处插入文本。 */
+const editorRefs = new Map<number, { insertText: (text: string) => boolean }>();
+
+function setEditorRef(index: number, instance: unknown): void {
+  if (instance) {
+    editorRefs.set(index, instance as { insertText: (text: string) => boolean });
+  } else {
+    editorRefs.delete(index);
+  }
+}
+
+function insertPlaceholderReference(index: number, tableIndex: number, key: string): boolean {
+  // 标记里的 8 是 token 类型(字符串池引用)，表号在 <表号::键名> 里。
+  return editorRefs.get(index)?.insertText("{8=`<" + tableIndex + "::" + key + ">`}") ?? false;
+}
+
+/** 「插入字符串引用」对话框:新建/更新表项，并把引用插到光标处。 */
+const referenceInsert = reactive({
+  show: false,
+  tableIndex: "3",
+  key: "",
+  value: "",
+  saving: false,
+});
+
+function openReferenceInsert(): void {
+  referenceInsert.show = true;
+  referenceInsert.key = "";
+  referenceInsert.value = "";
+  referenceInsert.saving = false;
+}
+
+async function confirmReferenceInsert(): Promise<void> {
+  const active = activeTab.value;
+  if (!active) {
+    message.warning("请先打开一个文件");
+    return;
+  }
+  const key = referenceInsert.key.trim();
+  const tableIndex = Number.parseInt(referenceInsert.tableIndex.trim(), 10);
+  if (!Number.isFinite(tableIndex)) {
+    message.warning("表号必须是整数");
+    return;
+  }
+  if (!key) {
+    message.warning("键名不能为空");
+    return;
+  }
+  const value = referenceInsert.value.trim();
+  if (!value) {
+    message.warning("译文不能为空");
+    return;
+  }
+  referenceInsert.saving = true;
+  try {
+    await editor.setPlaceholderText(active.index, tableIndex, key, value);
+    const inserted = insertPlaceholderReference(active.index, tableIndex, key);
+    referenceInsert.show = false;
+    message.success(
+      inserted ? "已插入引用并写入字符串表（保存后生效）" : "已写入字符串表（未找到可插入的光标位置）"
+    );
+  } catch (error) {
+    message.error(String(error));
+  } finally {
+    referenceInsert.saving = false;
   }
 }
 
@@ -665,6 +751,22 @@ function onDrop(event: DragEvent): void {
               </template>
               {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
             </NTooltip>
+
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :disabled="!tab.editable"
+                  aria-label="插入字符串引用"
+                  @click="openReferenceInsert"
+                >
+                  <template #icon><NIcon><TextAddT24Regular /></NIcon></template>
+                  字符串引用
+                </NButton>
+              </template>
+              在光标处插入 {8=`&lt;表号::键名&gt;`}，并创建/更新字符串表条目
+            </NTooltip>
           </div>
         </div>
 
@@ -675,6 +777,7 @@ function onDrop(event: DragEvent): void {
           <NSpin v-if="isOpeningTab(tab.index)" style="margin-top: 120px" />
           <CodeEditor
             v-else
+            :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
             :doc="tab.text"
             :read-only="!tab.editable"
             :annotations="tab.annotations"
@@ -726,6 +829,10 @@ function onDrop(event: DragEvent): void {
         <div v-if="placeholderEdit.fallback" class="placeholder-edit-warn">
           该译文目前来自语言覆盖层（标记为「未翻译」），修改后会写入覆盖层那一份。
         </div>
+        <div v-if="placeholderEdit.missing" class="placeholder-edit-warn">
+          字符串表里还没有这个键，确定后会创建该条目，并把
+          {8=`&lt;表号::键名&gt;`} 插入到光标处。
+        </div>
       </div>
       <template #footer>
         <div class="placeholder-edit-footer">
@@ -739,6 +846,50 @@ function onDrop(event: DragEvent): void {
             @click="confirmPlaceholderEdit"
           >
             确定
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="referenceInsert.show"
+      preset="card"
+      title="插入字符串引用"
+      style="width: 480px"
+      :mask-closable="!referenceInsert.saving"
+    >
+      <div class="placeholder-edit">
+        <div class="placeholder-edit-hint">
+          在当前光标处插入 {8=`&lt;表号::键名&gt;`}（8 是 token 类型，不是表号），并把译文写入
+          该表号对应的字符串表；用 3=装备、13=道具 最常见。
+        </div>
+        <NInput v-model:value="referenceInsert.tableIndex" placeholder="表号，如 3（装备）/ 13（道具）">
+          <template #prefix>表号</template>
+        </NInput>
+        <NInput v-model:value="referenceInsert.key" placeholder="键名，如 name_900000001">
+          <template #prefix>键名</template>
+        </NInput>
+        <NInput
+          v-model:value="referenceInsert.value"
+          type="textarea"
+          :autosize="{ minRows: 1, maxRows: 4 }"
+          placeholder="显示文本"
+        >
+          <template #prefix>译文</template>
+        </NInput>
+      </div>
+      <template #footer>
+        <div class="placeholder-edit-footer">
+          <NButton size="small" :disabled="referenceInsert.saving" @click="referenceInsert.show = false">
+            取消
+          </NButton>
+          <NButton
+            size="small"
+            type="primary"
+            :loading="referenceInsert.saving"
+            @click="confirmReferenceInsert"
+          >
+            插入并写入
           </NButton>
         </div>
       </template>

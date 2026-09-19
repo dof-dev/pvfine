@@ -63,12 +63,14 @@ const emit = defineEmits<{
   (e: "edit-placeholder", request: PlaceholderEditRequest): void;
 }>();
 
-/** 一次「修改占位符译文」请求:点击标签后由父组件弹框处理。 */
+/** 一次「修改/创建占位符译文」请求:点击标签后由父组件弹框处理。 */
 export interface PlaceholderEditRequest {
   tableIndex: number;
   key: string;
   value: string;
   fallback: boolean;
+  /** 该键在字符串表里还不存在，需要新建。 */
+  missing: boolean;
 }
 
 const host = ref<HTMLDivElement | null>(null);
@@ -179,6 +181,7 @@ class AnnotationWidget extends WidgetType {
           key: placeholder.key,
           value: this.annotation.title,
           fallback: !!placeholder.fallback,
+          missing: !!placeholder.missing,
         });
       });
     }
@@ -620,7 +623,19 @@ function revealPosition(lineNumber: number, columnNumber = 1): void {
   view.focus();
 }
 
-defineExpose({ revealPosition });
+/** 在光标处插入文本(如字符串表引用),并把光标放到插入内容之后。 */
+function insertText(text: string): boolean {
+  if (!view) return false;
+  const range = view.state.selection.main;
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert: text },
+    selection: { anchor: range.from + text.length },
+  });
+  view.focus();
+  return true;
+}
+
+defineExpose({ revealPosition, insertText });
 
 onMounted(() => {
   view = new EditorView({
@@ -771,6 +786,12 @@ watch(
 }
 .code-editor :deep(.cm-annotation-tag--editable) {
   cursor: pointer;
+}
+/* 表里还没有这个键：提示需要填写，点击即可创建。 */
+.code-editor :deep(.cm-annotation-tag--placeholder-missing) {
+  color: var(--pvf-error);
+  border-style: dashed;
+  border-color: var(--pvf-error);
 }
 .code-editor :deep(.cm-annotation-tag--editable:hover) {
   filter: brightness(1.15);

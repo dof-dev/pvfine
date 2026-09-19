@@ -23,13 +23,21 @@ type EditorAnnotation struct {
 }
 
 // PlaceholderRef identifies the string-table entry a placeholder annotation
-// resolves through, so the editor can offer to rewrite that text.
+// resolves through, so the editor can offer to rewrite — or create — that text.
 type PlaceholderRef struct {
 	TableIndex int32  `json:"tableIndex"`
 	Key        string `json:"key"`
 	Fallback   bool   `json:"fallback,omitempty"`
+	// Missing reports a placeholder no table answers yet: the editor offers to
+	// create the entry, which is how a new file gets its display text.
+	Missing bool `json:"missing,omitempty"`
 }
 
+// missingPlaceholderLabel is the tag shown for a `<table::key>` placeholder no
+// string table answers yet; clicking it creates the entry.
+const missingPlaceholderLabel = "未定义"
+
+// TreeAnnotation is one annotation attached to a path in the explorer.
 type TreeAnnotation struct {
 	Title   string   `json:"title"`
 	Content string   `json:"content"`
@@ -110,6 +118,10 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 // the placeholder itself — rewriting it would change the stored data — and the
 // resolved text is attached as a display-only tag next to it. The tag carries
 // the table index and key so it can be edited in place (SetPlaceholderText).
+//
+// A placeholder no table answers yet is annotated too, with Missing set: that
+// is how a brand-new file gets its text, because the editor can then create the
+// entry instead of the user having to open the (possibly 49 MB) table.
 func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotations []EditorAnnotation) []EditorAnnotation {
 	if c.archive == nil {
 		return annotations
@@ -124,6 +136,19 @@ func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotatio
 		}
 		resolution, found := c.archive.ResolveStringTable(index, key)
 		if !found {
+			annotations = append(annotations, EditorAnnotation{
+				Start:           int32(element.Start),
+				End:             int32(element.End),
+				Title:           missingPlaceholderLabel,
+				Content:         element.Value + "\n该字符串表里还没有这个键，单击可创建并填写译文",
+				Type:            "placeholder-missing",
+				TargetFileIndex: -1,
+				Placeholder: &PlaceholderRef{
+					TableIndex: int32(index),
+					Key:        key,
+					Missing:    true,
+				},
+			})
 			continue
 		}
 		text := resolution.Text

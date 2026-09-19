@@ -310,6 +310,108 @@ func TestSetPlaceholderTextEditsOverlayEntry(t *testing.T) {
 	t.Fatalf("placeholder annotation missing: %#v", annotations)
 }
 
+// TestPlaceholderCreationForNewFile covers the new-file workflow: a file that
+// references a key no table has yet gets a "create" annotation, and filling it
+// in appends the entry to the base table.
+func TestPlaceholderCreationForNewFile(t *testing.T) {
+	a := pvf.New()
+	encode := func(s string) []byte {
+		out := make([]byte, 0, len(s)*2)
+		for _, r := range s {
+			out = append(out, byte(r), byte(r>>8))
+		}
+		return out
+	}
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Equipment.uv.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Equipment.uv.str", encode("name_514530375>白色兽语腰带 [A款]\r\n"), pvf.TypeScript)
+	// A brand-new entry registered in the equipment list, referencing a key the
+	// tables do not know.
+	newIndex, err := a.AddFileText("equipment/character/x/new_item.equ",
+		"[name]\n{8=`<3::name_new_item>`}\n[rarity]\n4", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddFileText("list/equipment.lst",
+		"900000001 `equipment/character/x/new_item.equ`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	c.startSearchIndex()
+	waitForSearchIndex(t, c)
+	service := NewEditorService(c)
+
+	file, err := service.GetFile(newIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var missing *EditorAnnotation
+	for _, annotation := range file.Annotations {
+		if annotation.Type == "placeholder-missing" {
+			copy := annotation
+			missing = &copy
+		}
+	}
+	if missing == nil {
+		t.Fatalf("no create annotation in %#v", file.Annotations)
+	}
+	if missing.Placeholder == nil || !missing.Placeholder.Missing || missing.Placeholder.Key != "name_new_item" {
+		t.Fatalf("create annotation = %#v", missing)
+	}
+	if missing.Title != missingPlaceholderLabel {
+		t.Errorf("title = %q", missing.Title)
+	}
+
+	// Create the entry the way the dialog does.
+	if err := service.SetPlaceholderText(newIndex, 3, "name_new_item", "新装备名"); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := a.LookupStringTable(3, "name_new_item"); !ok || got != "新装备名" {
+		t.Errorf("created entry = %q, %v", got, ok)
+	}
+	after, err := service.GetFile(newIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := false
+	for _, annotation := range after.Annotations {
+		if annotation.Type != "placeholder" || annotation.Placeholder == nil {
+			continue
+		}
+		resolved = true
+		if annotation.Title != "新装备名" {
+			t.Errorf("title after creation = %q", annotation.Title)
+		}
+	}
+	if !resolved {
+		t.Errorf("annotation stayed unresolved: %#v", after.Annotations)
+	}
+	tagged := false
+	for _, tag := range after.Tags {
+		if tag.Name == "新装备名" {
+			tagged = true
+		}
+	}
+	if !tagged {
+		t.Errorf("tree tags = %#v", after.Tags)
+	}
+	result, err := NewArchiveService(c).Search("新装备名", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hit := range result.Hits {
+		if hit.FileIndex == newIndex && hit.Name == "新装备名" {
+			return
+		}
+	}
+	t.Fatalf("new entry not searchable: %#v", result.Hits)
+}
+
 func TestListTargetCandidates(t *testing.T) {
 	candidates, ok := listPathCandidates("equipment/equipment.lst", "character/a.equ")
 	if !ok {

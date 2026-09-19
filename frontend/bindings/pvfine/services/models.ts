@@ -387,12 +387,18 @@ export interface IndexStatus {
 
 /**
  * PlaceholderRef identifies the string-table entry a placeholder annotation
- * resolves through, so the editor can offer to rewrite that text.
+ * resolves through, so the editor can offer to rewrite — or create — that text.
  */
 export interface PlaceholderRef {
     "tableIndex": number;
     "key": string;
     "fallback"?: boolean;
+
+    /**
+     * Missing reports a placeholder no table answers yet: the editor offers to
+     * create the entry, which is how a new file gets its display text.
+     */
+    "missing"?: boolean;
 }
 
 /**
@@ -621,6 +627,9 @@ export interface TextReplaceSpec {
     "regex": boolean;
 }
 
+/**
+ * TreeAnnotation is one annotation attached to a path in the explorer.
+ */
 export interface TreeAnnotation {
     "title": string;
     "content": string;

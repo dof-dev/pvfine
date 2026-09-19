@@ -215,6 +215,47 @@ func TestSetStringTableEntry(t *testing.T) {
 	}
 }
 
+// TestSetStringTableEntryAppendsBeforePadding covers payloads that end with NUL
+// padding (the retail tables do): the reader stops at the first NUL, so a new
+// line has to be inserted before the padding to be visible at all.
+func TestSetStringTableEntryAppendsBeforePadding(t *testing.T) {
+	a := New()
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Equipment.uv.str`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Equipment.uv.str", utf16LEBytes("name_1>旧\r\n\x00\x00"), TypeScript)
+
+	path, err := a.SetStringTableEntry(3, "name_2", "新")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(path, "String/Equipment.uv.str") {
+		t.Errorf("edited %s", path)
+	}
+	if got, ok := a.LookupStringTable(3, "name_2"); !ok || got != "新" {
+		t.Errorf("appended value = %q, %v", got, ok)
+	}
+	raw, _ := a.RawBytes(mustFind(a, "String/Equipment.uv.str"))
+	if want := utf16LEBytes("name_1>旧\r\nname_2>新\r\n\x00\x00"); !bytes.Equal(raw, want) {
+		t.Errorf("payload = % x, want % x", raw, want)
+	}
+
+	// An unterminated last line before the padding is still editable in place:
+	// only the value bytes change, the missing terminator stays missing.
+	a.AddFile("String/Equipment.uv.str", utf16LEBytes("name_1>旧\r\nname_2>无结尾\x00\x00"), TypeScript)
+	a.InvalidateStringTables()
+	if _, err := a.SetStringTableEntry(3, "name_2", "改"); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := a.LookupStringTable(3, "name_2"); !ok || got != "改" {
+		t.Errorf("unterminated value = %q, %v", got, ok)
+	}
+	raw, _ = a.RawBytes(mustFind(a, "String/Equipment.uv.str"))
+	if want := utf16LEBytes("name_1>旧\r\nname_2>改\x00\x00"); !bytes.Equal(raw, want) {
+		t.Errorf("unterminated payload = % x, want % x", raw, want)
+	}
+}
+
 // TestStringTableUnresolvedKept ensures unknown placeholders are preserved.
 func TestStringTableUnresolvedKept(t *testing.T) {
 	a := New()

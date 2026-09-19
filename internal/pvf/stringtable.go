@@ -552,16 +552,24 @@ func spliceStringTableValue(raw []byte, key, value string) ([]byte, error) {
 		return out, nil
 	}
 
-	// Not present yet: append a line using the table's dominant terminator.
-	terminator := dominantUTF16Terminator(raw)
+	// Not present yet: append a line before any trailing NUL padding. The reader
+	// stops at the first NUL character, so text written after the padding would
+	// never be seen.
+	content := len(raw)
+	for content >= 2 && raw[content-1] == 0 && raw[content-2] == 0 {
+		content -= 2
+	}
+	body, padding := raw[:content], raw[content:]
+	terminator := dominantUTF16Terminator(body)
 	out := make([]byte, 0, len(raw)+len(pattern)+len(value)*2+len(terminator))
-	out = append(out, raw...)
-	if len(out) >= 2 && !utf16LineStart(out, len(out)) {
+	out = append(out, body...)
+	if !utf16LineStart(out, len(out)) {
 		out = append(out, terminator...)
 	}
 	out = append(out, pattern...)
 	out = append(out, utf16LEBytes(value)...)
 	out = append(out, terminator...)
+	out = append(out, padding...)
 	return out, nil
 }
 
@@ -580,9 +588,14 @@ func utf16LineStart(raw []byte, at int) bool {
 }
 
 // utf16LineEnd returns the offset where the value starting at from ends,
-// excluding its `\r\n` / `\n` terminator. from must be even.
+// excluding its `\r\n` / `\n` terminator. A NUL character ends the value too:
+// the payload may hold an unterminated last line followed by NUL padding.
+// from must be even.
 func utf16LineEnd(raw []byte, from int) (int, bool) {
 	for i := from; i+1 < len(raw); i += 2 {
+		if raw[i] == 0 && raw[i+1] == 0 {
+			return i, true
+		}
 		if raw[i] != '\n' || raw[i+1] != 0 {
 			continue
 		}

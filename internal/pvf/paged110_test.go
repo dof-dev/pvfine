@@ -112,9 +112,11 @@ func TestPaged110Open(t *testing.T) {
 	}
 }
 
-// TestPaged110StructuralEditRoundTrip adds a file to the retail container,
-// writes it back and reopens it: the HASH section is regenerated with the
-// recovered seed, so the new entry is registered and everything else still
+// TestPaged110StructuralEditRoundTrip walks the whole new-item recipe on the
+// retail container — add a file, give it a string-table name, register it in the
+// equipment list — then writes it back and reopens it: the HASH section is
+// regenerated with the recovered seed and the rebuilt name pool uses the
+// container's own keys, so the new item is complete and everything else still
 // reads.
 func TestPaged110StructuralEditRoundTrip(t *testing.T) {
 	archive := testdataFile("110US.pvf")
@@ -129,9 +131,27 @@ func TestPaged110StructuralEditRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := a.FileCount()
-	const newPath = "zz_probe/structural_test.equ"
-	if _, err := a.AddFileText(newPath, "[name]\n`新增条目`\n[rarity]\n4", TypeScript); err != nil {
+	const (
+		newPath = "zz_probe/structural_test.equ"
+		newKey  = "zz_probe_name"
+		newName = "新增条目"
+	)
+	if _, err := a.AddFileText(newPath, "[name]\n{8=`<3::"+newKey+">`}\n[rarity]\n4", TypeScript); err != nil {
 		t.Fatal(err)
+	}
+	// The text the new file references, created in the equipment table.
+	tablePath, err := a.SetStringTableEntry(3, newKey, newName)
+	if err != nil {
+		t.Fatalf("creating the string entry: %v", err)
+	}
+	t.Logf("string entry created in %s", tablePath)
+	// Register the new file so the client can find it.
+	listIndex, ok := a.FindList("equipment/equipment.lst")
+	if !ok {
+		t.Fatal("equipment list not found")
+	}
+	if err := a.SetListPair(listIndex, "900000001", newPath); err != nil {
+		t.Fatalf("registering the new file: %v", err)
 	}
 
 	dir := t.TempDir()
@@ -166,8 +186,32 @@ func TestPaged110StructuralEditRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("added entry missing after the round trip")
 	}
-	if text, err := b.Text(index); err != nil || !strings.Contains(text, "新增条目") {
+	if text, err := b.Text(index); err != nil || !strings.Contains(text, "<3::"+newKey+">") {
 		t.Errorf("added entry unreadable: err=%v text=%q", err, text)
+	}
+	// The new text and the registration survived; the name resolves to it.
+	if got, ok := b.LookupStringTable(3, newKey); !ok || got != newName {
+		t.Errorf("created string entry = %q, %v", got, ok)
+	}
+	if name, ok := b.ItemName(index); !ok || name != newName {
+		t.Errorf("new item name = %q, %v", name, ok)
+	}
+	reopenedList, ok := b.FindList("equipment/equipment.lst")
+	if !ok {
+		t.Fatal("equipment list missing after the round trip")
+	}
+	pairs, err := b.ScriptListPairs(reopenedList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := false
+	for _, pair := range pairs {
+		if pair.ID == "900000001" && strings.EqualFold(pair.Path, newPath) {
+			registered = true
+		}
+	}
+	if !registered {
+		t.Error("new file is not registered in the equipment list")
 	}
 	// The regenerated HASH must index the new file list.
 	entries, sorted := parseHashTable(decryptHashSection(b))
