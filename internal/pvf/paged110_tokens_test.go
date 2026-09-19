@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -14,14 +12,7 @@ import (
 // emits: 8 (values such as <31::equip_name_1>) and 10 (multi-line command
 // text). Both must render as {N=`...`} and survive a text round trip.
 func TestPaged110TokenTypes(t *testing.T) {
-	archive := filepath.Join("..", "..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openPaged110Fixture(t)
 
 	type expect struct {
 		path     string
@@ -63,14 +54,7 @@ func TestPaged110TokenTypes(t *testing.T) {
 // TestPaged110RoundTripSample re-encodes a sample of real scripts and checks
 // that the token stream is reproduced byte for byte.
 func TestPaged110RoundTripSample(t *testing.T) {
-	archive := filepath.Join("..", "..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openPaged110Fixture(t)
 	checked, mismatches := 0, 0
 	for i := int32(0); i < a.FileCount() && checked < 60; i++ {
 		f := a.File(i)
@@ -120,14 +104,7 @@ func scriptTokens(t *testing.T, a *Archive, i int32) []byte {
 // TestPaged110NameTokensPresent asserts that name-bearing sections are no
 // longer rendered with a missing value.
 func TestPaged110NameTokensPresent(t *testing.T) {
-	archive := filepath.Join("..", "..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openPaged110Fixture(t)
 	empty := 0
 	seen := 0
 	for i := int32(0); i < a.FileCount() && seen < 200; i++ {

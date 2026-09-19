@@ -1,8 +1,8 @@
 package pvf
 
 import (
-	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -90,20 +90,61 @@ func TestIndexHashReadWrite(t *testing.T) {
 	}
 }
 
-// TestIndexHashRealArchive checks the reader against the retail container: every
-// listed id has an entry, and the file is a superset of the list.
-func TestIndexHashRealArchive(t *testing.T) {
-	archive := testdataFile("110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
+func TestIndexHashValue(t *testing.T) {
+	for _, test := range []struct {
+		id   uint32
+		want uint32
+	}{
+		{0, 0x00000000},
+		{1, 0x31251ba7},
+		{2, 0x66a79298},
+		{3, 0xdfb6d245},
+		{4, 0xcd4f2531},
+		{10, 0x46a636a4},
+		{100, 0x5c663f0c},
+		{1000, 0xf0d473eb},
+	} {
+		if got := IndexHashValue(test.id); got != test.want {
+			t.Errorf("IndexHashValue(%d) = %#x, want %#x", test.id, got, test.want)
+		}
 	}
-	if _, err := os.Stat(testdataFile(sealedPageKeyName)); err != nil {
-		t.Skip("testdata/sk.dat not present")
+}
+
+func TestSetIndexHashEntryForID(t *testing.T) {
+	a := New()
+	a.AddFile("list/equipment_indexhash.etc", buildIndexHash(a, nil), TypeScript)
+	if err := a.SetIndexHashEntryForID("list/equipment_indexhash.etc", 10020); err != nil {
+		t.Fatal(err)
 	}
-	a, err := Open(archive)
+	pairs, err := a.IndexHashPairs("list/equipment_indexhash.etc")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(pairs) != 1 || pairs[0].ID != 10020 || pairs[0].Value != IndexHashValue(10020) {
+		t.Fatalf("generated pair = %#v", pairs)
+	}
+}
+
+func TestSetIndexHashEntriesForIDs(t *testing.T) {
+	a := New()
+	a.AddFile("list/equipment_indexhash.etc", buildIndexHash(a, [][2]uint32{{10018, 1}}), TypeScript)
+	if err := a.SetIndexHashEntriesForIDs("list/equipment_indexhash.etc", []uint32{10018, 10019, 10019}); err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := a.IndexHashPairs("list/equipment_indexhash.etc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pairs) != 2 || pairs[0].ID != 10018 || pairs[0].Value != IndexHashValue(10018) ||
+		pairs[1].ID != 10019 || pairs[1].Value != IndexHashValue(10019) {
+		t.Fatalf("batch generated pairs = %#v", pairs)
+	}
+}
+
+// TestIndexHashRealArchive checks the reader against the retail container: every
+// listed id has an entry, and the file is a superset of the list.
+func TestIndexHashRealArchive(t *testing.T) {
+	a, _ := openPaged110Fixture(t)
 	for _, listPath := range []string{"list/equipment.lst", "list/stackable.lst"} {
 		gaps, err := a.IndexHashGaps(listPath)
 		if err != nil {
@@ -154,5 +195,51 @@ func TestIndexHashRealArchive(t *testing.T) {
 	last := got[len(got)-1]
 	if last.ID != 900000777 || last.Value != 123456789 {
 		t.Errorf("appended entry = %#v", last)
+	}
+}
+
+// TestIndexHashGeneratedValuesRealArchive confirms the recovered generator
+// against the active entries of the primary retail 110US lists. A few newer
+// lists also contain historical/special rows with a different value policy.
+func TestIndexHashGeneratedValuesRealArchive(t *testing.T) {
+	a, _ := openPaged110Fixture(t)
+
+	for _, path := range []string{
+		"list/equipment_indexhash.etc",
+		"list/stackable_indexhash.etc",
+		"list/monster_indexhash.etc",
+		"list/npc_indexhash.etc",
+		"list/appendage_indexhash.etc",
+	} {
+		pairs, err := a.IndexHashPairs(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		liveIDs := make(map[uint32]bool)
+		listPath := strings.TrimSuffix(path, "_indexhash.etc") + ".lst"
+		listIndex, ok := a.FindList(listPath)
+		if !ok {
+			t.Fatalf("%s: paired list not found", path)
+		}
+		listPairs, err := a.ScriptListPairs(listIndex)
+		if err != nil {
+			t.Fatalf("%s: %v", listPath, err)
+		}
+		for _, listPair := range listPairs {
+			if id, parseErr := strconv.ParseUint(strings.TrimSpace(listPair.ID), 10, 32); parseErr == nil {
+				liveIDs[uint32(id)] = true
+			}
+		}
+		for _, pair := range pairs {
+			// equipment_indexhash.etc has six old rows that are no longer in
+			// equipment.lst and do not follow the current generator.
+			if path == "list/equipment_indexhash.etc" && !liveIDs[pair.ID] {
+				continue
+			}
+			if got := IndexHashValue(pair.ID); got != pair.Value {
+				t.Fatalf("%s id %d: generated value %#x, archive value %#x", path, pair.ID, got, pair.Value)
+			}
+		}
+		t.Logf("%s: verified %d entries", path, len(pairs))
 	}
 }

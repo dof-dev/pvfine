@@ -280,10 +280,13 @@ Paged110 的 `.equ`/`.stk` 不直接存显示文本,`[name]` 等字段是 type 8
 110US 的每个列表还配一个 `<列表名>_indexhash.etc`(90US 没有)。格式与 `.lst` 相同:
 `(type 0 整数 id)(type 6 字符串)`,每条 10 字节;第二个 token 的字符串内容是**十进制
 uint32**(超过 2^31 所以用字符串存)。实测该值**只与 id 有关**(不同列表里同一 id 的
-值相同,即使路径完全不同),不是路径哈希、也不是常见哈希函数,生成函数仍未解出。
+值相同,即使路径完全不同)。生成函数为两轮 `uint32` 混合：
+`x = (x ^ (x >> 16)) * 0x45d9f3b`，最后再执行一次 `x ^ (x >> 16)`。
+归档中少量历史/特殊条目可能保留其它值；新增普通列表条目使用该函数。
 索引文件是列表的**严格超集**(原厂工具维护列表时会顺带补齐),因此新增 id 会缺条目。
 
 工具:`Archive.IndexHashCompanionPath` / `IndexHashPairs` / `IndexHashGaps` /
-`IndexHashSiblingPaths` / `SetIndexHashEntry`(值写成十进制文本,其余条目字节不变)。
+`IndexHashSiblingPaths` / `IndexHashValue` / `SetIndexHashEntryForID` /
+`SetIndexHashEntry`(值写成十进制文本,其余条目字节不变)。
 详见 `docs/PVF新格式分析.md` §2.16。
 

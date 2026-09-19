@@ -10,6 +10,26 @@ import (
 	"pvfine/internal/pvf"
 )
 
+func openRealPaged110(t *testing.T) (*pvf.Archive, string) {
+	t.Helper()
+	archive := os.Getenv("PVF_TESTFILE")
+	if archive == "" {
+		t.Skip("PVF_TESTFILE not set; skipping Paged110 integration test")
+	}
+	if _, err := os.Stat(archive); err != nil {
+		t.Skipf("stat %s: %v", archive, err)
+	}
+	sealedPath := filepath.Join(filepath.Dir(archive), "sk.dat")
+	if _, err := os.Stat(sealedPath); err != nil {
+		t.Skipf("stat %s: %v", sealedPath, err)
+	}
+	a, err := pvf.Open(archive)
+	if err != nil {
+		t.Fatalf("open %s: %v", archive, err)
+	}
+	return a, archive
+}
+
 // paged110LayoutFixture builds the 110US list layout: every list lives under
 // `list/`, entries are archive-root-relative, and item names are stored as
 // `<table::key>` placeholders resolved through `list/n_string.lst`.
@@ -453,17 +473,7 @@ func TestListTargetCandidates(t *testing.T) {
 // 638k list entries takes roughly half a minute, so the test skips when the
 // fixture is absent.
 func TestSearchIndexRealPaged110(t *testing.T) {
-	archive := filepath.Join("..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	if _, err := os.Stat(filepath.Join("..", "testdata", "sk.dat")); err != nil {
-		t.Skip("testdata/sk.dat not present")
-	}
-	a, err := pvf.Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openRealPaged110(t)
 	listIndex, ok := a.FindList("equipment/equipment.lst")
 	if !ok {
 		t.Fatal("equipment list not found")

@@ -8,6 +8,7 @@ import {
   NIcon,
   NInput,
   NModal,
+  NSelect,
   NSpin,
   NTag,
   NTabPane,
@@ -19,6 +20,7 @@ import {
 import {
   BookmarkAdd24Regular,
   Dismiss16Regular,
+  DocumentAdd24Regular,
   DocumentSearch24Regular,
   Eye24Regular,
   EyeOff24Regular,
@@ -43,6 +45,7 @@ import PreviewHost from "./previews/PreviewHost.vue";
 import { getPreviewProvider } from "../previews/registry";
 import type { PreviewFile } from "../previews/types";
 import type { ResolvedThemeId } from "../theme";
+import type { ListRegistrationTarget } from "../../bindings/pvfine/services/models";
 
 const props = defineProps<{
   paneId: EditorPaneId;
@@ -220,6 +223,34 @@ const activeTab = computed(() => {
   const activeKey = pane.value?.activeKey;
   return paneTabs.value.find((tab) => tab.index === activeKey) ?? null;
 });
+
+const fileRegistration = reactive({
+  show: false,
+  loading: false,
+  fileIndex: -1,
+  filePath: "",
+  targets: [] as ListRegistrationTarget[],
+  listPath: "",
+  id: "",
+  generatedID: "",
+});
+const fileRegistrationOptions = computed(() =>
+  fileRegistration.targets.map((target) => ({
+    label: `${target.listPath}  ·  ${target.entryPath}`,
+    value: target.listPath,
+  })),
+);
+const activeHasID = computed(() =>
+  (activeTab.value?.tags ?? []).some((tag) => tag.id.trim() !== ""),
+);
+const canRegisterActiveFile = computed(
+  () =>
+    archive.open &&
+    archive.indexReady &&
+    !!activeTab.value &&
+    !activeHasID.value &&
+    !fileRegistration.loading,
+);
 type FileTagKind = "id" | "name" | "path";
 interface FileTag {
   kind: FileTagKind;
@@ -412,6 +443,71 @@ async function onBookmarkActive(): Promise<void> {
     message.error(`加入书签失败: ${error?.message ?? error}`);
   } finally {
     bookmarking.value = false;
+  }
+}
+
+async function openFileRegistration(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab || !canRegisterActiveFile.value) return;
+  fileRegistration.loading = true;
+  try {
+    const options = await archive.listRegistrationOptions(tab.index);
+    const targets = (options?.targets ?? []).filter(
+      (target): target is ListRegistrationTarget => !!target,
+    );
+    if (!options || targets.length === 0) {
+      throw new Error("没有找到可用的 lst");
+    }
+    fileRegistration.fileIndex = tab.index;
+    fileRegistration.filePath = tab.path;
+    fileRegistration.targets = targets;
+    fileRegistration.listPath = targets[0].listPath;
+    fileRegistration.id = targets[0].suggestedId;
+    fileRegistration.generatedID = targets[0].suggestedId;
+    fileRegistration.show = true;
+  } catch (error: any) {
+    message.error(`读取 lst 选项失败：${error?.message ?? error}`);
+  } finally {
+    fileRegistration.loading = false;
+  }
+}
+
+function onFileRegistrationListChange(listPath: string): void {
+  fileRegistration.listPath = listPath;
+  const target = fileRegistration.targets.find((item) => item.listPath === listPath);
+  if (!target) return;
+  fileRegistration.id = target.suggestedId;
+  fileRegistration.generatedID = target.suggestedId;
+}
+
+async function confirmFileRegistration(): Promise<void> {
+  const id = fileRegistration.id.trim();
+  if (!fileRegistration.listPath) {
+    message.warning("请选择 lst");
+    return;
+  }
+  if (!id) {
+    message.warning("id 不能为空");
+    return;
+  }
+  fileRegistration.loading = true;
+  try {
+    const result = await archive.registerFileToList(
+      fileRegistration.fileIndex,
+      fileRegistration.listPath,
+      id,
+    );
+    if (!result) throw new Error("后端没有返回注册结果");
+    fileRegistration.show = false;
+    message.success(
+      archive.info?.paged110
+        ? `已注册到 ${result.listPath}，并写入 indexhash`
+        : `已注册到 ${result.listPath}`,
+    );
+  } catch (error: any) {
+    message.error(`注册到 lst 失败：${error?.message ?? error}`);
+  } finally {
+    fileRegistration.loading = false;
   }
 }
 
@@ -668,6 +764,22 @@ function onDrop(event: DragEvent): void {
           </div>
 
           <div class="editor-pane-actions" role="group" aria-label="编辑器操作">
+            <NTooltip v-if="activeTab?.index === tab.index && !activeHasID" trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :loading="fileRegistration.loading"
+                  :disabled="!canRegisterActiveFile"
+                  aria-label="注册到 lst"
+                  @click="openFileRegistration"
+                >
+                  <template #icon><NIcon><DocumentAdd24Regular /></NIcon></template>
+                  注册到lst
+                </NButton>
+              </template>
+              自动生成一个可用 id，确认后写入当前文件对应的 lst
+            </NTooltip>
             <NTooltip trigger="hover">
               <template #trigger>
                 <NButton
@@ -808,6 +920,50 @@ function onDrop(event: DragEvent): void {
       @select="onTabContextMenuSelect"
       @clickoutside="hideTabContextMenu"
     />
+    <NModal
+      v-model:show="fileRegistration.show"
+      preset="card"
+      title="注册到 lst"
+      style="width: min(560px, calc(100vw - 32px))"
+      :mask-closable="!fileRegistration.loading"
+    >
+      <div class="placeholder-edit">
+        <div class="placeholder-edit-hint">
+          当前文件：{{ fileRegistration.filePath }}。确认后会写入归档内存，保存 PVF 后落盘。
+        </div>
+        <NSelect
+          :value="fileRegistration.listPath"
+          :options="fileRegistrationOptions"
+          placeholder="选择 lst"
+          @update:value="onFileRegistrationListChange"
+        />
+        <NInput
+          :value="fileRegistration.id"
+          placeholder="输入数字 id"
+          @update:value="fileRegistration.id = $event"
+        >
+          <template #prefix>id</template>
+        </NInput>
+        <div class="placeholder-edit-hint">
+          默认 id：{{ fileRegistration.generatedID }}；可以直接修改。{{ archive.info?.paged110 ? "110page 会同步写入 indexhash。" : "当前归档只写入 lst。" }}
+        </div>
+      </div>
+      <template #footer>
+        <div class="placeholder-edit-footer">
+          <NButton size="small" :disabled="fileRegistration.loading" @click="fileRegistration.show = false">
+            取消
+          </NButton>
+          <NButton
+            size="small"
+            type="primary"
+            :loading="fileRegistration.loading"
+            @click="confirmFileRegistration"
+          >
+            确定
+          </NButton>
+        </div>
+      </template>
+    </NModal>
     <NModal
       v-model:show="placeholderEdit.show"
       preset="card"

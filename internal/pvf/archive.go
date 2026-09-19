@@ -327,6 +327,9 @@ func (a *Archive) Header() Header { return a.hdr }
 // UsesGuard reports whether the archive header uses the 0x55 guard variant.
 func (a *Archive) UsesGuard() bool { return a.guard }
 
+// IsPaged110 reports whether the archive uses the 110US page-guard layout.
+func (a *Archive) IsPaged110() bool { return a.paged110 }
+
 // FileCount returns the number of file entries.
 func (a *Archive) FileCount() int32 { return int32(len(a.items)) }
 
@@ -490,6 +493,7 @@ type ArchiveInfoView struct {
 	BodySize      int32  `json:"bodySize"`
 	ModifiedCount int    `json:"modifiedCount"`
 	UsesGuard     bool   `json:"usesGuard"`
+	Paged110      bool   `json:"paged110"`
 }
 
 // Info returns the current state snapshot.
@@ -501,5 +505,6 @@ func (a *Archive) Info() ArchiveInfoView {
 		BodySize:      a.hdr.BodySize,
 		ModifiedCount: a.ModifiedCount(),
 		UsesGuard:     a.guard,
+		Paged110:      a.paged110,
 	}
 }

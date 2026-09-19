@@ -18,20 +18,29 @@ func testdataFile(name string) string {
 	return filepath.Join("..", "..", "testdata", name)
 }
 
-// TestPaged110Open parses the retail 110US container end to end: page guards
-// unlocked from sk.dat, header, file table, name pools and body chunks.
-func TestPaged110Open(t *testing.T) {
-	archive := testdataFile("110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
+func openPaged110Fixture(t *testing.T) (*Archive, string) {
+	t.Helper()
+	archive := os.Getenv(testFileEnv)
+	if archive == "" {
+		t.Skipf("%s not set; skipping Paged110 integration test", testFileEnv)
 	}
-	if _, err := os.Stat(testdataFile(sealedPageKeyName)); err != nil {
-		t.Skip("testdata/sk.dat not present")
+	if _, err := os.Stat(archive); err != nil {
+		t.Skipf("stat %s: %v", archive, err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(archive), sealedPageKeyName)); err != nil {
+		t.Skipf("stat %s: %v", filepath.Join(filepath.Dir(archive), sealedPageKeyName), err)
 	}
 	a, err := Open(archive)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	return a, archive
+}
+
+// TestPaged110Open parses the retail 110US container end to end: page guards
+// unlocked from sk.dat, header, file table, name pools and body chunks.
+func TestPaged110Open(t *testing.T) {
+	a, archive := openPaged110Fixture(t)
 	if !a.paged110 {
 		t.Fatalf("archive was not recognised as Paged110")
 	}
@@ -119,17 +128,7 @@ func TestPaged110Open(t *testing.T) {
 // container's own keys, so the new item is complete and everything else still
 // reads.
 func TestPaged110StructuralEditRoundTrip(t *testing.T) {
-	archive := testdataFile("110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	if _, err := os.Stat(testdataFile(sealedPageKeyName)); err != nil {
-		t.Skip("testdata/sk.dat not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, archive := openPaged110Fixture(t)
 	before := a.FileCount()
 	const (
 		newPath = "zz_probe/structural_test.equ"
@@ -155,7 +154,7 @@ func TestPaged110StructuralEditRoundTrip(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	sealed, err := os.ReadFile(testdataFile(sealedPageKeyName))
+	sealed, err := os.ReadFile(filepath.Join(filepath.Dir(archive), sealedPageKeyName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,17 +264,7 @@ func TestPaged110Keys(t *testing.T) {
 // survives, the container is still a valid Paged110 archive, and untouched
 // content still reads the same.
 func TestPaged110SaveEditRoundTrip(t *testing.T) {
-	archive := testdataFile("110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	if _, err := os.Stat(testdataFile(sealedPageKeyName)); err != nil {
-		t.Skip("testdata/sk.dat not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, archive := openPaged110Fixture(t)
 	fileCount := a.FileCount()
 
 	// Edit one entry of a small string table (String/AradAdventure.uv.str, the
@@ -305,7 +294,7 @@ func TestPaged110SaveEditRoundTrip(t *testing.T) {
 
 	// Write it next to a copy of the sidecar key file so it can be reopened.
 	dir := t.TempDir()
-	sealed, err := os.ReadFile(testdataFile(sealedPageKeyName))
+	sealed, err := os.ReadFile(filepath.Join(filepath.Dir(archive), sealedPageKeyName))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,8 +2,6 @@ package pvf
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -11,14 +9,7 @@ import (
 // TestPaged110ItemNames resolves the `<table::key>` placeholders the newer
 // clients use instead of storing display text in the item file.
 func TestPaged110ItemNames(t *testing.T) {
-	archive := filepath.Join("..", "..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	a, err := Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openPaged110Fixture(t)
 
 	// Unit level: the placeholder parser and the table map.
 	idx, key, ok := parsePlaceholder("<31::equip_name_1>")

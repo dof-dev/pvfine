@@ -1,8 +1,6 @@
 package services
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -198,17 +196,7 @@ func TestPreviewServiceParseEQUResolvesNamePlaceholder(t *testing.T) {
 // string-table text, and a name the localization left empty is answered by the
 // Korean overlay and flagged.
 func TestPreviewServiceParseEQURealPaged110Name(t *testing.T) {
-	archive := filepath.Join("..", "testdata", "110US.pvf")
-	if _, err := os.Stat(archive); err != nil {
-		t.Skip("testdata/110US.pvf not present")
-	}
-	if _, err := os.Stat(filepath.Join("..", "testdata", "sk.dat")); err != nil {
-		t.Skip("testdata/sk.dat not present")
-	}
-	a, err := pvf.Open(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
+	a, _ := openRealPaged110(t)
 	c := NewCore()
 	if err := c.setArchive(a); err != nil {
 		t.Fatal(err)

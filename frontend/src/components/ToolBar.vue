@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
@@ -12,6 +12,7 @@ import {
   Code24Regular,
   DocumentText24Regular,
   DocumentSync24Regular,
+  Key24Regular,
   Settings24Regular,
 } from "@vicons/fluent";
 import {
@@ -30,6 +31,7 @@ import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
+import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -40,6 +42,7 @@ const version = useVersionStore();
 const script = useScriptStore();
 const message = useMessage();
 const dialog = useDialog();
+const hashRegistrationVisible = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
@@ -304,6 +307,19 @@ function isCancel(e: any): boolean {
           style="width: 160px"
         />
       </div>
+      <NTooltip v-if="archive.info?.paged110" trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :disabled="!archive.open"
+            @click="hashRegistrationVisible = true"
+          >
+            <template #icon><NIcon><Key24Regular /></NIcon></template>
+            注册hash
+          </NButton>
+        </template>
+        为指定 lst 补齐缺失的 indexhash
+      </NTooltip>
     </div>
 
     <div class="tb-spacer" />
@@ -316,6 +332,10 @@ function isCancel(e: any): boolean {
       </template>
       设置
     </NTooltip>
+    <IndexHashRegistrationModal
+      :show="hashRegistrationVisible"
+      @update:show="hashRegistrationVisible = $event"
+    />
   </div>
 </template>
 

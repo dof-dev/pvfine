@@ -288,6 +288,15 @@ export interface FileRegistration {
 }
 
 /**
+ * FileRegistrationOptions contains the list choices for the current file.
+ */
+export interface FileRegistrationOptions {
+    "fileIndex": number;
+    "filePath": string;
+    "targets": (ListRegistrationTarget | null)[] | null;
+}
+
+/**
  * FileSetDocument 是全部文件集的持久化文档,与当前打开的 PVF 无关。
  */
 export interface FileSetDocument {
@@ -372,6 +381,26 @@ export interface ImportResult {
 }
 
 /**
+ * IndexHashRegistrationResult summarizes a batch hash registration.
+ */
+export interface IndexHashRegistrationResult {
+    "listPath": string;
+    "indexHashPath": string;
+    "requested": number;
+    "added": number;
+    "existing": number;
+    "invalidIds"?: string[] | null;
+}
+
+/**
+ * IndexHashTarget describes a list whose companion index-hash file exists.
+ */
+export interface IndexHashTarget {
+    "listPath": string;
+    "indexHashPath": string;
+}
+
+/**
  * IndexStatus is the current state of the semantic search index.
  */
 export interface IndexStatus {
@@ -383,6 +412,17 @@ export interface IndexStatus {
     "error": string;
     "openDurationMs": number;
     "buildDurationMs": number;
+}
+
+/**
+ * ListRegistrationTarget describes a list that can register one archive file.
+ */
+export interface ListRegistrationTarget {
+    "listPath": string;
+    "category": string;
+    "entryPath": string;
+    "suggestedId": string;
+    "hasIndexHash": boolean;
 }
 
 /**

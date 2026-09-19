@@ -28,6 +28,17 @@ type IndexHashPair struct {
 	Value uint32 `json:"value"`
 }
 
+// IndexHashValue returns the value stored beside an id in a 110US
+// *_indexhash.etc file. It is the reversible 32-bit hash used by the client;
+// all arithmetic intentionally wraps at uint32.
+func IndexHashValue(id uint32) uint32 {
+	const multiplier uint32 = 0x45d9f3b
+	for i := 0; i < 2; i++ {
+		id = (id ^ (id >> 16)) * multiplier
+	}
+	return id ^ (id >> 16)
+}
+
 // IndexHashCompanionPath returns the `_indexhash.etc` path paired with a `.lst`
 // path: `list/equipment.lst` -> `list/equipment_indexhash.etc`.
 func IndexHashCompanionPath(listPath string) (string, bool) {
@@ -128,6 +139,62 @@ func (a *Archive) SetIndexHashEntry(indexHashPath string, id, value uint32) erro
 		valToken: valToken,
 	})
 	return a.writeIndexHashRecords(index, records)
+}
+
+// SetIndexHashEntryForID inserts or updates an index-hash entry using the
+// client-generated value for id.
+func (a *Archive) SetIndexHashEntryForID(indexHashPath string, id uint32) error {
+	return a.SetIndexHashEntry(indexHashPath, id, IndexHashValue(id))
+}
+
+// SetIndexHashEntriesForIDs inserts or updates several generated entries in a
+// single decode/re-encode pass. This matters for the large retail index files,
+// where parsing the same payload once per id would be needlessly expensive.
+func (a *Archive) SetIndexHashEntriesForIDs(indexHashPath string, ids []uint32) error {
+	index, ok := a.Find(indexHashPath)
+	if !ok {
+		return fmt.Errorf("pvf: %s not found", indexHashPath)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	records, err := a.indexHashRecords(index)
+	if err != nil {
+		return err
+	}
+	positions := make(map[uint32]int, len(records))
+	for i, record := range records {
+		if _, exists := positions[record.id]; !exists {
+			positions[record.id] = i
+		}
+	}
+	seen := make(map[uint32]struct{}, len(ids))
+	for _, id := range ids {
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		value := IndexHashValue(id)
+		valToken := batchToken{typ: 6, value: a.StringOffset(strconv.FormatUint(uint64(value), 10))}
+		if position, exists := positions[id]; exists {
+			records[position].value = value
+			records[position].hasValue = true
+			records[position].valToken = valToken
+			continue
+		}
+		positions[id] = len(records)
+		records = append(records, indexHashRecord{
+			id:       id,
+			value:    value,
+			hasValue: true,
+			idToken:  batchToken{typ: 0, value: int32(id)},
+			valToken: valToken,
+		})
+	}
+	if err := a.writeIndexHashRecords(index, records); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *Archive) writeIndexHashRecords(index int32, records []indexHashRecord) error {

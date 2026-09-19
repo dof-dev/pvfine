@@ -87,6 +87,14 @@ export function ImportFilesDialog(targetDir: string, mode: string): $Cancellable
 }
 
 /**
+ * IndexHashTargets lists the available list/indexhash pairs in a Paged110
+ * archive. Older archive layouts intentionally return an error.
+ */
+export function IndexHashTargets(): $CancellablePromise<($models.IndexHashTarget | null)[] | null> {
+    return $Call.ByID(531951057);
+}
+
+/**
  * IndexStatus 返回当前归档的语义搜索索引状态。
  */
 export function IndexStatus(): $CancellablePromise<$models.IndexStatus> {
@@ -116,6 +124,16 @@ export function ListDescendantFiles(scopePath: string): $CancellablePromise<($mo
 }
 
 /**
+ * ListRegistrationOptions returns the configured lists that can point to a
+ * file. Existing registrations are supplied by the search index and displayed
+ * beside the editor file, so this endpoint only supplies a target list and a
+ * collision-free default id.
+ */
+export function ListRegistrationOptions(fileIndex: number): $CancellablePromise<$models.FileRegistrationOptions | null> {
+    return $Call.ByID(4087817400, fileIndex);
+}
+
+/**
  * Open 加载指定路径的归档并构建目录索引。
  */
 export function Open(path: string): $CancellablePromise<$models.ArchiveInfo> {
@@ -136,6 +154,22 @@ export function OpenDialog(): $CancellablePromise<$models.ArchiveInfo | null> {
  */
 export function PreviewImport(sourcePaths: string[] | null, targetDir: string, mode: string): $CancellablePromise<$models.ImportPreview | null> {
     return $Call.ByID(928248660, sourcePaths, targetDir, mode);
+}
+
+/**
+ * RegisterFileToList registers one file in the selected list. Paged110 files
+ * also receive the generated companion index-hash entry in the same mutation.
+ */
+export function RegisterFileToList(fileIndex: number, listPath: string, id: string): $CancellablePromise<$models.FileRegistration | null> {
+    return $Call.ByID(1202157717, fileIndex, listPath, id);
+}
+
+/**
+ * RegisterMissingIndexHashes writes generated hashes for ids that are absent
+ * from the selected companion file. Existing entries are left untouched.
+ */
+export function RegisterMissingIndexHashes(listPath: string, rawIDs: string[] | null): $CancellablePromise<$models.IndexHashRegistrationResult | null> {
+    return $Call.ByID(1112195474, listPath, rawIDs);
 }
 
 /**

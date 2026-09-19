@@ -827,6 +827,13 @@ export const useEditorStore = defineStore("editor", () => {
     );
     if (indexes.length > 0) void refreshBatchFiles(indexes);
   });
+  Events.On("archive:registrations-changed", (event: any) => {
+    const data = event?.data ?? event;
+    const indexes = (data?.fileIndexes ?? []).filter(
+      (value: unknown): value is number => typeof value === "number",
+    );
+    if (indexes.length > 0) void refreshBatchFiles(indexes);
+  });
   Events.On("archive:index-ready", () => {
     void refreshOpenTabTags();
   });

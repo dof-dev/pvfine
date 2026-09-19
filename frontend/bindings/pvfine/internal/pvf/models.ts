@@ -11,4 +11,5 @@ export interface ArchiveInfoView {
     "bodySize": number;
     "modifiedCount": number;
     "usesGuard": boolean;
+    "paged110": boolean;
 }

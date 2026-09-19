@@ -2,7 +2,14 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
-import type { ArchiveInfo, IndexStatus } from "../../bindings/pvfine/services/models";
+import type {
+  ArchiveInfo,
+  FileRegistration,
+  FileRegistrationOptions,
+  IndexHashRegistrationResult,
+  IndexHashTarget,
+  IndexStatus,
+} from "../../bindings/pvfine/services/models";
 
 const recentArchivesKey = "pvfine.recentArchives";
 const maxRecentArchives = 8;
@@ -176,6 +183,31 @@ export const useArchiveStore = defineStore("archive", () => {
     info.value = await ArchiveService.Info();
   }
 
+  async function listRegistrationOptions(fileIndex: number): Promise<FileRegistrationOptions | null> {
+    return (await ArchiveService.ListRegistrationOptions(fileIndex)) ?? null;
+  }
+
+  async function registerFileToList(
+    fileIndex: number,
+    listPath: string,
+    id: string,
+  ): Promise<FileRegistration | null> {
+    return (await ArchiveService.RegisterFileToList(fileIndex, listPath, id)) ?? null;
+  }
+
+  async function indexHashTargets(): Promise<IndexHashTarget[]> {
+    return ((await ArchiveService.IndexHashTargets()) ?? []).filter(
+      (target): target is IndexHashTarget => !!target,
+    );
+  }
+
+  async function registerMissingIndexHashes(
+    listPath: string,
+    ids: string[],
+  ): Promise<IndexHashRegistrationResult | null> {
+    return (await ArchiveService.RegisterMissingIndexHashes(listPath, ids)) ?? null;
+  }
+
   async function unpackDialog(): Promise<boolean> {
     unpackMessage.value = "";
     const started = await EditorService.UnpackDialog();
@@ -260,6 +292,10 @@ export const useArchiveStore = defineStore("archive", () => {
     removeRecentArchive,
     close,
     refreshInfo,
+    listRegistrationOptions,
+    registerFileToList,
+    indexHashTargets,
+    registerMissingIndexHashes,
     unpackDialog,
     cancelUnpack,
   };
