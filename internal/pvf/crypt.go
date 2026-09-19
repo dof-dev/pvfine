@@ -24,6 +24,10 @@ const (
 	keyBody = "BodY"
 	keyStrA = "sTrA"
 	keyStrW = "sTrW"
+
+	// keyHashVariant is the alternate variant family's HASH key name: the wide
+	// formula over the all-lowercase name, unlike the standard family's "HASH".
+	keyHashVariant = "hash"
 )
 
 // XOR name-pool section size obfuscation constants.

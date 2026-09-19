@@ -150,8 +150,12 @@ func sanitizeName(name string) string {
 
 // SaveTo writes the archive to w. Unmodified archives are reproduced
 // byte-identical; edited ones rebuild only the touched chunks plus derived
-// sections.
+// sections. A Paged110 container gets its page guards re-encrypted on the way
+// out, so the result is a file the client accepts.
 func (a *Archive) SaveTo(w io.Writer) error {
+	if a.paged110 {
+		return a.savePaged110(w)
+	}
 	if !a.Modified() && a.data != nil && int32(len(a.items)) == a.hdr.FileCount {
 		_, err := w.Write(a.data)
 		return err
@@ -164,6 +168,37 @@ func (a *Archive) SaveTo(w io.Writer) error {
 		return err
 	}
 	a.adoptRebuilt(out)
+	return nil
+}
+
+// savePaged110 writes a Paged110 container back: the logical bytes (page guards
+// decrypted) are rebuilt as usual and the guards are re-applied page by page
+// with the key table recovered when the archive was opened.
+func (a *Archive) savePaged110(w io.Writer) error {
+	if len(a.pageKeys) == 0 {
+		return ErrPaged110ReadOnly
+	}
+	if (a.structuralDirty || a.poolsDirty) && a.keys.hash.seed == 0 {
+		// Without the HASH seed the section can only be copied through verbatim,
+		// and a rebuilt name pool would leave it pointing at stale offsets.
+		return ErrPaged110StructureLocked
+	}
+	logical := a.data
+	rebuilt := false
+	if a.Modified() || logical == nil || int32(len(a.items)) != a.hdr.FileCount {
+		out, err := a.rebuild()
+		if err != nil {
+			return err
+		}
+		logical = out
+		rebuilt = true
+	}
+	if err := writePageGuarded(w, logical, a.pageKeys); err != nil {
+		return err
+	}
+	if rebuilt {
+		a.adoptRebuilt(logical)
+	}
 	return nil
 }
 
@@ -253,13 +288,13 @@ func (a *Archive) rebuild() ([]byte, error) {
 
 	// Hash section.
 	//
-	// The standard variant regenerates it. The alternate variant's HASH seed is
-	// not reproducible (see variantKeys), so its original bytes are carried over
-	// verbatim: whatever the client reads from this section then stays exactly
-	// as the tooling that produced the archive left it, instead of being
-	// re-encrypted under a key that client cannot read.
+	// It is regenerated whenever its seed is known (the standard key set, the
+	// alternate variant's "hash" key, or a seed solved from the section itself),
+	// so a rebuild indexes the current file list — including added or removed
+	// files. Only an archive whose seed could not be established keeps its
+	// original bytes, which is the best a rebuild can do there.
 	var hashBytes []byte
-	if a.keys.isStandard || a.data == nil || a.hashSize == 0 {
+	if a.keys.hash.seed != 0 || a.data == nil || a.hashSize == 0 {
 		hashBytes = a.buildHashTable()
 	} else {
 		hashBytes = a.data[a.hashOff : a.hashOff+a.hashSize]

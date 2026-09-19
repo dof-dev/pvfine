@@ -100,7 +100,7 @@ func TestParseAcceptsStandardArchive(t *testing.T) {
 
 // TestVariantKeysAreFixedConstants pins the alternate variant's seeds. They are
 // properties of the variant rather than of one archive: two revisions of the
-// same source, one of them edited by third-party tooling, share all five values.
+// same source, one of them edited by third-party tooling, share all six values.
 func TestVariantKeysAreFixedConstants(t *testing.T) {
 	k := variantKeys()
 	want := []struct {
@@ -109,6 +109,7 @@ func TestVariantKeysAreFixedConstants(t *testing.T) {
 		want sectionKey
 	}{
 		{"header", k.header, sectionKey{0x4A454634, magicMain}},
+		{"hash", k.hash, sectionKey{wideSeed(keyHashVariant), magicMain}},
 		{"grpi", k.grpi, sectionKey{0x1FBB7078, magicMain}},
 		{"body", k.body, sectionKey{0xDD4FF706, magicMain}},
 		{"strA", k.strA, sectionKey{0x712A98D4, magicAlt}},
@@ -119,15 +120,16 @@ func TestVariantKeysAreFixedConstants(t *testing.T) {
 			t.Errorf("%s key = %+v, want %+v", w.name, w.got, w.want)
 		}
 	}
-	if k.isStandard {
-		t.Error("variantKeys must not be marked standard")
+	if k.hash.seed == 0 {
+		t.Error("variantKeys must pin the HASH seed")
 	}
 }
 
-// TestVariantHashCarriedOverOnSave checks that a rebuilt variant archive keeps
-// the HASH section byte-for-byte. Its seed is unknown, so rewriting it would
-// replace a table the client can read with one it cannot.
-func TestVariantHashCarriedOverOnSave(t *testing.T) {
+// TestVariantHashRegeneratedOnSave checks that a rebuilt variant archive
+// re-encrypts the HASH section instead of copying it: the regenerated table
+// indexes the current file list, so an added entry is registered, which the
+// carried-over original could not do.
+func TestVariantHashRegeneratedOnSave(t *testing.T) {
 	p := os.Getenv(testFileEnv)
 	if p == "" {
 		t.Skipf("%s not set; skipping", testFileEnv)
@@ -136,8 +138,8 @@ func TestVariantHashCarriedOverOnSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if a.keys.isStandard {
-		t.Skip("archive uses the standard key set; nothing to carry over")
+	if a.keys.hash.seed == 0 {
+		t.Skip("archive HASH seed unknown; nothing to regenerate")
 	}
 	origHash := append([]byte(nil), a.data[a.hashOff:a.hashOff+a.hashSize]...)
 
@@ -161,12 +163,27 @@ func TestVariantHashCarriedOverOnSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	if b.keys.isStandard {
-		t.Error("rebuilt variant was written with the standard key set")
+	if b.keys.hash.seed != wideSeed(keyHashVariant) {
+		t.Errorf("rebuilt HASH key = %#x", b.keys.hash.seed)
 	}
-	if got := b.data[b.hashOff : b.hashOff+b.hashSize]; !bytes.Equal(got, origHash) {
-		t.Errorf("HASH section was rewritten (%d bytes -> %d bytes)", len(origHash), len(got))
+	gotHash := b.data[b.hashOff : b.hashOff+b.hashSize]
+	if bytes.Equal(gotHash, origHash) {
+		t.Error("HASH section was carried over instead of regenerated")
 	}
+	// The regenerated section must decrypt into a table that covers the new
+	// file list, and the added entry must be indexed.
+	entries, sorted := parseHashTable(decryptHashSection(b))
+	if len(entries) != int(b.FileCount()) {
+		t.Errorf("hash entries = %d, file count = %d", len(entries), b.FileCount())
+	}
+	if len(sorted) == 0 {
+		t.Fatal("hash lookup list is empty")
+	}
+	added := mustFind(b, "zz_test/carry.txt")
+	if !hashEntryHasName(entries, b.items[added].nameOff) {
+		t.Error("added entry is missing from the regenerated hash table")
+	}
+
 	// The rebuild must still be functional.
 	if text, err := b.Text(mustFind(b, "equipment/character/common/amulet/100300001.equ")); err != nil || text != scriptTextDecoded {
 		t.Errorf("edited script unreadable after rebuild: err=%v text=%q", err, text)
@@ -177,6 +194,24 @@ func TestVariantHashCarriedOverOnSave(t *testing.T) {
 	if b.keys.body.seed != 0xDD4FF706 || b.keys.grpi.seed != 0x1FBB7078 {
 		t.Errorf("variant seeds lost after rebuild: body=%#x grpi=%#x", b.keys.body.seed, b.keys.grpi.seed)
 	}
+}
+
+// decryptHashSection returns the plaintext HASH section of the archive.
+func decryptHashSection(a *Archive) []byte {
+	cipher := a.data[a.hashOff : a.hashOff+a.hashSize]
+	plain := make([]byte, len(cipher))
+	copy(plain, cipher)
+	cryptSeed(a.keys.hash.seed, a.keys.hash.magic, plain)
+	return plain
+}
+
+func hashEntryHasName(entries []hashEntry, nameOff int32) bool {
+	for _, entry := range entries {
+		if entry.nameOff == nameOff {
+			return true
+		}
+	}
+	return false
 }
 
 // TestRealVariantParse opens the variant archive supplied via PVF_TESTFILE and

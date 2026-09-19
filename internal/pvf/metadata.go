@@ -38,6 +38,11 @@ type ScriptMetadata struct {
 	HasName    bool                  `json:"-"`
 	Icon       *ScriptImageReference `json:"icon,omitempty"`
 	FieldImage *ScriptImageReference `json:"fieldImage,omitempty"`
+
+	// NameFallback reports that the name's `<table::key>` placeholder was
+	// answered by a language overlay because the archive's own localization has
+	// no text for that key, so a caller that displays the name can flag it.
+	NameFallback bool `json:"-"`
 }
 
 // ScriptListPairs parses a TypeScript .lst payload as consecutive id/path
@@ -371,6 +376,12 @@ func (a *Archive) ListID(i int32, path string) (string, bool, error) {
 
 // ScriptMetadata extracts [name], [icon] and [field image] in one raw token
 // scan without formatting or materializing the full decompiled script.
+//
+// The name is display text: type 8/10 string-pool references are handled like
+// the older 5/6/7 ones, and `<table::key>` placeholders (which is what the
+// newer clients store instead of the text itself) are resolved through the
+// archive's string tables so search and the explorer can match the text the
+// player sees.
 func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 	if i < 0 || i >= int32(len(a.items)) {
 		return ScriptMetadata{}, ErrBadIndex
@@ -454,7 +465,7 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 			continue
 		}
 		text := ""
-		if typ == 3 || typ == 5 || typ == 6 || typ == 7 {
+		if typ == 3 || typ == 5 || typ == 6 || typ == 7 || typ == 8 || typ == 10 {
 			text = a.ResolveString(value)
 		}
 		sections[sectionIndex].values = append(sections[sectionIndex].values, metadataToken{typ: typ, value: value, text: text})
@@ -474,7 +485,7 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 				continue
 			}
 			for _, token := range section.values {
-				if (token.typ == 5 || token.typ == 6 || token.typ == 7 || token.typ == 3) && strings.TrimSpace(token.text) != "" {
+				if (token.typ == 5 || token.typ == 6 || token.typ == 7 || token.typ == 8 || token.typ == 10 || token.typ == 3) && strings.TrimSpace(token.text) != "" {
 					metadata.Name = token.text
 					metadata.HasName = true
 					break
@@ -487,7 +498,7 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 			for index := 0; index+1 < len(section.values); index++ {
 				pathToken := section.values[index]
 				imageIndexToken := section.values[index+1]
-				if (pathToken.typ != 3 && pathToken.typ != 5 && pathToken.typ != 6 && pathToken.typ != 7) || strings.TrimSpace(pathToken.text) == "" || imageIndexToken.typ != 0 || imageIndexToken.value < 0 {
+				if (pathToken.typ != 3 && pathToken.typ != 5 && pathToken.typ != 6 && pathToken.typ != 7 && pathToken.typ != 8 && pathToken.typ != 10) || strings.TrimSpace(pathToken.text) == "" || imageIndexToken.typ != 0 || imageIndexToken.value < 0 {
 					continue
 				}
 				reference := &ScriptImageReference{Path: strings.TrimSpace(pathToken.text), Index: imageIndexToken.value}
@@ -500,6 +511,9 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 				break
 			}
 		}
+	}
+	if metadata.HasName {
+		metadata.Name, metadata.NameFallback = a.resolvePlaceholders(metadata.Name, "")
 	}
 	return metadata, nil
 }
@@ -524,7 +538,7 @@ func (a *Archive) scriptMetadataValue(typ byte, value int32) (scriptMetadataValu
 		return scriptMetadataValue{text: strconv.FormatInt(int64(value), 10)}, true
 	case 2:
 		return scriptMetadataValue{text: strconv.FormatFloat(float64(math.Float32frombits(uint32(value))), 'g', -1, 32)}, true
-	case 3, 5, 6, 7:
+	case 3, 5, 6, 7, 8, 10:
 		return scriptMetadataValue{text: a.ResolveString(value)}, true
 	default:
 		return scriptMetadataValue{}, false

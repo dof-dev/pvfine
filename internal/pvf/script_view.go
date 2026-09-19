@@ -237,20 +237,23 @@ func editorOffsets(rs []rune) []int {
 	return offsets
 }
 
+// parseTextMarker parses `{N=`...`}` block-value markers, where N is 5/7 for
+// the 90US token streams and 8/10 for the newer Paged110 ones.
 func parseTextMarker(marker string) (int32, string, bool) {
 	if len(marker) < 4 || marker[0] != '{' || marker[len(marker)-1] != '}' {
 		return 0, "", false
 	}
-	var typ int32
-	switch {
-	case strings.HasPrefix(marker, "{5="):
-		typ = 5
-	case strings.HasPrefix(marker, "{7="):
-		typ = 7
-	default:
+	inner := marker[1 : len(marker)-1]
+	eq := strings.IndexByte(inner, '=')
+	if eq <= 0 {
 		return 0, "", false
 	}
-	inner := strings.TrimSpace(marker[3 : len(marker)-1])
+	n, err := strconv.Atoi(inner[:eq])
+	if err != nil || (n != 5 && n != 7 && n != 8 && n != 10) {
+		return 0, "", false
+	}
+	typ := int32(n)
+	inner = strings.TrimSpace(inner[eq+1:])
 	innerRunes := []rune(inner)
 	if value, next, ok := readBacktickString(innerRunes, 0); ok && next == len(innerRunes) {
 		return typ, value, true

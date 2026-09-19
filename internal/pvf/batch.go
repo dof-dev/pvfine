@@ -490,6 +490,10 @@ func batchTokenTypeName(tokenType byte) string {
 		return "带引号字符串"
 	case 7:
 		return "块值(7)"
+	case 8:
+		return "块值(8)"
+	case 10:
+		return "块值(10)"
 	default:
 		return fmt.Sprintf("token(%d)", tokenType)
 	}

@@ -19,6 +19,8 @@ const (
 	ScriptTokenQuoted  ScriptTokenType = "quoted"
 	ScriptTokenBlock5  ScriptTokenType = "block5"
 	ScriptTokenBlock7  ScriptTokenType = "block7"
+	ScriptTokenBlock8  ScriptTokenType = "block8"
+	ScriptTokenBlock10 ScriptTokenType = "block10"
 )
 
 // ScriptStringPool identifies the name pool used by a string-backed token.
@@ -749,6 +751,12 @@ func scriptValueFromToken(a *Archive, token batchToken) ScriptValue {
 		value.Pool = scriptPoolForOffset(token.value)
 	case 7:
 		value.Type = ScriptTokenBlock7
+		value.Value, value.Pool = a.scriptBlockValue(token.value)
+	case 8:
+		value.Type = ScriptTokenBlock8
+		value.Value, value.Pool = a.scriptBlockValue(token.value)
+	case 10:
+		value.Type = ScriptTokenBlock10
 		value.Value, value.Pool = a.scriptBlockValue(token.value)
 	default:
 		value.Type = ScriptTokenString

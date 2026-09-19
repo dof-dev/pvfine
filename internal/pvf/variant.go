@@ -36,9 +36,9 @@ type sectionKey struct {
 type keySet struct {
 	header, hash, grpi, body, strA, strW sectionKey
 
-	// isStandard distinguishes the reference key derivation from the alternate
-	// variant, whose HASH section cannot be reproduced (see rebuild).
-	isStandard bool
+	// maskA/maskW are the name-pool section size obfuscation constants, which
+	// differ between the 90US scheme and the newer Paged110 scheme.
+	maskA, maskW uint32
 
 	// bodyRecovered records that body was derived from the archive data rather
 	// than from a known key set, so the recovery is attempted only once.
@@ -55,13 +55,14 @@ func keySeed(key string) uint32 {
 // standardKeys is the key set used by the reference "S4A21" archives.
 func standardKeys() keySet {
 	return keySet{
-		header:     sectionKey{keySeed(keyHead), magicMain},
-		hash:       sectionKey{keySeed(keyHash), magicMain},
-		grpi:       sectionKey{keySeed(keyGrpi), magicMain},
-		body:       sectionKey{keySeed(keyBody), magicMain},
-		strA:       sectionKey{keySeed(keyStrA), magicAlt},
-		strW:       sectionKey{keySeed(keyStrW), magicAlt},
-		isStandard: true,
+		header: sectionKey{keySeed(keyHead), magicMain},
+		hash:   sectionKey{keySeed(keyHash), magicMain},
+		grpi:   sectionKey{keySeed(keyGrpi), magicMain},
+		body:   sectionKey{keySeed(keyBody), magicMain},
+		strA:   sectionKey{keySeed(keyStrA), magicAlt},
+		strW:   sectionKey{keySeed(keyStrW), magicAlt},
+		maskA:  xorStrA,
+		maskW:  xorStrW,
 	}
 }
 
@@ -73,15 +74,21 @@ func standardKeys() keySet {
 // here makes opening instant, and makes writes use the same keystream the
 // original tooling used.
 //
-// The HASH seed is deliberately absent: that section's contents could not be
-// reproduced, so rebuild preserves the original bytes instead of re-encrypting.
+// The HASH seed is the wide-formula seed of the all-lowercase key name "hash":
+// decrypted with it, the section of both known archives parses as a valid table
+// (entry count, exact size, resolvable offsets, ascending lookup list), and its
+// entry/lookup sets cover every current file. Rebuild therefore regenerates the
+// section instead of copying the original bytes.
 func variantKeys() keySet {
 	return keySet{
 		header: sectionKey{0x4A454634, magicMain},
+		hash:   sectionKey{wideSeed(keyHashVariant), magicMain},
 		grpi:   sectionKey{0x1FBB7078, magicMain},
 		body:   sectionKey{0xDD4FF706, magicMain},
 		strA:   sectionKey{0x712A98D4, magicAlt},
 		strW:   sectionKey{0x712AE776, magicAlt},
+		maskA:  xorStrA,
+		maskW:  xorStrW,
 	}
 }
 
@@ -334,9 +341,9 @@ func recoverZlibSeed(cipher []byte, wantLen int) (sectionKey, bool) {
 	c0, c1 := cipher[0], cipher[1]
 
 	type job struct {
-		magic     uint32
-		b1        byte
-		from, to  int // inclusive, exclusive state indexes
+		magic    uint32
+		b1       byte
+		from, to int // inclusive, exclusive state indexes
 	}
 	var jobs []job
 	const stateChunk = 2048
@@ -562,11 +569,13 @@ func recoverHeader(data []byte) (Header, bool, keySet, bool) {
 					continue
 				}
 				// An unknown variant: only the header key is known, so the other
-				// sections are solved from their own data and nothing may be
-				// re-encrypted from the standard key set. Leaving isStandard
-				// false makes rebuild carry the original HASH bytes over.
+				// sections are solved from their own data. The HASH seed is
+				// cleared rather than taken from the standard key set: parse
+				// then tries to solve it from the section, and if that fails
+				// rebuild carries the original bytes over instead of
+				// re-encrypting them under a key the client cannot read.
 				keys := standardKeys()
-				keys.isStandard = false
+				keys.hash = sectionKey{}
 				keys.header = sectionKey{seed, magic}
 				return hdr, guard, keys, true
 			}

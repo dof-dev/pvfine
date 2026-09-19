@@ -439,7 +439,7 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		case 2:
 			writeValuePrefix()
 			f := math.Float32frombits(uint32(v))
-			sb.WriteString(strconv.FormatFloat(float64(f), 'g', -1, 32))
+			sb.WriteString(formatScriptFloat(f))
 		case 3:
 			tag := a.ResolveString(v)
 			name, closing, isTag := parseSectionTag(tag)
@@ -477,10 +477,15 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 					tokensOnLine: 0,
 				})
 			}
-		case 5:
+		case 5, 7, 8, 10:
+			// Block-string markers. Types 8 and 10 are the string-pool
+			// references the newer clients emit (8 for values such as
+			// `<31::equip_name_1>`, 10 for multi-line command text).
 			prepareSectionValue(true)
 			writeIndent(contentIndent())
-			sb.WriteString("{5=`")
+			sb.WriteString("{")
+			sb.WriteString(strconv.Itoa(int(typ)))
+			sb.WriteString("=`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`}")
 			atLineStart = false
@@ -490,14 +495,6 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 			sb.WriteString("`")
 			sb.WriteString(escapeBacktick(a.ResolveString(v)))
 			sb.WriteString("`")
-		case 7:
-			prepareSectionValue(true)
-			writeIndent(contentIndent())
-			sb.WriteString("{7=`")
-			sb.WriteString(escapeBacktick(a.ResolveString(v)))
-			sb.WriteString("`}")
-			atLineStart = false
-			markSectionValue()
 		}
 	}
 	return sb.String()
@@ -594,6 +591,17 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 	return formats, sectionClosers
 }
 
+// formatScriptFloat renders a float token so that re-encoding reproduces the
+// float type: an integral value keeps an explicit decimal point ("8000.0"),
+// otherwise the text would be read back as an integer token.
+func formatScriptFloat(f float32) string {
+	s := strconv.FormatFloat(float64(f), 'g', -1, 32)
+	if !strings.ContainsAny(s, ".eEnN") {
+		s += ".0"
+	}
+	return s
+}
+
 func resolveDynamicScriptFormat(format scriptFormatRule, values []string) scriptFormatRule {
 	if format.tokensPerLineIndex != nil {
 		index := *format.tokensPerLineIndex
@@ -618,8 +626,8 @@ func (a *Archive) scriptTokenValue(raw []byte, index int) (string, bool) {
 	case 0:
 		return strconv.FormatInt(int64(v), 10), true
 	case 2:
-		return strconv.FormatFloat(float64(math.Float32frombits(uint32(v))), 'g', -1, 32), true
-	case 5, 6, 7:
+		return formatScriptFloat(math.Float32frombits(uint32(v))), true
+	case 5, 6, 7, 8, 10:
 		return a.ResolveString(v), true
 	default:
 		return "", false

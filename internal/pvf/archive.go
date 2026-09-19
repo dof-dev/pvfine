@@ -3,6 +3,7 @@ package pvf
 import (
 	"encoding/binary"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -45,6 +46,12 @@ type Archive struct {
 	guard bool
 	keys  keySet // per-section LCG seeds (standard or recovered)
 
+	// paged110 marks a container whose 10 MiB page guards were unlocked with
+	// the sidecar key files. pageKeys is the unwrapped 32-byte-per-page key
+	// table used to re-apply the guards when the archive is written back.
+	paged110 bool
+	pageKeys []byte
+
 	sourcePath string // file the archive was opened from
 
 	tableOff, hashOff, nameOff, grpiOff, bodyOff int
@@ -69,15 +76,24 @@ type Archive struct {
 	// depend on presentation-only configuration.
 	scriptRenderer          *rendering.Engine
 	canonicalScriptRenderer *rendering.Engine
+
+	// tables caches the lazily loaded string tables used to resolve
+	// `<index::key>` placeholders in item names.
+	tables struct {
+		mu    sync.Mutex
+		state *stringTableState
+	}
 }
 
-// Open reads and parses the archive at path.
+// Open reads and parses the archive at path. Newer Paged110 containers keep
+// their per-page keys in sibling "sk.dat" / "DFO.exe" files, so the directory
+// of path is passed to the parser for sidecar lookup.
 func Open(path string) (*Archive, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	a, err := Parse(data)
+	a, err := parse(data, filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +102,13 @@ func Open(path string) (*Archive, error) {
 }
 
 // Parse parses an archive from memory. The byte slice is retained; treat it
-// as read-only afterwards.
+// as read-only afterwards. Container variants that need sidecar key files
+// cannot be opened this way; use Open for those.
 func Parse(data []byte) (*Archive, error) {
+	return parse(data, "")
+}
+
+func parse(data []byte, sidecarDir string) (*Archive, error) {
 	if len(data) < headerSize {
 		return nil, ErrTruncated
 	}
@@ -148,11 +169,33 @@ func Parse(data []byte) (*Archive, error) {
 		// the remaining seeds are recovered from the sections themselves.
 		hdr, guard, keys, ok := recoverHeader(data)
 		if !ok {
+			// Newest Paged110 containers: the page guards are AES encrypted and
+			// the section keys use the newer scheme, so the header is only
+			// readable after the guard pages have been unlocked with the
+			// sidecar key files (sk.dat / DFO.exe).
+			if dec, pageKeys, pagedKeys, phdr, ok := unlockPaged110(data, sidecarDir); ok {
+				data = dec
+				a.data = dec
+				a.paged110 = true
+				a.pageKeys = pageKeys
+				a.keys = pagedKeys
+				a.hdr = phdr
+				a.guard = false
+				found = true
+			} else if hasSealedKeyFile(sidecarDir) {
+				// The sidecar keys are right there but did not unlock this
+				// archive: say so instead of blaming the header.
+				return nil, ErrPaged110Keys
+			}
+		}
+		if !ok && !found {
 			return nil, ErrBadSignature
 		}
-		a.guard = guard
-		a.hdr = hdr
-		a.keys = keys
+		if ok {
+			a.guard = guard
+			a.hdr = hdr
+			a.keys = keys
+		}
 	}
 
 	// Section layout.
@@ -212,6 +255,16 @@ func Parse(data []byte) (*Archive, error) {
 
 	// String pools.
 	a.parseNameTable(data[a.nameOff : a.nameOff+a.nameSize])
+
+	// Hash section seed: known for the standard key set and the alternate
+	// variant family. When it is not (an unidentified variant, the Paged110
+	// containers), solve it from the section itself now that the string pools
+	// are available to validate candidate offsets.
+	if a.keys.hash.seed == 0 && a.hashSize > 0 {
+		if key, ok := a.recoverHashSeed(data[a.hashOff:a.hashOff+a.hashSize], int(a.hdr.FileCount)); ok {
+			a.keys.hash = key
+		}
+	}
 
 	// Body seed: for variants the standard key fails, and chunk 0's zlib
 	// header plus GRPI's original size let it be recovered from the data.
@@ -318,6 +371,52 @@ func (a *Archive) Path(i int32) string { return a.FullPath(i) }
 func (a *Archive) Find(path string) (int32, bool) {
 	i, ok := a.pathIndex[normalizePath(path)]
 	return i, ok
+}
+
+// FindList looks up a `.lst` index across client layouts. The 90US clients keep
+// a list next to the files it indexes (`equipment/equipment.lst`), while the
+// 110US clients collect every list under `list/` (`list/equipment.lst`) and
+// store archive-root-relative entry paths inside it. Both layouts are tried in
+// that order, so a configured 90US path also resolves on a newer archive.
+func (a *Archive) FindList(path string) (int32, bool) {
+	for _, candidate := range listLookupCandidates(path) {
+		if i, ok := a.Find(candidate); ok {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func listLookupCandidates(path string) []string {
+	trimmed := strings.Trim(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
+	if trimmed == "" {
+		return nil
+	}
+	candidates := []string{trimmed}
+	base := trimmed
+	if slash := strings.LastIndexByte(base, '/'); slash >= 0 {
+		base = base[slash+1:]
+	}
+	if base == "" || strings.EqualFold(base, trimmed) {
+		return candidates
+	}
+	candidates = append(candidates, "list/"+base)
+	// A configured `list/x.lst` also names the 90US location `<stem>/x.lst`,
+	// e.g. `list/equipment.lst` -> `equipment/equipment.lst`.
+	if dir := trimmed[:strings.LastIndexByte(trimmed, '/')]; strings.EqualFold(dir, "list") {
+		stem := strings.TrimSuffix(base, pathExt(base))
+		if stem != "" {
+			candidates = append(candidates, stem+"/"+base)
+		}
+	}
+	return candidates
+}
+
+func pathExt(name string) string {
+	if dot := strings.LastIndexByte(name, '.'); dot > 0 {
+		return name[dot:]
+	}
+	return ""
 }
 
 // Chunk returns decompressed chunk ci, caching the result.

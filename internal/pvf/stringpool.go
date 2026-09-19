@@ -13,11 +13,18 @@ import (
 //	  u32 rawLen  ^ encSize
 //	  encSize bytes: crypt2(key) -> zlib
 func (a *Archive) parseNameTable(nb []byte) {
+	maskA, maskW := a.keys.maskA, a.keys.maskW
+	if maskA == 0 {
+		maskA = xorStrA
+	}
+	if maskW == 0 {
+		maskW = xorStrW
+	}
 	idx := 8
 	for _, sec := range [...]struct {
 		key  sectionKey
 		xorC uint32
-	}{{a.keys.strA, xorStrA}, {a.keys.strW, xorStrW}} {
+	}{{a.keys.strA, maskA}, {a.keys.strW, maskW}} {
 		if idx+8 > len(nb) {
 			return
 		}
@@ -48,13 +55,13 @@ func (a *Archive) parseNameTable(nb []byte) {
 			if err != nil {
 				continue
 			}
-			if sec.xorC == xorStrA {
+			if sec.xorC == maskA {
 				a.keys.strA = recovered
 			} else {
 				a.keys.strW = recovered
 			}
 		}
-		if sec.xorC == xorStrA {
+		if sec.xorC == maskA {
 			a.strA = raw
 		} else {
 			a.strW = raw
@@ -220,6 +227,11 @@ func (a *Archive) UnicodeStringOffset(s string) int32 {
 
 // buildNameTable serializes the (possibly extended) string pools back into
 // the encrypted name-table section format.
+//
+// The archive's own pool keys and size masks are used, not the legacy
+// constants: the Paged110 containers name and obfuscate these sections
+// differently, and writing them with the 90US key made the section unreadable
+// (the size field decodes to garbage, so the parser skips the pool entirely).
 func (a *Archive) buildNameTable() ([]byte, error) {
 	var prefix [8]byte
 	if a.nameSize >= 8 && a.data != nil {
@@ -228,21 +240,28 @@ func (a *Archive) buildNameTable() ([]byte, error) {
 	var out []byte
 	out = append(out, prefix[:]...)
 
+	maskA, maskW := a.keys.maskA, a.keys.maskW
+	if maskA == 0 {
+		maskA = xorStrA
+	}
+	if maskW == 0 {
+		maskW = xorStrW
+	}
 	var err error
-	if out, err = appendNameSection(out, keyStrA, xorStrA, a.strA); err != nil {
+	if out, err = appendNameSection(out, a.keys.strA, maskA, a.strA); err != nil {
 		return nil, err
 	}
-	return appendNameSection(out, keyStrW, xorStrW, a.strW)
+	return appendNameSection(out, a.keys.strW, maskW, a.strW)
 }
 
-func appendNameSection(out []byte, key string, xorC uint32, raw []byte) ([]byte, error) {
+func appendNameSection(out []byte, section sectionKey, xorC uint32, raw []byte) ([]byte, error) {
 	compressed, err := zlibCompress(raw)
 	if err != nil {
 		return nil, err
 	}
 	enc := make([]byte, len(compressed))
 	copy(enc, compressed)
-	crypt(key, magicAlt, enc)
+	cryptSeed(section.seed, section.magic, enc)
 
 	var hdr [8]byte
 	binary.LittleEndian.PutUint32(hdr[0:], uint32(len(enc))^xorC)
