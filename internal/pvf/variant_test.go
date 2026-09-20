@@ -141,6 +141,9 @@ func TestVariantHashRegeneratedOnSave(t *testing.T) {
 	if a.keys.hash.seed == 0 {
 		t.Skip("archive HASH seed unknown; nothing to regenerate")
 	}
+	origHashKey := a.keys.hash
+	origGRPIKey := a.keys.grpi
+	origBodyKey := a.keys.body
 	origHash := append([]byte(nil), a.data[a.hashOff:a.hashOff+a.hashSize]...)
 
 	// Force a rebuild: an entry edit plus a newly added file.
@@ -163,8 +166,9 @@ func TestVariantHashRegeneratedOnSave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	if b.keys.hash.seed != wideSeed(keyHashVariant) {
-		t.Errorf("rebuilt HASH key = %#x", b.keys.hash.seed)
+	if b.keys.hash != origHashKey {
+		t.Errorf("rebuilt HASH key changed: before=%#x/%#x after=%#x/%#x",
+			origHashKey.seed, origHashKey.magic, b.keys.hash.seed, b.keys.hash.magic)
 	}
 	gotHash := b.data[b.hashOff : b.hashOff+b.hashSize]
 	if bytes.Equal(gotHash, origHash) {
@@ -191,8 +195,9 @@ func TestVariantHashRegeneratedOnSave(t *testing.T) {
 	if _, ok := b.Find("zz_test/carry.txt"); !ok {
 		t.Error("added entry missing after rebuild")
 	}
-	if b.keys.body.seed != 0xDD4FF706 || b.keys.grpi.seed != 0x1FBB7078 {
-		t.Errorf("variant seeds lost after rebuild: body=%#x grpi=%#x", b.keys.body.seed, b.keys.grpi.seed)
+	if b.keys.body != origBodyKey || b.keys.grpi != origGRPIKey {
+		t.Errorf("variant seeds changed after rebuild: body=%#x/%#x grpi=%#x/%#x",
+			b.keys.body.seed, b.keys.body.magic, b.keys.grpi.seed, b.keys.grpi.magic)
 	}
 }
 
