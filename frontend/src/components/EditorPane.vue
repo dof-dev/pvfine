@@ -864,7 +864,7 @@ function onDrop(event: DragEvent): void {
               {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
             </NTooltip>
 
-            <NTooltip trigger="hover">
+            <NTooltip v-if="archive.info?.paged110" trigger="hover">
               <template #trigger>
                 <NButton
                   quaternary
