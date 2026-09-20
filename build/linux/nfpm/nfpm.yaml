@@ -13,7 +13,7 @@ maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "PVF 归档编辑器"
 vendor: "dof-dev"
 homepage: "https://wails.io"
-license: "MIT"
+license: "GPL-3.0"
 release: "1"
 
 contents:
