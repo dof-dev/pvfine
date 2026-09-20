@@ -41,6 +41,7 @@ func (s *AnnotationService) ReloadRules() (AnnotationReloadResult, error) {
 	document := engine.Document()
 
 	s.c.mu.Lock()
+	oldSpecsFingerprint := searchIndexSpecFingerprint(s.c.searchableListSpecsLocked())
 	s.c.annotationEngine = engine
 	s.c.annotationErr = nil
 	s.c.annotationRelations = make(map[string]map[string]*relationTarget)
@@ -49,8 +50,9 @@ func (s *AnnotationService) ReloadRules() (AnnotationReloadResult, error) {
 	if archiveOpen {
 		s.c.pathAnnotations = buildPathAnnotations(engine, s.c.dirChildren)
 	}
+	newSpecsFingerprint := searchIndexSpecFingerprint(s.c.searchableListSpecsLocked())
 	s.c.mu.Unlock()
-	if archiveOpen {
+	if archiveOpen && oldSpecsFingerprint != newSpecsFingerprint {
 		s.c.startSearchIndex()
 	}
 

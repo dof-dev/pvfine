@@ -896,7 +896,7 @@ func (s *VersionService) Undo() (*VersionStatus, error) {
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndex()
+	s.c.startSearchIndexForced()
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("undo")
 	return &status, nil
@@ -921,7 +921,7 @@ func (s *VersionService) Discard() (*VersionStatus, error) {
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndex()
+	s.c.startSearchIndexForced()
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("discarded")
 	return &status, nil
@@ -956,7 +956,7 @@ func (s *VersionService) Checkout(commitID string) (*VersionStatus, error) {
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndex()
+	s.c.startSearchIndexForced()
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("checkout")
 	emitEvent("version:checked-out", status)
@@ -1178,7 +1178,7 @@ func (s *VersionService) RestorePath(path string) (*VersionStatus, error) {
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndex()
+	s.c.startSearchIndexForced()
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("restored")
 	return &status, nil
@@ -1299,7 +1299,7 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 			return
 		}
 		if session.archive != archive {
-			c.installArchiveIndexesLocked(session.archive, children, paths)
+			c.installArchiveIndexesPreservingSearchLocked(session.archive, children, paths)
 		}
 		if err := c.attachVersionSessionLocked(session); err != nil {
 			c.versionLoading = false
@@ -1316,7 +1316,7 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 		c.mu.Unlock()
 
 		if reloaded {
-			c.startSearchIndex()
+			c.startSearchIndexForced()
 			emitEvent("archive:reloaded", info)
 		}
 		emitVersionState(c, "loaded")

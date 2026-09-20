@@ -410,6 +410,14 @@ export interface IndexStatus {
     "total": number;
     "skipped": number;
     "error": string;
+
+    /**
+     * Refreshing means an older ready snapshot is still serving queries while
+     * a newer candidate is being built in the background.
+     */
+    "refreshing": boolean;
+    "refreshError": string;
+    "cacheHit": boolean;
     "openDurationMs": number;
     "buildDurationMs": number;
 }

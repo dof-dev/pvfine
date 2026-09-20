@@ -67,28 +67,39 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
-	mu                   sync.RWMutex
-	archive              *pvf.Archive
-	annotationEngine     *annotationrules.Engine
-	annotationErr        error
-	renderingEngine      *renderingrules.Engine
-	renderingErr         error
-	annotationRelations  map[string]map[string]*relationTarget
-	editorText           map[int32]string
-	editorAnnotation     editorAnnotationCache
-	pathAnnotations      map[string][]TreeAnnotation
-	dirChildren          map[string][]*TreeNode // dirPath -> ordered children ("" = root)
-	directories          []string
-	sortedPaths          []pathEntry
-	searchRecords        []searchRecord
-	searchByFile         map[int32][]int
-	treeTagsByFile       map[int32][]TreeTag
-	visualsByFile        map[int32]fileVisuals
-	indexStatus          IndexStatus
-	indexStartedAt       time.Time
-	indexCancel          context.CancelFunc
-	indexDirty           map[int32]struct{}
-	indexGen             uint64
+	mu                  sync.RWMutex
+	archive             *pvf.Archive
+	annotationEngine    *annotationrules.Engine
+	annotationErr       error
+	renderingEngine     *renderingrules.Engine
+	renderingErr        error
+	annotationRelations map[string]map[string]*relationTarget
+	editorText          map[int32]string
+	editorAnnotation    editorAnnotationCache
+	pathAnnotations     map[string][]TreeAnnotation
+	dirChildren         map[string][]*TreeNode // dirPath -> ordered children ("" = root)
+	directories         []string
+	sortedPaths         []pathEntry
+	searchRecords       []searchRecord
+	searchByFile        map[int32][]int
+	// searchMetadata is the canonical semantic snapshot used to rebuild the
+	// derived search records after a path/list delta. It intentionally keeps
+	// only list-backed records; ordinary file records are derived from
+	// sortedPaths and are therefore not duplicated here.
+	searchMetadata          []indexedMetadata
+	searchSpecFingerprint   string
+	treeTagsByFile          map[int32][]TreeTag
+	visualsByFile           map[int32]fileVisuals
+	indexStatus             IndexStatus
+	indexStartedAt          time.Time
+	indexCancel             context.CancelFunc
+	indexDirty              map[int32]struct{}
+	indexGen                uint64
+	searchIndexDeltaPending bool
+	searchIndexListPending  map[int32]struct{}
+	// searchIndexCachePath is only set by tests. Production cache files are
+	// resolved from os.UserCacheDir by search_index_cache.go.
+	searchIndexCachePath string
 	batchRevision        uint64
 	batchPlan            *batchPlan
 	scriptPlan           *scriptPlan
@@ -187,7 +198,7 @@ func (c *core) replaceArchiveLocked(a *pvf.Archive) error {
 	if err != nil {
 		return err
 	}
-	c.installArchiveIndexesLocked(a, children, paths)
+	c.installArchiveIndexesPreservingSearchLocked(a, children, paths)
 	return nil
 }
 
@@ -207,6 +218,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 		c.advancedCancel()
 		c.advancedCancel = nil
 	}
+	preserveSearch := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
@@ -214,13 +226,25 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
 	refreshArchiveIndexMetadataLocked(c, changedIndexes)
-	c.searchRecords = nil
-	c.searchByFile = make(map[int32][]int)
-	c.treeTagsByFile = make(map[int32][]TreeTag)
-	c.visualsByFile = make(map[int32]fileVisuals)
-	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	if preserveSearch {
+		c.searchIndexDeltaPending = true
+		c.searchIndexListPending = nil
+	} else {
+		c.searchRecords = nil
+		c.searchByFile = make(map[int32][]int)
+		c.searchMetadata = nil
+		c.searchSpecFingerprint = ""
+		c.searchIndexDeltaPending = false
+		c.searchIndexListPending = nil
+		c.treeTagsByFile = make(map[int32][]TreeTag)
+		c.visualsByFile = make(map[int32]fileVisuals)
+		c.indexStatus = IndexStatus{State: IndexStateIdle}
+	}
 	c.indexStartedAt = time.Time{}
-	c.indexDirty = make(map[int32]struct{})
+	c.indexDirty = make(map[int32]struct{}, len(changedIndexes))
+	for index := range changedIndexes {
+		c.indexDirty[index] = struct{}{}
+	}
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
@@ -239,13 +263,22 @@ func (c *core) rebuildArchiveIndexesLocked(a *pvf.Archive) error {
 	if err != nil {
 		return err
 	}
-	c.installArchiveIndexesLocked(a, children, paths)
+	c.installArchiveIndexesPreservingSearchLocked(a, children, paths)
 	return nil
 }
 
 // installArchiveIndexesLocked installs a complete set of derived indexes.
 // The caller must hold c.mu.
 func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][]*TreeNode, paths []pathEntry) {
+	c.installArchiveIndexesLockedWithSearch(a, children, paths, false)
+}
+
+func (c *core) installArchiveIndexesPreservingSearchLocked(a *pvf.Archive, children map[string][]*TreeNode, paths []pathEntry) {
+	c.installArchiveIndexesLockedWithSearch(a, children, paths, true)
+}
+
+func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children map[string][]*TreeNode, paths []pathEntry, preserveSearch bool) {
+	preserveSearch = preserveSearch && c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	if c.indexCancel != nil {
 		c.indexCancel()
 		c.indexCancel = nil
@@ -274,11 +307,22 @@ func (c *core) installArchiveIndexesLocked(a *pvf.Archive, children map[string][
 	c.dirChildren = children
 	c.directories = directories
 	c.sortedPaths = paths
-	c.searchRecords = nil
-	c.searchByFile = make(map[int32][]int)
-	c.treeTagsByFile = make(map[int32][]TreeTag)
-	c.visualsByFile = make(map[int32]fileVisuals)
-	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	if preserveSearch {
+		// The old semantic snapshot remains readable until the caller starts a
+		// path-delta refresh. This keeps structural edits asynchronous.
+		c.searchIndexDeltaPending = true
+		c.searchIndexListPending = nil
+	} else {
+		c.searchRecords = nil
+		c.searchByFile = make(map[int32][]int)
+		c.searchMetadata = nil
+		c.searchSpecFingerprint = ""
+		c.searchIndexDeltaPending = false
+		c.searchIndexListPending = nil
+		c.treeTagsByFile = make(map[int32][]TreeTag)
+		c.visualsByFile = make(map[int32]fileVisuals)
+		c.indexStatus = IndexStatus{State: IndexStateIdle}
+	}
 	c.indexStartedAt = time.Time{}
 	c.indexDirty = make(map[int32]struct{})
 	c.advancedIndex = nil
@@ -322,6 +366,10 @@ func (c *core) closeArchive() {
 	c.sortedPaths = nil
 	c.searchRecords = nil
 	c.searchByFile = nil
+	c.searchMetadata = nil
+	c.searchSpecFingerprint = ""
+	c.searchIndexDeltaPending = false
+	c.searchIndexListPending = nil
 	c.treeTagsByFile = nil
 	c.visualsByFile = nil
 	c.indexStatus = IndexStatus{State: IndexStateIdle}

@@ -235,6 +235,7 @@ func TestSetPlaceholderTextEditsStringTableOnly(t *testing.T) {
 	if err := service.SetPlaceholderText(itemIndex, 3, "name_514530375", "改过的腰带"); err != nil {
 		t.Fatal(err)
 	}
+	waitForSearchRefresh(t, c)
 
 	// The stored script is untouched: only the string table changed.
 	if got, ok := a.LookupStringTable(3, "name_514530375"); !ok || got != "改过的腰带" {
@@ -391,6 +392,7 @@ func TestPlaceholderCreationForNewFile(t *testing.T) {
 	if err := service.SetPlaceholderText(newIndex, 3, "name_new_item", "新装备名"); err != nil {
 		t.Fatal(err)
 	}
+	waitForSearchRefresh(t, c)
 	if got, ok := a.LookupStringTable(3, "name_new_item"); !ok || got != "新装备名" {
 		t.Errorf("created entry = %q, %v", got, ok)
 	}
@@ -575,6 +577,7 @@ func TestSearchIndexRealPaged110(t *testing.T) {
 	if err := editorService.SetPlaceholderText(editIndex, 3, editKey, editValue); err != nil {
 		t.Fatal(err)
 	}
+	waitForSearchRefresh(t, c)
 	after, err := editorService.GetFile(editIndex)
 	if err != nil {
 		t.Fatal(err)

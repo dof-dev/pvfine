@@ -31,12 +31,17 @@ const (
 
 // IndexStatus is the current state of the semantic search index.
 type IndexStatus struct {
-	State           string  `json:"state"`
-	Stage           string  `json:"stage"`
-	Done            int     `json:"done"`
-	Total           int     `json:"total"`
-	Skipped         int     `json:"skipped"`
-	Error           string  `json:"error"`
+	State   string `json:"state"`
+	Stage   string `json:"stage"`
+	Done    int    `json:"done"`
+	Total   int    `json:"total"`
+	Skipped int    `json:"skipped"`
+	Error   string `json:"error"`
+	// Refreshing means an older ready snapshot is still serving queries while
+	// a newer candidate is being built in the background.
+	Refreshing      bool    `json:"refreshing"`
+	RefreshError    string  `json:"refreshError"`
+	CacheHit        bool    `json:"cacheHit"`
 	OpenDurationMs  float64 `json:"openDurationMs"`
 	BuildDurationMs float64 `json:"buildDurationMs"`
 }
@@ -95,6 +100,12 @@ type searchableListSpec struct {
 }
 
 func (c *core) searchableListSpecs() []searchableListSpec {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.searchableListSpecsLocked()
+}
+
+func (c *core) searchableListSpecsLocked() []searchableListSpec {
 	specs := make([]searchableListSpec, 0, 16)
 	seen := make(map[string]struct{})
 	appendSpec := func(spec searchableListSpec) {
@@ -108,7 +119,6 @@ func (c *core) searchableListSpecs() []searchableListSpec {
 		seen[key] = struct{}{}
 		specs = append(specs, spec)
 	}
-	c.mu.RLock()
 	engine := c.annotationEngine
 	if engine != nil {
 		for name, relation := range engine.Document().Relations {
@@ -129,8 +139,6 @@ func (c *core) searchableListSpecs() []searchableListSpec {
 			}
 		}
 	}
-	c.mu.RUnlock()
-
 	sort.SliceStable(specs, func(i, j int) bool {
 		if specs[i].category != specs[j].category {
 			return specs[i].category < specs[j].category
@@ -156,6 +164,14 @@ func relationSearchCategory(name string) string {
 // startSearchIndex starts a new metadata indexing generation for the current
 // archive. The path/tree index is already available when this runs.
 func (c *core) startSearchIndex() {
+	c.startSearchIndexWithOptions(false)
+}
+
+func (c *core) startSearchIndexForced() {
+	c.startSearchIndexWithOptions(true)
+}
+
+func (c *core) startSearchIndexWithOptions(force bool) {
 	c.mu.Lock()
 	if c.archive == nil {
 		c.mu.Unlock()
@@ -169,37 +185,85 @@ func (c *core) startSearchIndex() {
 	a := c.archive
 	startedAt := time.Now()
 	openDurationMs := c.indexStatus.OpenDurationMs
+	hasSnapshot := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
+	pendingDirty := c.indexDirty
+	cacheEligible := a.SourcePath() != "" && !a.Modified()
+	delta := !force && hasSnapshot && (c.searchIndexDeltaPending || len(c.searchIndexListPending) > 0)
+	listIndexes := make([]int32, 0, len(c.searchIndexListPending))
+	for index := range c.searchIndexListPending {
+		listIndexes = append(listIndexes, index)
+	}
+	c.searchIndexDeltaPending = false
+	c.searchIndexListPending = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	c.indexCancel = cancel
-	c.indexDirty = make(map[int32]struct{})
+	if !hasSnapshot || pendingDirty == nil {
+		c.indexDirty = make(map[int32]struct{})
+	}
 	c.indexStartedAt = startedAt
-	c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "preparing", OpenDurationMs: openDurationMs}
+	state := IndexStateBuilding
+	stage := "preparing"
+	if hasSnapshot {
+		state = IndexStateReady
+		stage = "refreshing"
+	}
+	c.indexStatus = IndexStatus{
+		State:          state,
+		Stage:          stage,
+		OpenDurationMs: openDurationMs,
+		Refreshing:     hasSnapshot,
+	}
 	status := c.indexStatus
 	c.mu.Unlock()
 
 	emitEvent("archive:index-progress", status)
-	go c.buildSearchIndex(ctx, gen, a, startedAt)
+	if delta {
+		go c.buildSearchIndexDelta(ctx, gen, a, startedAt, listIndexes)
+		return
+	}
+	go c.buildSearchIndex(ctx, gen, a, startedAt, force, cacheEligible)
 }
 
-func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time) {
-	locked := false
+func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time, force, cacheEligible bool) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			if locked {
-				c.mu.Unlock()
-			}
 			c.failSearchIndex(a, gen, ctx, startedAt, fmt.Errorf("搜索索引构建失败: %v", recovered))
 		}
 	}()
 
-	refs := make([]indexedMetadata, 0)
-	skipped := 0
 	paths, ok := c.snapshotPaths(a, gen, ctx)
 	if !ok {
 		return
 	}
 
 	specs := c.searchableListSpecs()
+	if !force && cacheEligible {
+		c.mu.RLock()
+		cached, err := loadSearchIndexCache(a, specs, c.searchIndexCachePath)
+		c.mu.RUnlock()
+		if err == nil {
+			metadata := cached.Metadata
+			byFile := make(map[int32][]int)
+			visuals := make(map[int32]fileVisuals)
+			for index := range metadata {
+				value := &metadata[index]
+				byFile[value.fileIndex] = append(byFile[value.fileIndex], index)
+				visuals[value.fileIndex] = fileVisuals{
+					icon:       cloneImageReference(value.icon),
+					fieldImage: cloneImageReference(value.fieldImage),
+				}
+			}
+			records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
+			treeTagsByFile := buildTreeTags(records, recordsByFile)
+			if c.publishSearchCandidate(a, gen, ctx, startedAt, records, recordsByFile, metadata, treeTagsByFile, visuals, cached.Total, cached.Skipped, cached.SpecsFingerprint, false, true) {
+				return
+			}
+			return
+		}
+	}
+
+	refs := make([]indexedMetadata, 0)
+	skipped := 0
 	for _, spec := range specs {
 		if !c.indexCurrent(a, gen, ctx) {
 			return
@@ -306,61 +370,328 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 		}
 	}
 
-	c.mu.Lock()
-	locked = true
-	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
-		c.mu.Unlock()
-		locked = false
+	if !c.publishSearchCandidate(a, gen, ctx, startedAt, records, recordsByFile, metadata, treeTagsByFile, visualsByFile, len(refs), skipped, searchIndexSpecFingerprint(specs), cacheEligible, false) {
 		return
 	}
-	// A SetText may have landed after a file was scanned. Re-read only those
-	// files before publishing so the first ready snapshot cannot be stale.
-	for fileIndex := range c.indexDirty {
-		if isNPCEntryPath(a.Path(fileIndex)) {
-			npcNames = buildNPCNameIndexFromArchive(a)
-			break
+}
+
+// startSearchIndexForList schedules a local semantic refresh for one archive
+// list. If there is no ready snapshot yet, startSearchIndex naturally falls
+// back to the initial full build.
+func (c *core) startSearchIndexForList(listIndex int32) {
+	c.mu.Lock()
+	if c.archive == nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.searchIndexListPending == nil {
+		c.searchIndexListPending = make(map[int32]struct{})
+	}
+	c.searchIndexListPending[listIndex] = struct{}{}
+	c.mu.Unlock()
+	c.startSearchIndex()
+}
+
+func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time, listIndexes []int32) {
+	paths, ok := c.snapshotPaths(a, gen, ctx)
+	if !ok {
+		return
+	}
+	c.mu.RLock()
+	metadata := cloneIndexedMetadata(c.searchMetadata)
+	oldSkipped := c.indexStatus.Skipped
+	dirtyIndexes := make([]int32, 0, len(c.indexDirty))
+	for index := range c.indexDirty {
+		dirtyIndexes = append(dirtyIndexes, index)
+	}
+	c.mu.RUnlock()
+
+	specs := c.searchableListSpecs()
+	affectedLists := make(map[int32]struct{}, len(listIndexes))
+	for _, listIndex := range listIndexes {
+		affectedLists[listIndex] = struct{}{}
+	}
+
+	// A structural delta keeps existing list registrations and only rebinds
+	// their paths/file indexes against the new file table. A list delta replaces
+	// the rows for the affected relation specs below.
+	if len(affectedLists) == 0 {
+		filtered := make([]indexedMetadata, 0, len(metadata))
+		for _, value := range metadata {
+			if !c.indexCurrent(a, gen, ctx) {
+				return
+			}
+			fileIndex, found := c.findArchiveEntry(a, gen, ctx, value.path)
+			if !found {
+				continue
+			}
+			file, canonicalPath, found := c.readFileMetadata(a, gen, ctx, fileIndex)
+			if !found {
+				continue
+			}
+			value.fileIndex = fileIndex
+			value.path = canonicalPath
+			value.size = file.DataSize
+			value.dataType = file.DataType
+			filtered = append(filtered, value)
+		}
+		metadata = filtered
+	} else {
+		kept := make([]indexedMetadata, 0, len(metadata))
+		for _, value := range metadata {
+			listIndex, found := c.findArchiveList(a, gen, ctx, value.listPath)
+			if found {
+				if _, affected := affectedLists[listIndex]; affected {
+					continue
+				}
+			}
+			fileIndex, found := c.findArchiveEntry(a, gen, ctx, value.path)
+			if !found {
+				continue
+			}
+			file, canonicalPath, found := c.readFileMetadata(a, gen, ctx, fileIndex)
+			if !found {
+				continue
+			}
+			value.fileIndex = fileIndex
+			value.path = canonicalPath
+			value.size = file.DataSize
+			value.dataType = file.DataType
+			kept = append(kept, value)
+		}
+		metadata = kept
+
+		npcNames := map[string]string(nil)
+		for _, spec := range specs {
+			listIndex, found := c.findArchiveList(a, gen, ctx, spec.listPath)
+			if !found {
+				continue
+			}
+			if _, affected := affectedLists[listIndex]; !affected {
+				continue
+			}
+			if sameSearchPath(spec.listPath, itemShopListPath) {
+				var namesOK bool
+				npcNames, namesOK = c.buildNPCNameIndex(a, gen, ctx)
+				if !namesOK {
+					return
+				}
+			}
+			pairs, err := c.readListPairs(a, gen, ctx, listIndex)
+			if err != nil {
+				oldSkipped++
+				continue
+			}
+			metadataByPath := make(map[string]pvf.ScriptMetadata)
+			for _, pair := range pairs {
+				targetPath, targetIndex, file, found := c.findListTargetFile(a, gen, ctx, spec.listPath, pair.Path)
+				if !found {
+					oldSkipped++
+					continue
+				}
+				scriptMetadata, cached := metadataByPath[targetPath]
+				if !cached {
+					var metadataErr error
+					scriptMetadata, metadataErr = c.readIndexedMetadata(a, gen, ctx, targetIndex, spec.listPath, npcNames)
+					if metadataErr != nil {
+						scriptMetadata = pvf.ScriptMetadata{}
+					}
+					metadataByPath[targetPath] = scriptMetadata
+				}
+				metadata = append(metadata, indexedMetadata{
+					name:       scriptMetadata.Name,
+					id:         pair.ID,
+					category:   spec.category,
+					listPath:   spec.listPath,
+					path:       targetPath,
+					fileIndex:  targetIndex,
+					size:       file.DataSize,
+					dataType:   file.DataType,
+					icon:       imageReferenceFromPVF(scriptMetadata.Icon),
+					fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
+				})
+			}
 		}
 	}
-	for fileIndex := range c.indexDirty {
-		scriptMetadata, err := readIndexedMetadataFromArchive(a, fileIndex, a.Path(fileIndex), npcNames)
+
+	// Payload-only edits keep the record set but need fresh display metadata.
+	// Read each changed target once and apply it to every list registration of
+	// that target. The expensive work is intentionally outside the request that
+	// staged the edit.
+	for _, dirtyIndex := range dirtyIndexes {
+		file, canonicalPath, ok := c.readFileMetadata(a, gen, ctx, dirtyIndex)
+		if !ok {
+			continue
+		}
+		listPath := ""
+		for _, value := range metadata {
+			if value.fileIndex == dirtyIndex || value.path == canonicalPath {
+				listPath = value.listPath
+				break
+			}
+		}
+		if listPath == "" {
+			for index := range paths {
+				if paths[index].idx == dirtyIndex {
+					paths[index].size = file.DataSize
+					paths[index].typ = file.DataType
+				}
+			}
+			continue
+		}
+		scriptMetadata, err := c.readIndexedMetadata(a, gen, ctx, dirtyIndex, listPath, nil)
 		if err != nil {
 			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		name := scriptMetadata.Name
-		visualsByFile[fileIndex] = fileVisuals{
+		visuals := fileVisuals{
 			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
 			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
 		}
-		for _, recordIndex := range recordsByFile[fileIndex] {
-			if records[recordIndex].hit.Category == SearchCategoryFile {
+		for index := range metadata {
+			if metadata[index].fileIndex != dirtyIndex && metadata[index].path != canonicalPath {
 				continue
 			}
-			records[recordIndex].hit.Name = name
-			records[recordIndex].lowerName = strings.ToLower(name)
-			records[recordIndex].hit.Icon = cloneImageReference(visualsByFile[fileIndex].icon)
-			records[recordIndex].hit.FieldImage = cloneImageReference(visualsByFile[fileIndex].fieldImage)
+			metadata[index].path = canonicalPath
+			metadata[index].fileIndex = dirtyIndex
+			metadata[index].size = file.DataSize
+			metadata[index].dataType = file.DataType
+			metadata[index].name = scriptMetadata.Name
+			metadata[index].icon = cloneImageReference(visuals.icon)
+			metadata[index].fieldImage = cloneImageReference(visuals.fieldImage)
+		}
+		for index := range paths {
+			if paths[index].idx == dirtyIndex {
+				paths[index].size = file.DataSize
+				paths[index].typ = file.DataType
+			}
 		}
 	}
+
+	byFile := make(map[int32][]int)
+	visuals := make(map[int32]fileVisuals)
+	for index := range metadata {
+		value := &metadata[index]
+		byFile[value.fileIndex] = append(byFile[value.fileIndex], index)
+		visuals[value.fileIndex] = fileVisuals{
+			icon:       cloneImageReference(value.icon),
+			fieldImage: cloneImageReference(value.fieldImage),
+		}
+	}
+	records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
+	treeTagsByFile := buildTreeTags(records, recordsByFile)
+	total := len(metadata) + oldSkipped
+	if !c.publishSearchCandidate(a, gen, ctx, startedAt, records, recordsByFile, metadata, treeTagsByFile, visuals, total, oldSkipped, searchIndexSpecFingerprint(specs), false, false) {
+		return
+	}
+}
+
+func cloneIndexedMetadata(values []indexedMetadata) []indexedMetadata {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]indexedMetadata, len(values))
+	for index, value := range values {
+		result[index] = value
+		result[index].icon = cloneImageReference(value.icon)
+		result[index].fieldImage = cloneImageReference(value.fieldImage)
+	}
+	return result
+}
+
+// publishSearchCandidate atomically swaps a completed candidate into the
+// currently active snapshot. A ready snapshot remains queryable until this
+// point, so a slow refresh never turns the normal UI flow into a loading gate.
+func (c *core) publishSearchCandidate(
+	a *pvf.Archive,
+	gen uint64,
+	ctx context.Context,
+	startedAt time.Time,
+	records []searchRecord,
+	recordsByFile map[int32][]int,
+	metadata []indexedMetadata,
+	treeTagsByFile map[int32][]TreeTag,
+	visualsByFile map[int32]fileVisuals,
+	total, skipped int,
+	specsFingerprint string,
+	cacheEligible bool,
+	cacheHit bool,
+) bool {
+	c.mu.Lock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		c.mu.Unlock()
+		return false
+	}
+
+	// A payload edit may land while the candidate is being built. Refreshing
+	// those files here is cheap and prevents the first published snapshot from
+	// exposing the text that existed when the background scan started.
+	for fileIndex := range c.indexDirty {
+		scriptMetadata, err := readIndexedMetadataFromArchive(a, fileIndex, a.Path(fileIndex), nil)
+		if err != nil {
+			scriptMetadata = pvf.ScriptMetadata{}
+		}
+		visuals := fileVisuals{
+			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
+			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
+		}
+		visualsByFile[fileIndex] = visuals
+		for metadataIndex := range metadata {
+			if metadata[metadataIndex].fileIndex != fileIndex {
+				continue
+			}
+			metadata[metadataIndex].name = scriptMetadata.Name
+			metadata[metadataIndex].size = a.File(fileIndex).DataSize
+			metadata[metadataIndex].dataType = a.File(fileIndex).DataType
+			metadata[metadataIndex].icon = cloneImageReference(visuals.icon)
+			metadata[metadataIndex].fieldImage = cloneImageReference(visuals.fieldImage)
+		}
+		for _, recordIndex := range recordsByFile[fileIndex] {
+			if recordIndex < 0 || recordIndex >= len(records) {
+				continue
+			}
+			record := &records[recordIndex]
+			record.hit.Size = a.File(fileIndex).DataSize
+			record.hit.DataType = a.File(fileIndex).DataType
+			if record.hit.Category == SearchCategoryFile {
+				continue
+			}
+			record.hit.Name = scriptMetadata.Name
+			record.lowerName = strings.ToLower(scriptMetadata.Name)
+			record.hit.Icon = cloneImageReference(visuals.icon)
+			record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
+		}
+	}
+
 	c.searchRecords = records
 	c.searchByFile = recordsByFile
+	c.searchMetadata = cloneIndexedMetadata(metadata)
+	c.searchSpecFingerprint = specsFingerprint
 	c.treeTagsByFile = treeTagsByFile
 	c.visualsByFile = visualsByFile
+	openDurationMs := c.indexStatus.OpenDurationMs
 	c.indexStatus = IndexStatus{
 		State:           IndexStateReady,
 		Stage:           "ready",
-		Done:            len(refs),
-		Total:           len(refs),
+		Done:            total,
+		Total:           total,
 		Skipped:         skipped,
-		OpenDurationMs:  c.indexStatus.OpenDurationMs,
+		CacheHit:        cacheHit,
+		OpenDurationMs:  openDurationMs,
 		BuildDurationMs: elapsedMilliseconds(startedAt),
+	}
+	if cacheHit {
+		c.indexStatus.Stage = "ready-cache"
 	}
 	c.indexDirty = make(map[int32]struct{})
 	c.indexCancel = nil
 	status := c.indexStatus
 	c.mu.Unlock()
-	locked = false
 
 	emitEvent("archive:index-ready", status)
+	if cacheEligible && !cacheHit {
+		c.persistSearchIndexCacheAsync(a, gen, metadata, total, skipped)
+	}
+	return true
 }
 
 func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, startedAt time.Time, err error) {
@@ -372,12 +703,19 @@ func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, 
 		c.mu.Unlock()
 		return
 	}
-	c.indexStatus = IndexStatus{
-		State:           IndexStateError,
-		Stage:           "error",
-		Error:           err.Error(),
-		OpenDurationMs:  c.indexStatus.OpenDurationMs,
-		BuildDurationMs: elapsedMilliseconds(startedAt),
+	if c.indexStatus.State == IndexStateReady && c.searchRecords != nil {
+		c.indexStatus.Refreshing = false
+		c.indexStatus.Stage = "refresh-error"
+		c.indexStatus.RefreshError = err.Error()
+		c.indexStatus.BuildDurationMs = elapsedMilliseconds(startedAt)
+	} else {
+		c.indexStatus = IndexStatus{
+			State:           IndexStateError,
+			Stage:           "error",
+			Error:           err.Error(),
+			OpenDurationMs:  c.indexStatus.OpenDurationMs,
+			BuildDurationMs: elapsedMilliseconds(startedAt),
+		}
 	}
 	c.indexCancel = nil
 	status := c.indexStatus
@@ -438,13 +776,10 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
-	previousVisuals, hadPreviousVisuals := c.visualsByFile[index]
 	delete(c.visualsByFile, index)
-	if c.indexStatus.State != IndexStateReady {
-		if c.indexDirty == nil {
-			c.indexDirty = make(map[int32]struct{})
-		}
-		c.indexDirty[index] = struct{}{}
+	ready := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
+	if !ready {
+		c.queueSearchIndexMutationLocked(index)
 		c.mu.Unlock()
 		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 		if versioned {
@@ -452,22 +787,58 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		}
 		return false, "", nil
 	}
-
-	updated, name, visuals := c.refreshIndexedRecordsLocked(index, previousVisuals, hadPreviousVisuals)
+	listIndex, fullRefresh := c.queueSearchIndexMutationLocked(index)
 	c.mu.Unlock()
+	if fullRefresh {
+		c.startSearchIndexForced()
+	} else if listIndex >= 0 {
+		c.startSearchIndexForList(listIndex)
+	} else {
+		c.startSearchIndex()
+	}
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if versioned {
 		emitVersionState(c, "edited")
 	}
-	if updated {
-		emitEvent("archive:index-updated", map[string]any{
-			"fileIndex":  index,
-			"name":       name,
-			"icon":       cloneImageReference(visuals.icon),
-			"fieldImage": cloneImageReference(visuals.fieldImage),
-		})
+	return false, "", nil
+}
+
+// searchMutationClassLocked classifies a payload edit without reading the
+// file. List edits can be refreshed locally; shared string/NPC dependencies
+// conservatively use a forced full candidate build.
+func (c *core) searchMutationClassLocked(index int32) (listIndex int32, full bool) {
+	listIndex = -1
+	if c.archive == nil || index < 0 || index >= c.archive.FileCount() {
+		return listIndex, true
 	}
-	return updated, name, nil
+	filePath := c.archive.Path(index)
+	lowerPath := strings.ToLower(strings.Trim(strings.ReplaceAll(filePath, "\\", "/"), "/"))
+	if strings.HasSuffix(lowerPath, ".str") || isNPCEntryPath(filePath) || lowerPath == npcListPath {
+		return listIndex, true
+	}
+	for _, spec := range c.searchableListSpecsLocked() {
+		candidate, ok := c.archive.FindList(spec.listPath)
+		if ok && candidate == index {
+			return candidate, false
+		}
+	}
+	return listIndex, false
+}
+
+func (c *core) queueSearchIndexMutationLocked(index int32) (listIndex int32, full bool) {
+	if c.indexDirty == nil {
+		c.indexDirty = make(map[int32]struct{})
+	}
+	c.indexDirty[index] = struct{}{}
+	listIndex, full = c.searchMutationClassLocked(index)
+	if listIndex >= 0 {
+		if c.searchIndexListPending == nil {
+			c.searchIndexListPending = make(map[int32]struct{})
+		}
+		c.searchIndexListPending[listIndex] = struct{}{}
+	}
+	c.searchIndexDeltaPending = true
+	return listIndex, full
 }
 
 // setPlaceholderText rewrites the string-table text behind one `<table::key>`
@@ -528,29 +899,20 @@ func (c *core) setPlaceholderText(index int32, tableIndex int32, key, text strin
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
-	previousVisuals, hadPreviousVisuals := c.visualsByFile[index]
 	delete(c.visualsByFile, index)
-	updated, name, visuals := false, "", fileVisuals{}
-	if c.indexStatus.State == IndexStateReady {
-		updated, name, visuals = c.refreshIndexedRecordsLocked(index, previousVisuals, hadPreviousVisuals)
-	} else {
-		if c.indexDirty == nil {
-			c.indexDirty = make(map[int32]struct{})
-		}
-		c.indexDirty[index] = struct{}{}
+	ready := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
+	if c.indexDirty == nil {
+		c.indexDirty = make(map[int32]struct{})
 	}
+	c.indexDirty[index] = struct{}{}
+	c.indexDirty[tableFileIndex] = struct{}{}
 	c.mu.Unlock()
+	if ready {
+		c.startSearchIndexForced()
+	}
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if versioned {
 		emitVersionState(c, "edited")
-	}
-	if updated {
-		emitEvent("archive:index-updated", map[string]any{
-			"fileIndex":  index,
-			"name":       name,
-			"icon":       cloneImageReference(visuals.icon),
-			"fieldImage": cloneImageReference(visuals.fieldImage),
-		})
 	}
 	return nil
 }
@@ -618,6 +980,11 @@ func (c *core) publishIndexStatus(a *pvf.Archive, gen uint64, ctx context.Contex
 		c.mu.Unlock()
 		return false
 	}
+	if c.indexStatus.State == IndexStateReady && c.indexStatus.Refreshing {
+		// Keep the old snapshot queryable while a candidate reports progress.
+		status.State = IndexStateReady
+		status.Refreshing = true
+	}
 	status.OpenDurationMs = c.indexStatus.OpenDurationMs
 	status.BuildDurationMs = elapsedMilliseconds(c.indexStartedAt)
 	c.indexStatus = status
@@ -636,7 +1003,9 @@ func (c *core) indexCurrent(a *pvf.Archive, gen uint64, ctx context.Context) boo
 }
 
 func (c *core) indexIsCurrentLocked(a *pvf.Archive, gen uint64) bool {
-	return c.archive == a && c.indexGen == gen && c.indexStatus.State == IndexStateBuilding
+	return c.archive == a && c.indexGen == gen &&
+		(c.indexStatus.State == IndexStateBuilding ||
+			(c.indexStatus.State == IndexStateReady && c.indexStatus.Refreshing))
 }
 
 func (c *core) readListPairs(a *pvf.Archive, gen uint64, ctx context.Context, index int32) ([]pvf.ListPair, error) {
@@ -676,6 +1045,19 @@ func (c *core) findListTarget(a *pvf.Archive, gen uint64, ctx context.Context, l
 	}
 	targetPath, _, ok := findListTargetInArchive(a, listPath, relativePath)
 	return targetPath, ok
+}
+
+func (c *core) findListTargetFile(a *pvf.Archive, gen uint64, ctx context.Context, listPath, relativePath string) (string, int32, pvf.File, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		return "", 0, pvf.File{}, false
+	}
+	targetPath, index, ok := findListTargetInArchive(a, listPath, relativePath)
+	if !ok {
+		return "", 0, pvf.File{}, false
+	}
+	return targetPath, index, a.File(index), true
 }
 
 func (c *core) readFileMetadata(a *pvf.Archive, gen uint64, ctx context.Context, index int32) (pvf.File, string, bool) {

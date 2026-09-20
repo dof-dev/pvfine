@@ -234,7 +234,7 @@ func (s *ArchiveService) RegisterFileToList(fileIndex int32, listPath, id string
 	}
 	s.c.mu.Unlock()
 
-	s.c.startSearchIndex()
+	s.c.startSearchIndexForList(listIndex)
 	emitEvent("archive:registrations-changed", map[string]any{
 		"fileIndexes": changedRegistrationIndexes(listIndex, hashIndex, fileIndex),
 	})

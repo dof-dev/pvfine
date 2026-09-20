@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import {
   Archive20Regular,
   ArrowSync20Regular,
@@ -11,7 +11,7 @@ import {
   Edit20Regular,
   FolderOpen20Regular,
 } from "@vicons/fluent";
-import { NIcon, NProgress, NTooltip, useMessage } from "naive-ui";
+import { NButton, NIcon, NProgress, NTooltip, useMessage } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useImageStore } from "../stores/images";
@@ -26,6 +26,7 @@ const version = useVersionStore();
 const advancedSearch = useAdvancedSearchStore();
 const settings = useSettingsStore();
 const message = useMessage();
+const rebuildingIndex = ref(false);
 
 const currentPath = computed(() => editor.activeTab?.path ?? "");
 const sizeText = computed(() => {
@@ -45,6 +46,7 @@ const indexPct = computed(() =>
     : 0
 );
 const indexStateLabel = computed(() => {
+  if (archive.refreshingIndex) return "索引更新中";
   switch (archive.indexStatus.state) {
     case "building":
       return "索引中";
@@ -71,9 +73,10 @@ const indexTimingTitle = computed(() => {
   }
   return [
     `打开 PVF 至可操作：${formatDuration(archive.indexStatus.openDurationMs)}`,
-    `构建 PVF 索引：${formatDuration(archive.indexStatus.buildDurationMs)}`,
+    `构建 PVF 索引：${formatDuration(archive.indexStatus.buildDurationMs)}${archive.indexStatus.cacheHit ? "（缓存命中）" : ""}`,
+    archive.indexStatus.refreshError ? `后台更新失败：${archive.indexStatus.refreshError}` : "",
     `构建 NPK 索引：${npkIndex}`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 });
 
 function formatDuration(milliseconds: number): string {
@@ -117,6 +120,19 @@ function onOpenVersion(): void {
 
 function onOpenIndexSettings(): void {
   settings.open("npk");
+}
+
+async function onRebuildSearchIndex(): Promise<void> {
+  if (rebuildingIndex.value || !archive.open) return;
+  rebuildingIndex.value = true;
+  try {
+    await archive.rebuildSearchIndex();
+    message.info("已开始后台重建语义索引，当前索引仍可继续使用");
+  } catch (error: any) {
+    message.error(`启动语义索引重建失败：${error?.message ?? error}`);
+  } finally {
+    rebuildingIndex.value = false;
+  }
 }
 </script>
 
@@ -267,9 +283,9 @@ function onOpenIndexSettings(): void {
             @click="onOpenIndexSettings"
             @keydown.enter="onOpenIndexSettings"
           >
-            <NIcon :size="13" class="sb-icon" :class="{ 'spin-icon': archive.indexing }">
+            <NIcon :size="13" class="sb-icon" :class="{ 'spin-icon': archive.indexing || archive.refreshingIndex }">
               <DismissCircle20Regular v-if="archive.indexStatus.state === 'error'" />
-              <ArrowSync20Regular v-else-if="archive.indexing" />
+              <ArrowSync20Regular v-else-if="archive.indexing || archive.refreshingIndex" />
               <CheckmarkCircle20Regular v-else />
             </NIcon>
             <span>{{ indexStateLabel }}</span>
@@ -284,6 +300,15 @@ function onOpenIndexSettings(): void {
         </template>
         <div class="sb-tooltip-content">
           <div style="white-space: pre-line">{{ indexTimingTitle }}</div>
+          <NButton
+            size="tiny"
+            quaternary
+            :loading="rebuildingIndex"
+            :disabled="archive.indexing || archive.refreshingIndex"
+            @click.stop="onRebuildSearchIndex"
+          >
+            强制重建语义索引
+          </NButton>
           <div class="sb-tooltip-action">点击呼出素材与索引设置</div>
         </div>
       </NTooltip>

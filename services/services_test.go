@@ -76,6 +76,24 @@ func waitForSearchIndex(t *testing.T, c *core) IndexStatus {
 	return IndexStatus{}
 }
 
+func waitForSearchRefresh(t *testing.T, c *core) IndexStatus {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	svc := NewArchiveService(c)
+	for time.Now().Before(deadline) {
+		status := svc.IndexStatus()
+		if !status.Refreshing {
+			if status.State == IndexStateError {
+				t.Fatalf("search index refresh failed: %s", status.Error+status.RefreshError)
+			}
+			return status
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("search index refresh did not finish: %#v", svc.IndexStatus())
+	return IndexStatus{}
+}
+
 func writeSearchFixture(t *testing.T, name string) string {
 	t.Helper()
 	a := pvf.New()
@@ -399,6 +417,7 @@ func TestItemShopSearchAndListAnnotationsUseNPCName(t *testing.T) {
 	if err := NewEditorService(c).SetText(npcIndex, "[name]\n`新商人名`"); err != nil {
 		t.Fatal(err)
 	}
+	waitForSearchRefresh(t, c)
 	updatedSearch, err := NewArchiveService(c).Search("新商人名", 0, 20)
 	if err != nil {
 		t.Fatal(err)
@@ -726,6 +745,7 @@ func TestSearchIndexNameRefresh(t *testing.T) {
 	if err := editor.SetText(index, "[name]\n`改名后的项链`\n[grade]\n1"); err != nil {
 		t.Fatal(err)
 	}
+	waitForSearchRefresh(t, c)
 	after, err := svc.Search("改名后的项链", 0, 20)
 	if err != nil || len(after.Hits) != 2 {
 		t.Fatalf("after hits = %d, err = %v", len(after.Hits), err)

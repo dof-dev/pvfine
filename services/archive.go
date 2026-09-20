@@ -99,6 +99,19 @@ func (s *ArchiveService) IndexStatus() IndexStatus {
 	return s.c.indexStatus
 }
 
+// RebuildSearchIndex starts an asynchronous forced rebuild. An existing ready
+// snapshot remains available to Search while the replacement is prepared.
+func (s *ArchiveService) RebuildSearchIndex() (IndexStatus, error) {
+	s.c.mu.RLock()
+	if s.c.archive == nil {
+		s.c.mu.RUnlock()
+		return IndexStatus{}, ErrNoArchive
+	}
+	s.c.mu.RUnlock()
+	s.c.startSearchIndexForced()
+	return s.IndexStatus(), nil
+}
+
 // ListChildren 懒加载某目录的直接子节点;path 为空表示根。
 func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 	s.c.mu.RLock()
@@ -390,9 +403,21 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 	}
 	info := a.Info()
 	versioned := s.c.versionRepo != nil
+	forceSearchRefresh := false
+	for _, mutationPath := range mutationPaths {
+		normalizedPath := normalizeSearchPath(mutationPath)
+		if strings.HasSuffix(normalizedPath, ".str") || isNPCEntryPath(normalizedPath) || normalizedPath == npcListPath {
+			forceSearchRefresh = true
+			break
+		}
+	}
 	s.c.mu.Unlock()
 
-	s.c.startSearchIndex()
+	if forceSearchRefresh {
+		s.c.startSearchIndexForced()
+	} else {
+		s.c.startSearchIndex()
+	}
 	emitEvent("archive:changed", info)
 	if versioned {
 		emitVersionState(s.c, "files-deleted")

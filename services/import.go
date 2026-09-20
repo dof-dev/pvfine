@@ -221,12 +221,43 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 		}
 	}
 
-	s.c.installArchiveIndexesLocked(stage, children, paths)
+	s.c.installArchiveIndexesPreservingSearchLocked(stage, children, paths)
+	if s.c.indexDirty == nil {
+		s.c.indexDirty = make(map[int32]struct{})
+	}
+	changedPathSet := make(map[string]struct{}, len(files))
+	forceSearchRefresh := false
+	for _, file := range files {
+		normalizedPath := normalizeSearchPath(file.targetPath)
+		changedPathSet[normalizedPath] = struct{}{}
+		if strings.HasSuffix(normalizedPath, ".str") || isNPCEntryPath(normalizedPath) || normalizedPath == npcListPath {
+			forceSearchRefresh = true
+		}
+		if index, exists := stage.Find(file.targetPath); exists {
+			s.c.indexDirty[index] = struct{}{}
+		}
+	}
+	if s.c.searchIndexListPending == nil {
+		s.c.searchIndexListPending = make(map[int32]struct{})
+	}
+	for _, spec := range s.c.searchableListSpecsLocked() {
+		listIndex, exists := stage.FindList(spec.listPath)
+		if !exists {
+			continue
+		}
+		if _, changed := changedPathSet[normalizeSearchPath(stage.Path(listIndex))]; changed {
+			s.c.searchIndexListPending[listIndex] = struct{}{}
+		}
+	}
 	info := stage.Info()
 	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
-	s.c.startSearchIndex()
+	if forceSearchRefresh {
+		s.c.startSearchIndexForced()
+	} else {
+		s.c.startSearchIndex()
+	}
 	emitEvent("archive:changed", info)
 	emitEvent("archive:advanced-search-stale", map[string]any{"import": true})
 	if versioned {

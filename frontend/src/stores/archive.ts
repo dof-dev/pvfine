@@ -27,6 +27,9 @@ export const useArchiveStore = defineStore("archive", () => {
     total: 0,
     skipped: 0,
     error: "",
+    refreshing: false,
+    refreshError: "",
+    cacheHit: false,
     openDurationMs: 0,
     buildDurationMs: 0,
   });
@@ -39,6 +42,7 @@ export const useArchiveStore = defineStore("archive", () => {
   const open = computed(() => !!info.value && info.value.path !== "");
   const modifiedCount = computed(() => info.value?.modifiedCount ?? 0);
   const indexing = computed(() => open.value && indexStatus.value.state === "building");
+  const refreshingIndex = computed(() => open.value && indexStatus.value.refreshing);
   const indexReady = computed(() => open.value && indexStatus.value.state === "ready");
   let indexPollTimer: number | undefined;
   let indexPollBusy = false;
@@ -97,6 +101,9 @@ export const useArchiveStore = defineStore("archive", () => {
       total: Number(data?.total ?? 0),
       skipped: Number(data?.skipped ?? 0),
       error: String(data?.error ?? ""),
+      refreshing: Boolean(data?.refreshing ?? false),
+      refreshError: String(data?.refreshError ?? ""),
+      cacheHit: Boolean(data?.cacheHit ?? false),
       openDurationMs: Number(data?.openDurationMs ?? 0),
       buildDurationMs: Number(data?.buildDurationMs ?? 0),
     };
@@ -183,6 +190,12 @@ export const useArchiveStore = defineStore("archive", () => {
     info.value = await ArchiveService.Info();
   }
 
+  async function rebuildSearchIndex(): Promise<IndexStatus> {
+    const status = readIndexStatus(await ArchiveService.RebuildSearchIndex());
+    indexStatus.value = status;
+    return status;
+  }
+
   async function listRegistrationOptions(fileIndex: number): Promise<FileRegistrationOptions | null> {
     return (await ArchiveService.ListRegistrationOptions(fileIndex)) ?? null;
   }
@@ -240,7 +253,7 @@ export const useArchiveStore = defineStore("archive", () => {
   Events.On("archive:index-error", (event: any) => {
     stopIndexPolling();
     const data = eventData(event);
-    indexStatus.value = readIndexStatus({ ...data, state: "error" });
+    indexStatus.value = readIndexStatus(data);
   });
   Events.On("archive:saved", (event: any) => {
     info.value = eventData(event);
@@ -282,6 +295,7 @@ export const useArchiveStore = defineStore("archive", () => {
     modifiedCount,
     indexStatus,
     indexing,
+    refreshingIndex,
     indexReady,
     unpacking,
     unpackProgress,
@@ -292,6 +306,7 @@ export const useArchiveStore = defineStore("archive", () => {
     removeRecentArchive,
     close,
     refreshInfo,
+    rebuildSearchIndex,
     listRegistrationOptions,
     registerFileToList,
     indexHashTargets,

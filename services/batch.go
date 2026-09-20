@@ -254,9 +254,12 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	if s.c.editorText == nil {
 		s.c.editorText = make(map[int32]string)
 	}
+	forceSearchRefresh := false
 	for _, fileIndex := range ordered {
 		row := rowsByIndex[fileIndex]
 		s.c.editorText[fileIndex] = row.afterText
+		_, force := s.c.queueSearchIndexMutationLocked(fileIndex)
+		forceSearchRefresh = forceSearchRefresh || force
 	}
 	s.c.batchRevision++
 	s.c.batchPlan = nil
@@ -280,7 +283,11 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	}
 	// One rebuild updates all affected names/tags and avoids emitting one index
 	// invalidation per file.
-	s.c.startSearchIndex()
+	if forceSearchRefresh {
+		s.c.startSearchIndexForced()
+	} else {
+		s.c.startSearchIndex()
+	}
 	return BatchApplyResult{
 		AppliedFiles:  int32(len(ordered)),
 		FileIndexes:   ordered,

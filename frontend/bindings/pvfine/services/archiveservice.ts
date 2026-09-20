@@ -157,6 +157,14 @@ export function PreviewImport(sourcePaths: string[] | null, targetDir: string, m
 }
 
 /**
+ * RebuildSearchIndex starts an asynchronous forced rebuild. An existing ready
+ * snapshot remains available to Search while the replacement is prepared.
+ */
+export function RebuildSearchIndex(): $CancellablePromise<$models.IndexStatus> {
+    return $Call.ByID(2232923942);
+}
+
+/**
  * RegisterFileToList registers one file in the selected list. Paged110 files
  * also receive the generated companion index-hash entry in the same mutation.
  */

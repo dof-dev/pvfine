@@ -168,6 +168,7 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 	}
 	info := a.Info()
 	s.c.mu.Unlock()
+	s.c.persistCurrentSearchIndexCacheAsync()
 	emitEvent("archive:saved", info)
 	return info, nil
 }
@@ -268,6 +269,7 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	}
 	info := a.Info()
 	s.c.mu.Unlock()
+	s.c.persistCurrentSearchIndexCacheAsync()
 	emitEvent("archive:saved", info)
 	return path, nil
 }
