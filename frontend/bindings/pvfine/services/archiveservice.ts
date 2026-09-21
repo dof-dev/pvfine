@@ -174,7 +174,8 @@ export function RegisterFileToList(fileIndex: number, listPath: string, id: stri
 
 /**
  * RegisterMissingIndexHashes writes generated hashes for ids that are absent
- * from the selected companion file. Existing entries are left untouched.
+ * from the selected companion file, and repairs entries written to the wrong
+ * string pool. Valid existing entries are left untouched.
  */
 export function RegisterMissingIndexHashes(listPath: string, rawIDs: string[] | null): $CancellablePromise<$models.IndexHashRegistrationResult | null> {
     return $Call.ByID(1112195474, listPath, rawIDs);

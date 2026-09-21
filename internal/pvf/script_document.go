@@ -939,9 +939,9 @@ func (a *Archive) scriptStringOffset(value string, pool ScriptStringPool) int32 
 	if offset, ok := a.strWIdx[value]; ok {
 		return offset
 	}
-	// Same rule as StringOffset: non-ASCII text belongs in the UTF-16 pool, and
-	// an archive without a UTF-8 pool keeps everything there.
-	if !isASCIIString(value) || !a.hasUTF8PoolLocked() {
+	// Same rule as StringOffset: Paged110 writes new strings to UTF-16 even if
+	// an older damaged save left bytes in the UTF-8 pool.
+	if a.paged110 || !isASCIIString(value) || !a.hasUTF8PoolLocked() {
 		return a.appendUTF16StringLocked(value)
 	}
 	old := len(a.strA)

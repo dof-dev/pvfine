@@ -179,10 +179,9 @@ func (a *Archive) ensureStringIndexesLocked() {
 // missing. It is the inverse of ResolveString.
 //
 // The pool is chosen the way every known client build stores its own text:
-// non-ASCII goes to the UTF-16 pool, and ASCII goes to the UTF-8 pool when the
-// archive actually uses one (the 90US builds keep ASCII paths and tags there).
-// A 110US-style archive has an empty UTF-8 pool and keeps everything in the
-// UTF-16 pool, so ASCII follows it there.
+// non-ASCII goes to the UTF-16 pool, and ASCII goes to the UTF-8 pool for the
+// 90US builds. Paged110 keeps newly written strings in the UTF-16 pool even
+// when a damaged or third-party archive already has a non-empty UTF-8 pool.
 //
 // Writing CJK text into the UTF-8 pool is what made freshly entered Chinese show
 // up as mojibake in game: the client resolves non-ASCII strings from the UTF-16
@@ -197,7 +196,7 @@ func (a *Archive) StringOffset(s string) int32 {
 	if off, ok := a.strWIdx[s]; ok {
 		return off
 	}
-	if !isASCIIString(s) || !a.hasUTF8PoolLocked() {
+	if a.paged110 || !isASCIIString(s) || !a.hasUTF8PoolLocked() {
 		return a.appendUTF16StringLocked(s)
 	}
 	old := len(a.strA)
@@ -209,15 +208,13 @@ func (a *Archive) StringOffset(s string) int32 {
 	return off
 }
 
-// UnicodeStringOffset is StringOffset forced to the UTF-16 pool.
+// UnicodeStringOffset returns a UTF-16-pool offset, appending a second copy
+// when the same text already exists only in the UTF-8 pool.
 func (a *Archive) UnicodeStringOffset(s string) int32 {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
 	a.ensureStringIndexesLocked()
 	if off, ok := a.strWIdx[s]; ok {
-		return off
-	}
-	if off, ok := a.strAIdx[s]; ok {
 		return off
 	}
 	return a.appendUTF16StringLocked(s)

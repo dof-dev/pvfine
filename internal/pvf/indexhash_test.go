@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"encoding/binary"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ func buildIndexHash(a *Archive, pairs [][2]uint32) []byte {
 	for _, pair := range pairs {
 		raw = append(raw, encodeBatchTokens([]batchToken{
 			{typ: 0, value: int32(pair[0])},
-			{typ: 6, value: a.StringOffset(strconv.FormatUint(uint64(pair[1]), 10))},
+			{typ: 6, value: a.UnicodeStringOffset(strconv.FormatUint(uint64(pair[1]), 10))},
 		})...)
 	}
 	return raw
@@ -125,6 +126,57 @@ func TestSetIndexHashEntryForID(t *testing.T) {
 	}
 }
 
+func TestSetIndexHashEntryForIDUsesUTF16Pool(t *testing.T) {
+	a := New()
+	// A previously damaged 110US archive may already have an ASCII value in
+	// sTrA. New index-hash values must still go to sTrW.
+	a.strA = []byte("old-value\x00")
+	a.AddFile("list/equipment_indexhash.etc", buildIndexHash(a, nil), TypeScript)
+	if err := a.SetIndexHashEntryForID("list/equipment_indexhash.etc", 10020); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.RawBytes(mustFind(a, "list/equipment_indexhash.etc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) != 10 || raw[5] != 6 {
+		t.Fatalf("raw index-hash entry = % X", raw)
+	}
+	offset := int32(binary.LittleEndian.Uint32(raw[6:10]))
+	if offset&1 == 0 || a.ResolveString(offset) != strconv.FormatUint(uint64(IndexHashValue(10020)), 10) {
+		t.Fatalf("value offset = %d, resolved = %q", offset, a.ResolveString(offset))
+	}
+}
+
+func TestIndexHashIDsNeedingUpdateDetectsWrongPool(t *testing.T) {
+	a := New()
+	a.strA = []byte("old-value\x00")
+	badRaw := encodeBatchTokens([]batchToken{
+		{typ: 0, value: 10020},
+		{typ: 6, value: a.StringOffset(strconv.FormatUint(uint64(IndexHashValue(10020)), 10))},
+	})
+	a.AddFile("list/equipment_indexhash.etc", badRaw, TypeScript)
+	ids, err := a.IndexHashIDsNeedingUpdate("list/equipment_indexhash.etc", []uint32{10020, 10021})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 || ids[0] != 10020 || ids[1] != 10021 {
+		t.Fatalf("ids needing update = %v", ids)
+	}
+	if err := a.SetIndexHashEntriesForIDs("list/equipment_indexhash.etc", ids); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := a.RawBytes(mustFind(a, "list/equipment_indexhash.etc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pos := 0; pos < len(raw); pos += 10 {
+		if offset := int32(binary.LittleEndian.Uint32(raw[pos+6 : pos+10])); offset&1 == 0 {
+			t.Fatalf("entry %d kept even value offset %d", pos/10, offset)
+		}
+	}
+}
+
 func TestSetIndexHashEntriesForIDs(t *testing.T) {
 	a := New()
 	a.AddFile("list/equipment_indexhash.etc", buildIndexHash(a, [][2]uint32{{10018, 1}}), TypeScript)
@@ -138,6 +190,24 @@ func TestSetIndexHashEntriesForIDs(t *testing.T) {
 	if len(pairs) != 2 || pairs[0].ID != 10018 || pairs[0].Value != IndexHashValue(10018) ||
 		pairs[1].ID != 10019 || pairs[1].Value != IndexHashValue(10019) {
 		t.Fatalf("batch generated pairs = %#v", pairs)
+	}
+}
+
+func TestSetIndexHashEntriesForListIDsPreservesLiveListOrder(t *testing.T) {
+	a := New()
+	if _, err := a.AddFileText("list/equipment.lst", "100 `equipment/a.equ` 200 `equipment/b.equ`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("list/equipment_indexhash.etc", buildIndexHash(a, [][2]uint32{{100, 1}, {999, 2}}), TypeScript)
+	if err := a.SetIndexHashEntriesForListIDs("list/equipment_indexhash.etc", "list/equipment.lst", []uint32{200}); err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := a.IndexHashPairs("list/equipment_indexhash.etc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pairs) != 3 || pairs[0].ID != 100 || pairs[1].ID != 200 || pairs[2].ID != 999 {
+		t.Fatalf("list-ordered pairs = %#v", pairs)
 	}
 }
 
@@ -215,6 +285,10 @@ func TestIndexHashGeneratedValuesRealArchive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
+		records, err := a.indexHashRecords(mustFind(a, path))
+		if err != nil {
+			t.Fatalf("%s records: %v", path, err)
+		}
 		liveIDs := make(map[uint32]bool)
 		listPath := strings.TrimSuffix(path, "_indexhash.etc") + ".lst"
 		listIndex, ok := a.FindList(listPath)
@@ -230,7 +304,7 @@ func TestIndexHashGeneratedValuesRealArchive(t *testing.T) {
 				liveIDs[uint32(id)] = true
 			}
 		}
-		for _, pair := range pairs {
+		for position, pair := range pairs {
 			// equipment_indexhash.etc has six old rows that are no longer in
 			// equipment.lst and do not follow the current generator.
 			if path == "list/equipment_indexhash.etc" && !liveIDs[pair.ID] {
@@ -238,6 +312,9 @@ func TestIndexHashGeneratedValuesRealArchive(t *testing.T) {
 			}
 			if got := IndexHashValue(pair.ID); got != pair.Value {
 				t.Fatalf("%s id %d: generated value %#x, archive value %#x", path, pair.ID, got, pair.Value)
+			}
+			if records[position].valToken.typ != 6 || records[position].valToken.value&1 == 0 {
+				t.Fatalf("%s id %d: value token offset %d is not in sTrW", path, pair.ID, records[position].valToken.value)
 			}
 		}
 		t.Logf("%s: verified %d entries", path, len(pairs))

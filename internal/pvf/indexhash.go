@@ -3,6 +3,7 @@ package pvf
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -111,7 +112,8 @@ func (a *Archive) indexHashRecords(index int32) ([]indexHashRecord, error) {
 
 // SetIndexHashEntry inserts or updates one `id -> value` entry, writing the
 // value the way the shipped files do: as decimal text referenced by a string
-// token. An existing entry keeps its position and token encoding.
+// token. An existing entry keeps its position while its value token is
+// canonicalized to the UTF-16 pool used by Paged110.
 func (a *Archive) SetIndexHashEntry(indexHashPath string, id, value uint32) error {
 	index, ok := a.Find(indexHashPath)
 	if !ok {
@@ -121,7 +123,7 @@ func (a *Archive) SetIndexHashEntry(indexHashPath string, id, value uint32) erro
 	if err != nil {
 		return err
 	}
-	valToken := batchToken{typ: 6, value: a.StringOffset(strconv.FormatUint(uint64(value), 10))}
+	valToken := a.indexHashValueToken(value)
 	for i := range records {
 		if records[i].id != id {
 			continue
@@ -147,10 +149,77 @@ func (a *Archive) SetIndexHashEntryForID(indexHashPath string, id uint32) error 
 	return a.SetIndexHashEntry(indexHashPath, id, IndexHashValue(id))
 }
 
+// IndexHashIDsNeedingUpdate returns requested ids that are missing or whose
+// value is not in the canonical 110US form. Paged110 keeps these decimal
+// strings in the UTF-16 pool even when they contain ASCII only; accepting an
+// existing even offset would preserve a file that the client can parse but
+// does not consume correctly.
+func (a *Archive) IndexHashIDsNeedingUpdate(indexHashPath string, ids []uint32) ([]uint32, error) {
+	index, ok := a.Find(indexHashPath)
+	if !ok {
+		return nil, fmt.Errorf("pvf: %s not found", indexHashPath)
+	}
+	records, err := a.indexHashRecords(index)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uint32]indexHashRecord, len(records))
+	for _, record := range records {
+		if _, exists := byID[record.id]; !exists {
+			byID[record.id] = record
+		}
+	}
+	seen := make(map[uint32]struct{}, len(ids))
+	result := make([]uint32, 0, len(ids))
+	for _, id := range ids {
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		record, exists := byID[id]
+		if !exists || !record.hasValue || record.value != IndexHashValue(id) ||
+			record.valToken.typ != 6 || record.valToken.value&1 == 0 {
+			result = append(result, id)
+		}
+	}
+	return result, nil
+}
+
 // SetIndexHashEntriesForIDs inserts or updates several generated entries in a
 // single decode/re-encode pass. This matters for the large retail index files,
 // where parsing the same payload once per id would be needlessly expensive.
 func (a *Archive) SetIndexHashEntriesForIDs(indexHashPath string, ids []uint32) error {
+	return a.setIndexHashEntries(indexHashPath, ids, nil)
+}
+
+// SetIndexHashEntriesForListIDs inserts or updates generated entries while
+// preserving the order of the corresponding .lst. The shipped files contain
+// historical rows that are not in the current list, so a new row belongs after
+// the preceding live list row and before trailing historical rows, rather than
+// blindly at the end of the index file.
+func (a *Archive) SetIndexHashEntriesForListIDs(indexHashPath, listPath string, ids []uint32) error {
+	listIndex, ok := a.FindList(listPath)
+	if !ok {
+		return fmt.Errorf("pvf: %s not found", listPath)
+	}
+	pairs, err := a.ListPairs(listIndex)
+	if err != nil {
+		return err
+	}
+	listOrder := make(map[uint32]int, len(pairs))
+	for position, pair := range pairs {
+		id, parseErr := strconv.ParseUint(strings.TrimSpace(pair.ID), 10, 32)
+		if parseErr != nil {
+			continue
+		}
+		if _, exists := listOrder[uint32(id)]; !exists {
+			listOrder[uint32(id)] = position
+		}
+	}
+	return a.setIndexHashEntries(indexHashPath, ids, listOrder)
+}
+
+func (a *Archive) setIndexHashEntries(indexHashPath string, ids []uint32, listOrder map[uint32]int) error {
 	index, ok := a.Find(indexHashPath)
 	if !ok {
 		return fmt.Errorf("pvf: %s not found", indexHashPath)
@@ -169,21 +238,21 @@ func (a *Archive) SetIndexHashEntriesForIDs(indexHashPath string, ids []uint32) 
 		}
 	}
 	seen := make(map[uint32]struct{}, len(ids))
+	additions := make([]indexHashRecord, 0, len(ids))
 	for _, id := range ids {
 		if _, duplicate := seen[id]; duplicate {
 			continue
 		}
 		seen[id] = struct{}{}
 		value := IndexHashValue(id)
-		valToken := batchToken{typ: 6, value: a.StringOffset(strconv.FormatUint(uint64(value), 10))}
+		valToken := a.indexHashValueToken(value)
 		if position, exists := positions[id]; exists {
 			records[position].value = value
 			records[position].hasValue = true
 			records[position].valToken = valToken
 			continue
 		}
-		positions[id] = len(records)
-		records = append(records, indexHashRecord{
+		additions = append(additions, indexHashRecord{
 			id:       id,
 			value:    value,
 			hasValue: true,
@@ -191,10 +260,54 @@ func (a *Archive) SetIndexHashEntriesForIDs(indexHashPath string, ids []uint32) 
 			valToken: valToken,
 		})
 	}
+	if len(additions) > 0 {
+		sort.SliceStable(additions, func(i, j int) bool {
+			left, leftKnown := listOrder[additions[i].id]
+			right, rightKnown := listOrder[additions[j].id]
+			if leftKnown != rightKnown {
+				return leftKnown
+			}
+			if leftKnown && left != right {
+				return left < right
+			}
+			return false
+		})
+		for _, addition := range additions {
+			insertAt := len(records)
+			if targetPosition, known := listOrder[addition.id]; known {
+				lastLive := -1
+				for position, record := range records {
+					recordPosition, live := listOrder[record.id]
+					if !live {
+						continue
+					}
+					if recordPosition > targetPosition {
+						insertAt = position
+						break
+					}
+					lastLive = position
+				}
+				if insertAt == len(records) && lastLive >= 0 {
+					insertAt = lastLive + 1
+				}
+			}
+			records = append(records, indexHashRecord{})
+			copy(records[insertAt+1:], records[insertAt:])
+			records[insertAt] = addition
+			positions[addition.id] = insertAt
+		}
+	}
 	if err := a.writeIndexHashRecords(index, records); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (a *Archive) indexHashValueToken(value uint32) batchToken {
+	return batchToken{
+		typ:   6,
+		value: a.UnicodeStringOffset(strconv.FormatUint(uint64(value), 10)),
+	}
 }
 
 func (a *Archive) writeIndexHashRecords(index int32, records []indexHashRecord) error {

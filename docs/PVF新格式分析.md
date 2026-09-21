@@ -675,6 +675,11 @@ value = x ^ (x >> 16)
 `4040455147`。实现为 `internal/pvf.IndexHashValue`，新增条目可通过
 `Archive.SetIndexHashEntryForID` 写入。
 
+另一个写入约束也已由实际闪退归档确认：110US 中这些十进制 hash 文本即使只含
+ASCII，也必须放在 `sTrW` UTF-16 池（magic offset 为奇数）。放入 `sTrA` 后，
+工具自身仍能解析出相同数字，但客户端在取新增物品时会失败；修复逻辑会强制使用
+UTF-16 池，并可把已有的偶偏移条目重新写正。
+
 归档中仍有少量历史/特殊行不遵循这条规则：`equipment_indexhash.etc` 有 6 条
 不在当前 `equipment.lst` 的残留，`itemshop_indexhash.etc` 有一条显式为 0，
 `passiveobject_indexhash.etc` 有一批特殊对象记录。它们不是新增普通条目的生成依据；

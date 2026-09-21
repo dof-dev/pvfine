@@ -206,7 +206,7 @@ func (s *ArchiveService) RegisterFileToList(fileIndex int32, listPath, id string
 		return nil, err
 	}
 	if hashPath != "" {
-		if err := a.SetIndexHashEntryForID(hashPath, numericID); err != nil {
+		if err := a.SetIndexHashEntriesForListIDs(hashPath, actualListPath, []uint32{numericID}); err != nil {
 			s.c.mu.Unlock()
 			return nil, err
 		}
@@ -277,7 +277,8 @@ func (s *ArchiveService) IndexHashTargets() ([]*IndexHashTarget, error) {
 }
 
 // RegisterMissingIndexHashes writes generated hashes for ids that are absent
-// from the selected companion file. Existing entries are left untouched.
+// from the selected companion file, and repairs entries written to the wrong
+// string pool. Valid existing entries are left untouched.
 func (s *ArchiveService) RegisterMissingIndexHashes(listPath string, rawIDs []string) (*IndexHashRegistrationResult, error) {
 	s.c.mu.Lock()
 	a := s.c.archive
@@ -343,15 +344,19 @@ func (s *ArchiveService) RegisterMissingIndexHashes(listPath string, rawIDs []st
 	for _, pair := range pairs {
 		have[pair.ID] = struct{}{}
 	}
-	missing := make([]uint32, 0, len(ids))
+	updates, err := a.IndexHashIDsNeedingUpdate(hashPath, ids)
+	if err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
 	for _, id := range ids {
 		if _, exists := have[id]; exists {
-			result.Existing++
 			continue
 		}
-		missing = append(missing, id)
+		result.Added++
 	}
-	if len(missing) == 0 {
+	result.Existing = len(ids) - len(updates)
+	if len(updates) == 0 {
 		s.c.mu.Unlock()
 		return result, nil
 	}
@@ -364,7 +369,7 @@ func (s *ArchiveService) RegisterMissingIndexHashes(listPath string, rawIDs []st
 		s.c.mu.Unlock()
 		return nil, err
 	}
-	if err := a.SetIndexHashEntriesForIDs(hashPath, missing); err != nil {
+	if err := a.SetIndexHashEntriesForListIDs(hashPath, actualListPath, updates); err != nil {
 		s.c.mu.Unlock()
 		return nil, err
 	}
@@ -379,7 +384,7 @@ func (s *ArchiveService) RegisterMissingIndexHashes(listPath string, rawIDs []st
 	}
 	refreshRegistrationEditorTextLocked(s.c, a, -1, hashIndex)
 	invalidateRegistrationIndexesLocked(s.c)
-	result.Added = len(missing)
+	result.Added = len(updates)
 	info := a.Info()
 	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
