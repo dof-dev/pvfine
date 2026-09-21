@@ -62,14 +62,14 @@ func (a *Archive) Save() error {
 // built from scratch that have not been saved yet).
 func (a *Archive) SourcePath() string { return a.sourcePath }
 
-// ModifiedCount returns a non-zero modification count for both payload and
-// structural edits. Structural edits do not belong to a single entry, so they
-// contribute one indicator entry when no payload overlay exists.
+// ModifiedCount returns a non-zero modification count for payload, string-pool,
+// and structural edits. Structural edits do not belong to a single entry, so
+// they contribute one indicator entry when no payload overlay exists.
 func (a *Archive) ModifiedCount() int {
 	if len(a.overlay) > 0 {
 		return len(a.overlay)
 	}
-	if a.structuralDirty {
+	if a.structuralDirty || a.poolsDirty {
 		return 1
 	}
 	return 0
@@ -177,6 +177,9 @@ func (a *Archive) SaveTo(w io.Writer) error {
 func (a *Archive) savePaged110(w io.Writer) error {
 	if len(a.pageKeys) == 0 {
 		return ErrPaged110ReadOnly
+	}
+	if err := a.normalizePaged110StringPools(); err != nil {
+		return err
 	}
 	if (a.structuralDirty || a.poolsDirty) && a.keys.hash.seed == 0 {
 		// Without the HASH seed the section can only be copied through verbatim,

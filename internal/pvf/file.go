@@ -11,7 +11,9 @@ import (
 )
 
 // Modified reports whether any pending edits exist.
-func (a *Archive) Modified() bool { return len(a.overlay) > 0 || a.structuralDirty }
+func (a *Archive) Modified() bool {
+	return len(a.overlay) > 0 || a.structuralDirty || a.poolsDirty
+}
 
 // RawBytes returns the file payload. The slice aliases a cached chunk;
 // treat it as read-only.

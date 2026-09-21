@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -35,6 +36,101 @@ func TestStringOffsetPoolConvention(t *testing.T) {
 	// Existing entries keep their own offset.
 	if again := a.StringOffset("测试中文名称"); again != cjk {
 		t.Errorf("second lookup returned %d, want %d", again, cjk)
+	}
+}
+
+func TestStringPoolEditCountsAsModified(t *testing.T) {
+	source := New()
+	if _, err := source.AddFileText("equipment/a.equ", "[name]\n`a`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	var encoded bytes.Buffer
+	if err := source.SaveTo(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Parse(encoded.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a.ModifiedCount(); got != 0 {
+		t.Fatalf("freshly parsed archive modified count = %d", got)
+	}
+	a.StringOffset("pool-only-edit")
+	if got := a.ModifiedCount(); got != 1 {
+		t.Fatalf("pool-only edit modified count = %d, want 1", got)
+	}
+}
+
+func TestPaged110NewScriptStringsUseUTF16Pool(t *testing.T) {
+	a := New()
+	a.paged110 = true
+	a.strA = []byte("legacy\x00")
+	a.strAIdx = nil
+	a.strWIdx = nil
+
+	index, err := a.AddFileText("new/item.equ", "[name]\n{8=`<3::new_name>`}\n[icon]\n`new/icon.img`", TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.items[index].nameOff&1 == 0 || a.items[index].pathOff&1 == 0 {
+		t.Fatalf("new file path strings are not in sTrW: name=%d path=%d", a.items[index].nameOff, a.items[index].pathOff)
+	}
+	raw, err := a.RawBytes(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pos := 0; pos+5 <= len(raw); pos += 5 {
+		typ := raw[pos]
+		if typ != 3 && typ != 5 && typ != 6 && typ != 7 && typ != 8 && typ != 10 {
+			continue
+		}
+		offset := int32(binary.LittleEndian.Uint32(raw[pos+1:]))
+		if offset&1 == 0 {
+			t.Errorf("new script string token %d uses sTrA offset %d (%q)", pos/5, offset, a.ResolveString(offset))
+		}
+	}
+}
+
+func TestNormalizePaged110StringPoolsMigratesLegacyReferences(t *testing.T) {
+	a := New()
+	a.paged110 = true
+	a.strA = []byte("legacy-name\x00legacy-tag\x00")
+	a.strW = []byte{0, 0}
+	a.strAIdx = nil
+	a.strWIdx = nil
+	a.resolveCache = map[int32]string{}
+	index := a.AddFile("placeholder.equ", nil, TypeScript)
+	a.items[index].nameOff = 0
+	a.items[index].pathOff = int32(len("legacy-name\x00") << 1)
+	raw := encodeBatchTokens([]batchToken{
+		{typ: 3, value: 0},
+		{typ: 8, value: int32(len("legacy-name\x00") << 1)},
+	})
+	if err := a.SetRawBytes(index, raw); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.normalizePaged110StringPools(); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.strA) != 0 {
+		t.Fatalf("sTrA was not cleared: %d bytes", len(a.strA))
+	}
+	if a.items[index].nameOff&1 == 0 || a.items[index].pathOff&1 == 0 {
+		t.Fatalf("file table offsets were not migrated: name=%d path=%d", a.items[index].nameOff, a.items[index].pathOff)
+	}
+	updated, err := a.RawBytes(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pos := 0; pos+5 <= len(updated); pos += 5 {
+		offset := int32(binary.LittleEndian.Uint32(updated[pos+1:]))
+		if offset&1 == 0 {
+			t.Errorf("payload token %d was not migrated: offset=%d", pos/5, offset)
+		}
+	}
+	if got := a.ResolveString(a.items[index].nameOff); got != "legacy-name" {
+		t.Errorf("migrated name = %q", got)
 	}
 }
 

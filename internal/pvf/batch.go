@@ -176,7 +176,7 @@ func decodeBatchTokens(raw []byte) ([]batchToken, error) {
 		base := index * 5
 		typ := raw[base]
 		switch typ {
-		case 0, 2, 3, 5, 6, 7:
+		case 0, 2, 3, 5, 6, 7, 8, 10:
 		default:
 			return nil, fmt.Errorf("脚本包含不支持的 token 类型: %d", typ)
 		}

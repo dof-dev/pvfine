@@ -285,6 +285,10 @@ uint32**(超过 2^31 所以用字符串存)。实测该值**只与 id 有关**(�
 归档中少量历史/特殊条目可能保留其它值；新增普通列表条目使用该函数。
 索引文件是列表的**严格超集**(原厂工具维护列表时会顺带补齐),因此新增 id 会缺条目。
 
+110US 还有一个容易踩的兼容点：第二 token 虽然是 ASCII 十进制文本，仍必须引用
+UTF-16 字符串池 `sTrW`（magic offset 为奇数）。写到 UTF-8 池 `sTrA` 后，解析器
+仍可能读回正确数字，但客户端读取新增条目时会出错。
+
 工具:`Archive.IndexHashCompanionPath` / `IndexHashPairs` / `IndexHashGaps` /
 `IndexHashSiblingPaths` / `IndexHashValue` / `SetIndexHashEntryForID` /
 `SetIndexHashEntry`(值写成十进制文本,其余条目字节不变)。
