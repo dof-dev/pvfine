@@ -442,13 +442,36 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 }
 
 func attachAdvancedSource(ctx context.Context, db *sql.DB, path string) error {
-	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
-	_, err := db.ExecContext(ctx, `ATTACH DATABASE ? AS source`, u.String())
+	_, err := db.ExecContext(ctx, `ATTACH DATABASE ? AS source`, sqliteFileURI(path, "mode=ro"))
 	if err != nil {
 		return err
 	}
 	_, err = db.ExecContext(ctx, `PRAGMA source.cache_size=-8192; PRAGMA source.mmap_size=0`)
 	return err
+}
+
+func sqliteFileURI(path, query string) string {
+	path = filepath.ToSlash(filepath.Clean(path))
+	u := url.URL{Scheme: "file", RawQuery: query}
+	if strings.HasPrefix(path, "//") {
+		rest := strings.TrimPrefix(path, "//")
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			u.Host = rest[:slash]
+			u.Path = rest[slash:]
+		} else {
+			u.Host = rest
+			u.Path = "/"
+		}
+	} else {
+		if len(path) >= 2 && path[1] == ':' {
+			path = "/" + path
+		}
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		u.Path = path
+	}
+	return u.String()
 }
 
 func (d *advancedSQLite) evictOldest() error {
@@ -649,8 +672,7 @@ func (d *advancedSQLite) page(q *advancedDiskQuery, after, limit int) (*Advanced
 }
 
 func openAdvancedReadDB(path string) (*sql.DB, error) {
-	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqliteFileURI(path, "mode=ro"))
 	if err != nil {
 		return nil, err
 	}

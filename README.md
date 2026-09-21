@@ -48,6 +48,7 @@
 - **秒级载入**：对超 100 万个条目的归档，解密头部并建立内存索引耗时 < 1 秒。
 - **按需分块加载**：采用虚拟分块（Chunk-based）机制与 LRU 缓存，只在用户浏览/打开特定文件时解密对应数据块，无需将全量数据一次性载入内存。
 - **持久化索引缓存**：引入轻量级搜索与元数据索引缓存机制，基于归档特征与修改时间快速比对，二次打开省去重复扫描列表与建立索引开销，实现即开即用。
+- **SQLite 高级字符串搜索**：基于磁盘反向索引与游标分页查询，支持大型归档按需构建、查询结果缓存、进度反馈与取消操作；归档编辑后自动使旧结果失效。
 
 ### 🌐 多版本归档与变体兼容（Paged110 / 90CN）
 - **110US（Paged110）分页容器与无损写回**：
@@ -179,6 +180,7 @@
 │  - PreviewService: ANI 关键帧动画解析、装备属性面板计算与预览分派      │
 │  - ListRegistration: 列表关联注册与 list/*_indexhash.etc 自动生成     │
 │  - SearchIndexCache: 归档元数据与搜索索引持久化缓存                    │
+│  - AdvancedSearchSQLite: 字符串反向索引、分页查询与结果磁盘缓存        │
 │  - VersionService: 本地版本库生命周期、提交、快照差异与检出            │
 │  - AnnotationService: 规则引擎绑定、LST 索引构建与关联计算             │
 │  - ImageService: NPK 资源索引、DXT 图像解码与缩略图缓存                │
@@ -348,6 +350,8 @@ wails3 task package
 │   ├── equipment_preview.go  # 装备脚本高保真属性面板提取与计算
 │   ├── list_registration.go  # 列表注册与 list/*_indexhash.etc 维护
 │   ├── search_index_cache.go # 归档元数据与搜索索引持久化缓存
+│   ├── advanced_search_sqlite.go # 高级字符串反向索引与查询结果缓存
+│   ├── sqlite_index.go       # 文件索引与语义索引的 SQLite 构建
 │   ├── annotations.go        # AnnotationService：标注查询与 LST 关联
 │   ├── batch.go              # BatchService：批处理规则解析与 Diff 预览
 │   ├── script.go             # ScriptService：脚本运行、预览计划、脚本目录与应用

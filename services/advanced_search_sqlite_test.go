@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -42,6 +44,20 @@ func advancedFixture(t *testing.T) (*core, *ArchiveService) {
 		}
 	})
 	return c, NewArchiveService(c)
+}
+
+func TestSQLiteFileURIUsesLocalFileForm(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+	u, err := url.Parse(sqliteFileURI(path, "mode=ro"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "file" || u.Host != "" {
+		t.Fatalf("unexpected local file URI: %q", u.String())
+	}
+	if u.Query().Get("mode") != "ro" {
+		t.Fatalf("missing read-only query: %q", u.String())
+	}
 }
 
 func TestAdvancedSQLiteMatchesMemoryOracle(t *testing.T) {
