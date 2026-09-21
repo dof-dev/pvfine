@@ -501,7 +501,7 @@ function onScopeKeydown(event: KeyboardEvent): void {
       <div class="advanced-search-meta">
         <NText depth="3">命中 {{ search.hits.length.toLocaleString() }} 个文件</NText>
         <NTag v-if="search.indexStatus.state === 'building'" size="small" type="info" :bordered="false">
-          正在构建字符串索引，首次搜索可能慢一些
+          正在构建字符串索引（{{ search.indexStatus.done.toLocaleString() }}/{{ search.indexStatus.total.toLocaleString() }}），首次搜索可能慢一些
         </NTag>
         <NTag v-else-if="search.stale" size="small" type="warning" :bordered="false">结果已过期</NTag>
       </div>
@@ -526,7 +526,7 @@ function onScopeKeydown(event: KeyboardEvent): void {
       </NSpin>
 
       <div class="advanced-search-footer">
-        <NButton quaternary @click="search.clear">清空</NButton>
+        <NButton quaternary :disabled="search.searching" @click="search.clear">清空</NButton>
         <div class="advanced-search-footer-actions">
           <NButton
             quaternary
@@ -540,6 +540,7 @@ function onScopeKeydown(event: KeyboardEvent): void {
           <NButton v-if="search.nextCursor >= 0" quaternary :loading="search.searching" @click="search.loadMore">
             加载更多
           </NButton>
+          <NButton v-if="search.searching && search.mode === 'string'" quaternary @click="search.cancel">取消搜索</NButton>
           <NButton type="primary" :loading="search.searching" @click="doSearch">
             <template #icon><NIcon><Search24Regular /></NIcon></template>
             搜索 ({{ modifierKey }}+↵)

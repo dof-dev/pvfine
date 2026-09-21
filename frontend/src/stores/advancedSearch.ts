@@ -111,6 +111,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
   }
 
   async function search() {
+    if (searching.value) return;
     const request = ++requestId;
     error.value = "";
     stale.value = false;
@@ -161,8 +162,23 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     }
   }
 
+  async function cancel() {
+    requestId++;
+    retryAfterIndex = false;
+    try {
+      await ArchiveService.CancelAdvancedSearch();
+      nextCursor.value = -1;
+      indexStatus.value = readIndexStatus(null);
+      stale.value = hits.value.length > 0;
+    } catch (value) {
+      error.value = errorMessage(value);
+    } finally {
+      searching.value = false;
+    }
+  }
+
   async function loadMore() {
-    if (searching.value || nextCursor.value < 0 || !query.value.trim()) return;
+    if (searching.value || stale.value || nextCursor.value < 0 || !query.value.trim()) return;
     const request = requestId;
     searching.value = true;
     error.value = "";
@@ -226,6 +242,9 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
   }
 
   function markStale() {
+    requestId++;
+    searching.value = false;
+    nextCursor.value = -1;
     indexStatus.value = readIndexStatus(null);
     if (query.value.trim() || hits.value.length > 0) stale.value = true;
   }
@@ -265,6 +284,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     close,
     clear,
     search,
+    cancel,
     loadMore,
     loadAll,
   };

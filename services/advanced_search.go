@@ -3,11 +3,9 @@ package services
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -81,14 +79,13 @@ type advancedFileMatch struct {
 func (s *ArchiveService) AdvancedIndexStatus() AdvancedSearchIndexStatus {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
-	if s.c.diskIndex != nil {
-		return AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "streaming"}
-	}
+
 	return s.c.advancedStatus
 }
 
 // AdvancedSearch searches raw token bytes or string-pool references.
-// cursor is the result offset from the previous response; limit is 1..1000.
+// Pass NextCursor back unchanged; string-mode cursors identify the query
+// session and position, while binary mode retains its legacy offset. Limit is 1..1000.
 func (s *ArchiveService) AdvancedSearch(mode, query, scopePath string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
 	result := &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: -1}
 	query = strings.TrimSpace(query)
@@ -114,42 +111,7 @@ func (s *ArchiveService) AdvancedSearch(mode, query, scopePath string, regex boo
 }
 
 func (s *ArchiveService) searchAdvancedString(query, scope string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
-	s.c.mu.RLock()
-	disk := s.c.diskIndex != nil
-	s.c.mu.RUnlock()
-	if disk {
-		return s.searchAdvancedStringDisk(query, scope, regex, cursor, limit)
-	}
-	if regex {
-		if _, err := regexp.Compile(query); err != nil {
-			return nil, fmt.Errorf("正则表达式无效: %w", err)
-		}
-	}
-	index, err := s.c.ensureAdvancedStringIndex()
-	if err != nil {
-		return nil, err
-	}
-	poolMatches, err := index.MatchDetails(query, regex)
-	if err != nil {
-		return nil, fmt.Errorf("匹配字符串池失败: %w", err)
-	}
-	byFile := make(map[int32][]*AdvancedSearchDetail)
-	for _, match := range poolMatches {
-		byFile[match.FileIndex] = append(byFile[match.FileIndex], &AdvancedSearchDetail{
-			Kind:        "string",
-			Value:       match.Value,
-			Pool:        match.Pool,
-			PoolOffset:  match.Offset,
-			Occurrences: match.Occurrences,
-			TokenTypes:  append([]int32(nil), match.TokenTypes...),
-			FileFields:  append([]string(nil), match.FileFields...),
-		})
-	}
-	matches := make([]advancedFileMatch, 0, len(byFile))
-	for fileIndex, details := range byFile {
-		matches = append(matches, advancedFileMatch{fileIndex: fileIndex, details: details})
-	}
-	return s.paginateAdvancedFiles(matches, scope, cursor, limit)
+	return s.searchAdvancedStringSQLite(query, scope, regex, cursor, limit)
 }
 
 func (s *ArchiveService) searchAdvancedBinary(query, scope string, cursor, limit int) (*AdvancedSearchResult, error) {
@@ -234,162 +196,6 @@ func (s *ArchiveService) searchAdvancedBinaryDisk(pattern []byte, scope string, 
 	}
 	result.Scanned = matched
 	return result, nil
-}
-
-func (s *ArchiveService) searchAdvancedStringDisk(query, scope string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
-	if limit <= 0 || limit > 1000 {
-		limit = 200
-	}
-	if cursor < 0 {
-		cursor = 0
-	}
-	var match func(string) bool
-	if regex {
-		re, err := regexp.Compile(query)
-		if err != nil {
-			return nil, fmt.Errorf("正则表达式无效: %w", err)
-		}
-		match = re.MatchString
-	} else {
-		lower := strings.ToLower(query)
-		match = func(value string) bool { return strings.Contains(strings.ToLower(value), lower) }
-	}
-	s.c.mu.RLock()
-	defer s.c.mu.RUnlock()
-	if s.c.archive == nil || s.c.diskIndex == nil {
-		return nil, ErrNoArchive
-	}
-	result := &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: -1}
-	matched := 0
-	var scanErr error
-	err := s.c.diskIndex.eachFileByPath(func(index int32, path string, size, dataType int32) bool {
-		if scope != "" && !advancedPathInScope(path, scope) {
-			return true
-		}
-		raw, err := s.c.archive.RawBytes(index)
-		if err != nil {
-			scanErr = err
-			return false
-		}
-		file := s.c.archive.File(index)
-		details := make([]*AdvancedSearchDetail, 0)
-		add := func(value, field string, tokenType int32) {
-			if value == "" || !match(value) {
-				return
-			}
-			for _, detail := range details {
-				if detail.Value == value && detail.PoolOffset == tokenType {
-					detail.Occurrences++
-					return
-				}
-			}
-			details = append(details, &AdvancedSearchDetail{Kind: "string", Value: value, Pool: "token", PoolOffset: tokenType, Occurrences: 1, FileFields: []string{field}, TokenTypes: []int32{tokenType}})
-		}
-		add(file.Name, "name", -1)
-		add(file.Path, "path", -1)
-		if s.c.archive.File(index).DataType == pvf.TypeScript {
-			for pos := 0; pos+5 <= len(raw); pos += 5 {
-				typ := int32(raw[pos])
-				if typ != 3 && typ != 5 && typ != 6 && typ != 7 {
-					continue
-				}
-				value := s.c.archive.ResolveString(int32(binary.LittleEndian.Uint32(raw[pos+1:])))
-				add(value, "token", typ)
-			}
-		}
-		if len(details) == 0 {
-			return true
-		}
-		if matched < cursor {
-			matched++
-			return true
-		}
-		name, _ := s.c.diskIndex.indexedNames(index)
-		result.Hits = append(result.Hits, &AdvancedSearchHit{Name: name, Path: path, Size: size, DataType: dataType, FileIndex: index, Details: details})
-		matched++
-		return len(result.Hits) < limit
-	})
-	if err != nil {
-		return nil, err
-	}
-	if scanErr != nil {
-		return nil, scanErr
-	}
-	if len(result.Hits) >= limit {
-		result.NextCursor = matched
-	}
-	result.Scanned = matched
-	return result, nil
-}
-
-func (c *core) ensureAdvancedStringIndex() (*pvf.StringPoolIndex, error) {
-	c.mu.Lock()
-	if c.archive == nil {
-		c.mu.Unlock()
-		return nil, ErrNoArchive
-	}
-	if c.advancedIndex != nil && c.advancedStatus.State == AdvancedIndexStateReady {
-		index := c.advancedIndex
-		c.mu.Unlock()
-		return index, nil
-	}
-	if c.advancedStatus.State == AdvancedIndexStateBuilding {
-		c.mu.Unlock()
-		return nil, ErrAdvancedSearchIndexing
-	}
-	if c.advancedStatus.State == AdvancedIndexStateError && c.advancedStatus.Error != "" {
-		c.mu.Unlock()
-		return nil, errors.New(c.advancedStatus.Error)
-	}
-
-	a := c.archive
-	ctx, cancel := context.WithCancel(context.Background())
-	c.advancedCancel = cancel
-	c.advancedStatus = AdvancedSearchIndexStatus{
-		State: AdvancedIndexStateBuilding,
-		Stage: "references",
-		Total: int(a.FileCount()),
-	}
-	buildingStatus := c.advancedStatus
-	c.mu.Unlock()
-	emitEvent("archive:advanced-index-progress", buildingStatus)
-
-	// Keep the archive read-locked for the build so SetText/Save cannot mutate
-	// the overlay or string pools while the reverse references are collected.
-	c.mu.RLock()
-	index, err := a.BuildStringPoolIndex(ctx)
-	current := c.archive == a
-	c.mu.RUnlock()
-	cancel()
-
-	c.mu.Lock()
-	if !current || c.archive != a {
-		c.mu.Unlock()
-		return nil, ErrNoArchive
-	}
-	c.advancedCancel = nil
-	if err != nil {
-		c.advancedStatus = AdvancedSearchIndexStatus{
-			State: AdvancedIndexStateError,
-			Stage: "error",
-			Error: err.Error(),
-		}
-		status := c.advancedStatus
-		c.mu.Unlock()
-		emitEvent("archive:advanced-index-error", status)
-		return nil, err
-	}
-	c.advancedIndex = index
-	c.advancedStatus = AdvancedSearchIndexStatus{
-		State: AdvancedIndexStateReady,
-		Stage: "ready",
-		Done:  int(a.FileCount()),
-		Total: int(a.FileCount()),
-	}
-	status := c.advancedStatus
-	c.mu.Unlock()
-	emitEvent("archive:advanced-index-ready", status)
-	return index, nil
 }
 
 func (c *core) binarySearch(pattern []byte, scope string) ([]advancedFileMatch, error) {
@@ -554,11 +360,16 @@ func formatHex(raw []byte) string {
 }
 
 func (c *core) invalidateAdvancedSearchLocked() {
+	if c.advancedDisk != nil {
+		disk := c.advancedDisk
+		disk.cancel()
+		c.advancedDisk = nil
+		go disk.close()
+	}
 	if c.advancedCancel != nil {
 		c.advancedCancel()
 		c.advancedCancel = nil
 	}
-	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 }

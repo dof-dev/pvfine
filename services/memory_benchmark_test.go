@@ -46,9 +46,40 @@ func TestLargeArchiveMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if os.Getenv("PVF_ADVANCED_TEST") == "1" {
-		if _, err := service.AdvancedSearch(AdvancedSearchModeString, "npc", "", false, 0, 1); err != nil {
+		advancedStarted := time.Now()
+		page, err := service.AdvancedSearch(AdvancedSearchModeString, "npc", "", false, 0, 200)
+		if err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("advanced_first=%s", time.Since(advancedStarted))
+		for n := 0; n < 10 && page.NextCursor >= 0; n++ {
+			pageStarted := time.Now()
+			page, err = service.AdvancedSearch(AdvancedSearchModeString, "npc", "", false, page.NextCursor, 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("advanced_page=%d elapsed=%s hits=%d", n+2, time.Since(pageStarted), len(page.Hits))
+		}
+		regexStarted := time.Now()
+		if _, err = service.AdvancedSearch(AdvancedSearchModeString, "(?i)npc", "", true, 0, 200); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("advanced_regex=%s", time.Since(regexStarted))
+		// Ensure connection and session-file cleanup is complete before this
+		// opt-in process exits. A reusable clean index intentionally survives.
+		c.mu.RLock()
+		disk := c.advancedDisk
+		c.mu.RUnlock()
+		defer func() {
+			service.CancelAdvancedSearch()
+			if disk != nil {
+				select {
+				case <-disk.closed:
+				case <-time.After(10 * time.Second):
+					t.Error("advanced cleanup timeout")
+				}
+			}
+		}()
 	}
 	if os.Getenv("PVF_REBUILD_TEST") == "1" {
 		rebuildStarted := time.Now()

@@ -23,10 +23,19 @@ export function AdvancedIndexStatus(): $CancellablePromise<$models.AdvancedSearc
 
 /**
  * AdvancedSearch searches raw token bytes or string-pool references.
- * cursor is the result offset from the previous response; limit is 1..1000.
+ * Pass NextCursor back unchanged; string-mode cursors identify the query
+ * session and position, while binary mode retains its legacy offset. Limit is 1..1000.
  */
 export function AdvancedSearch(mode: string, query: string, scopePath: string, regex: boolean, cursor: number, limit: number): $CancellablePromise<$models.AdvancedSearchResult | null> {
     return $Call.ByID(3108371697, mode, query, scopePath, regex, cursor, limit);
+}
+
+/**
+ * CancelAdvancedSearch releases the lazy string index and cancels its current
+ * build/query. Binary search keeps its existing API and cancellation behavior.
+ */
+export function CancelAdvancedSearch(): $CancellablePromise<void> {
+    return $Call.ByID(4160052339);
 }
 
 /**

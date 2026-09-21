@@ -122,7 +122,7 @@ type core struct {
 	versionLoadID        uint64
 	versionLoading       bool
 	versionLoadError     string
-	advancedIndex        *pvf.StringPoolIndex
+	advancedDisk         *advancedSQLite
 	advancedStatus       AdvancedSearchIndexStatus
 	advancedCancel       context.CancelFunc
 	binaryCache          map[binarySearchKey][]advancedFileMatch
@@ -208,10 +208,7 @@ func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
-	if c.advancedCancel != nil {
-		c.advancedCancel()
-		c.advancedCancel = nil
-	}
+	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
@@ -236,7 +233,6 @@ func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
 	c.indexStartedAt = time.Time{}
 	c.indexDirty = make(map[int32]struct{})
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
-	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
@@ -287,10 +283,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 		c.indexCancel()
 		c.indexCancel = nil
 	}
-	if c.advancedCancel != nil {
-		c.advancedCancel()
-		c.advancedCancel = nil
-	}
+	c.invalidateAdvancedSearchLocked()
 	preserveSearch := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	c.indexGen++
 	c.batchRevision++
@@ -329,7 +322,6 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
-	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
@@ -391,10 +383,7 @@ func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children ma
 		c.indexCancel()
 		c.indexCancel = nil
 	}
-	if c.advancedCancel != nil {
-		c.advancedCancel()
-		c.advancedCancel = nil
-	}
+	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
@@ -433,7 +422,6 @@ func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children ma
 	}
 	c.indexStartedAt = time.Time{}
 	c.indexDirty = make(map[int32]struct{})
-	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
 	c.unpackCancel.Store(false)
@@ -456,10 +444,7 @@ func (c *core) closeArchive() {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
-	if c.advancedCancel != nil {
-		c.advancedCancel()
-		c.advancedCancel = nil
-	}
+	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
@@ -487,7 +472,6 @@ func (c *core) closeArchive() {
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexStartedAt = time.Time{}
 	c.indexDirty = nil
-	c.advancedIndex = nil
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = nil
 	c.unpackCancel.Store(false)
