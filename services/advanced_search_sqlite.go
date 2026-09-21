@@ -114,6 +114,8 @@ func (s *ArchiveService) searchAdvancedStringSQLite(query, scope string, regex b
 		match = func(value string) bool { return strings.Contains(strings.ToLower(value), lower) }
 	}
 	c := s.c
+	finishTask := c.archiveTasks.begin()
+	defer finishTask()
 	c.mu.Lock()
 	if c.archive == nil {
 		c.mu.Unlock()

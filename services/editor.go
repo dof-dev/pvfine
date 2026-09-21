@@ -236,6 +236,8 @@ func backupSourceFile(sourcePath string) error {
 
 // SaveAsDialog 弹出保存对话框并另存为新 PVF。返回保存路径。
 func (s *EditorService) SaveAsDialog() (string, error) {
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {
@@ -287,6 +289,8 @@ type exportSelection struct {
 // ExportFilesDialog 将选中的文件或目录导出到目标目录,文件内容使用渲染后的 UTF-8 文本。
 // 目录会递归展开,并保留归档内的相对路径。
 func (s *EditorService) ExportFilesDialog(scopes []string) (string, error) {
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {
@@ -481,8 +485,18 @@ func (s *EditorService) UnpackDialog() (bool, error) {
 		return false, nil // 用户取消
 	}
 
+	finishTask := s.c.archiveTasks.begin()
+	s.c.mu.Lock()
+	if s.c.archive != a || s.c.unpackCancel.Load() {
+		s.c.mu.Unlock()
+		finishTask()
+		s.c.unpackRunning.Store(false)
+		return false, nil
+	}
 	s.c.unpackCancel.Store(false)
+	s.c.mu.Unlock()
 	go func() {
+		defer finishTask()
 		defer s.c.unpackRunning.Store(false)
 		emit := application.Get().Event.Emit
 		total := int(a.FileCount())

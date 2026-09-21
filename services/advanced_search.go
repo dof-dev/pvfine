@@ -360,11 +360,18 @@ func formatHex(raw []byte) string {
 }
 
 func (c *core) invalidateAdvancedSearchLocked() {
-	if c.advancedDisk != nil {
-		disk := c.advancedDisk
+	if disk := c.detachAdvancedSearchLocked(); disk != nil {
+		go disk.close()
+	}
+}
+
+// detachAdvancedSearchLocked cancels and detaches the current disk session.
+// The caller owns closing the returned session after releasing core.mu.
+func (c *core) detachAdvancedSearchLocked() *advancedSQLite {
+	disk := c.advancedDisk
+	if disk != nil {
 		disk.cancel()
 		c.advancedDisk = nil
-		go disk.close()
 	}
 	if c.advancedCancel != nil {
 		c.advancedCancel()
@@ -372,6 +379,7 @@ func (c *core) invalidateAdvancedSearchLocked() {
 	}
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
+	return disk
 }
 
 func normalizeAdvancedScope(scope string) string {

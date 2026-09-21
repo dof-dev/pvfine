@@ -98,6 +98,8 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 		return nil, errorsNoImportFiles()
 	}
 
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {

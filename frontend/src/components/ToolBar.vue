@@ -12,6 +12,7 @@ import {
   Code24Regular,
   DocumentText24Regular,
   DocumentSync24Regular,
+  Dismiss24Regular,
   Key24Regular,
   Settings24Regular,
 } from "@vicons/fluent";
@@ -27,6 +28,7 @@ import {
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
+import { useFileSetStore } from "../stores/fileSets";
 import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
@@ -36,6 +38,7 @@ import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
+const fileSets = useFileSetStore();
 const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
@@ -46,6 +49,29 @@ const hashRegistrationVisible = ref(false);
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
+const closingArchive = ref(false);
+const canClose = computed(() => archive.open && !archive.loading && !closingArchive.value);
+const hasUnsavedChanges = computed(
+  () =>
+    archive.modifiedCount > 0 ||
+    editor.dirtyCount > 0 ||
+    fileSets.dirty ||
+    (script.workspaceDetached ? script.detachedDirty : script.dirty) ||
+    version.status.changedFiles > 0 ||
+    version.status.needsSave
+);
+const closeConfirmationNeeded = computed(
+  () => hasUnsavedChanges.value || script.running
+);
+const closeConfirmationContent = computed(() => {
+  if (hasUnsavedChanges.value && script.running) {
+    return "当前归档有未保存的修改，且脚本正在运行。关闭后修改将丢失，脚本也会停止。确定继续吗？";
+  }
+  if (hasUnsavedChanges.value) {
+    return "当前工作区有未保存的修改，关闭后这些修改将丢失。确定继续吗？";
+  }
+  return "脚本正在运行，关闭归档会停止脚本。确定继续吗？";
+});
 const versionChangeCount = computed(() => {
   if (!archive.open) return 0;
   if (version.enabled) {
@@ -80,6 +106,44 @@ async function onOpen() {
   } catch (e: any) {
     if (!isCancel(e)) message.error(`打开失败: ${e?.message ?? e}`);
   }
+}
+
+async function closeCurrentArchive(): Promise<void> {
+  if (!archive.open || closingArchive.value) return;
+  closingArchive.value = true;
+  try {
+    await archive.close();
+    message.success("已关闭当前归档");
+  } catch (e: any) {
+    message.error(`关闭失败: ${e?.message ?? e}`);
+  } finally {
+    closingArchive.value = false;
+  }
+}
+
+function onClose(): void {
+  if (!canClose.value) return;
+  if (!closeConfirmationNeeded.value) {
+    void closeCurrentArchive();
+    return;
+  }
+
+  const dialogRef = dialog.warning({
+    title: "确认关闭归档",
+    content: closeConfirmationContent.value,
+    positiveText: "关闭归档",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      dialogRef.loading = true;
+      dialogRef.negativeButtonProps = { disabled: true };
+      try {
+        await closeCurrentArchive();
+      } finally {
+        dialogRef.loading = false;
+        dialogRef.negativeButtonProps = { disabled: false };
+      }
+    },
+  });
 }
 
 function onImport(): void {
@@ -170,6 +234,21 @@ function isCancel(e: any): boolean {
           </NButton>
         </template>
         打开 PVF 归档 (Cmd+O)
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            :disabled="!canClose"
+            :loading="closingArchive"
+            @click="onClose"
+          >
+            <template #icon><NIcon><Dismiss24Regular /></NIcon></template>
+            关闭
+          </NButton>
+        </template>
+        关闭当前 PVF 归档
       </NTooltip>
 
       <NTooltip trigger="hover">

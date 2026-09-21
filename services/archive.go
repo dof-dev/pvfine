@@ -163,6 +163,8 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, error) {
 	scopePath = strings.Trim(strings.ReplaceAll(scopePath, "\\", "/"), "/")
 
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	if s.c.archive == nil {
 		s.c.mu.RUnlock()
