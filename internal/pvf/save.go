@@ -468,6 +468,9 @@ func (a *Archive) adoptRebuilt(out []byte) {
 	}
 
 	a.chunkCache = map[int32][]byte{}
+	a.chunkCacheMeta = map[int32]chunkCacheEntry{}
+	a.chunkCacheBytes = 0
+	a.chunkCacheClock = 0
 	a.overlay = map[int32][]byte{}
 	a.poolsDirty = false
 	a.structuralDirty = false

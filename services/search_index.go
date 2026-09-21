@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -172,11 +173,21 @@ func (c *core) startSearchIndexForced() {
 }
 
 func (c *core) startSearchIndexWithOptions(force bool) {
+	lockStartedAt := time.Now()
 	c.mu.Lock()
+	if waited := time.Since(lockStartedAt).Round(time.Millisecond); waited > 0 {
+		log.Printf("[pvfine:index] waited for core lock: elapsed=%s", waited)
+	}
 	if c.archive == nil {
 		c.mu.Unlock()
+		log.Printf("[pvfine:index] index request ignored: no archive")
 		return
 	}
+	dirty := c.indexDirty != nil && len(c.indexDirty) > 0
+	if c.diskIndex != nil {
+		dirty = c.diskIndex.dirty
+	}
+	log.Printf("[pvfine:index] index request: force=%t files=%d disk=%t ready=%t dirty=%t", force, c.archive.FileCount(), c.diskIndex != nil, c.indexStatus.State == IndexStateReady, dirty)
 	if c.indexCancel != nil {
 		c.indexCancel()
 	}
@@ -184,6 +195,32 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 	gen := c.indexGen
 	a := c.archive
 	startedAt := time.Now()
+	if c.diskIndex != nil {
+		index := c.diskIndex
+		hasSnapshot := index.ready && !force && !index.dirty
+		index.ready = hasSnapshot
+		ctx, cancel := context.WithCancel(context.Background())
+		c.indexCancel = cancel
+		c.indexGen++
+		gen := c.indexGen
+		c.indexStartedAt = startedAt
+		if hasSnapshot {
+			log.Printf("[pvfine:index] cache hit: files=%d elapsed=%s", a.FileCount(), time.Since(startedAt).Round(time.Millisecond))
+			c.indexStatus = IndexStatus{State: IndexStateReady, Stage: "ready-cache", Done: int(a.FileCount()), Total: int(a.FileCount()), CacheHit: true, OpenDurationMs: c.indexStatus.OpenDurationMs}
+			status := c.indexStatus
+			c.indexCancel = nil
+			c.mu.Unlock()
+			cancel()
+			emitEvent("archive:index-ready", status)
+			return
+		}
+		c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "sqlite", OpenDurationMs: c.indexStatus.OpenDurationMs}
+		status := c.indexStatus
+		c.mu.Unlock()
+		emitEvent("archive:index-progress", status)
+		go c.buildSearchIndexSQLite(ctx, gen, a, index, startedAt, force)
+		return
+	}
 	openDurationMs := c.indexStatus.OpenDurationMs
 	hasSnapshot := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	pendingDirty := c.indexDirty
@@ -222,6 +259,44 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 		return
 	}
 	go c.buildSearchIndex(ctx, gen, a, startedAt, force, cacheEligible)
+}
+
+func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Archive, index *sqliteArchiveIndex, startedAt time.Time, force bool) {
+	specs := c.searchableListSpecs()
+	log.Printf("[pvfine:index] semantic build started: force=%t generation=%d files=%d specs=%d", force, gen, a.FileCount(), len(specs))
+	total, skipped, err := index.buildSemantic(ctx, c, a, specs, gen)
+	if err != nil {
+		if ctx.Err() != nil {
+			log.Printf("[pvfine:index] semantic build cancelled: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
+			return
+		}
+		log.Printf("[pvfine:index] semantic build failed: generation=%d elapsed=%s error=%v", gen, time.Since(startedAt).Round(time.Millisecond), err)
+		c.mu.Lock()
+		if c.indexIsCurrentLocked(a, gen) {
+			c.indexStatus = IndexStatus{State: IndexStateError, Stage: "error", Error: err.Error(), OpenDurationMs: c.indexStatus.OpenDurationMs, BuildDurationMs: elapsedMilliseconds(startedAt)}
+			c.indexCancel = nil
+			status := c.indexStatus
+			c.mu.Unlock()
+			emitEvent("archive:index-error", status)
+			return
+		}
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Lock()
+	if !c.indexIsCurrentLocked(a, gen) || c.diskIndex != index || ctx.Err() != nil {
+		c.mu.Unlock()
+		log.Printf("[pvfine:index] semantic build discarded: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
+		return
+	}
+	index.ready = true
+	index.dirty = false
+	c.indexStatus = IndexStatus{State: IndexStateReady, Stage: "ready-sqlite", Done: total, Total: total, Skipped: skipped, OpenDurationMs: c.indexStatus.OpenDurationMs, BuildDurationMs: elapsedMilliseconds(startedAt)}
+	c.indexCancel = nil
+	status := c.indexStatus
+	c.mu.Unlock()
+	log.Printf("[pvfine:index] semantic build finished: generation=%d records=%d skipped=%d elapsed=%s", gen, total, skipped, time.Since(startedAt).Round(time.Millisecond))
+	emitEvent("archive:index-ready", status)
 }
 
 func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time, force, cacheEligible bool) {
@@ -776,6 +851,21 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
+	if c.diskIndex != nil {
+		if err := c.diskIndex.refreshFileMetadata(c.archive, map[int32]struct{}{index: {}}); err != nil {
+			c.mu.Unlock()
+			return false, "", err
+		}
+		c.diskIndex.ready = false
+		c.diskIndex.dirty = true
+		c.mu.Unlock()
+		c.startSearchIndexForced()
+		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
+		if versioned {
+			emitVersionState(c, "edited")
+		}
+		return false, "", nil
+	}
 	delete(c.visualsByFile, index)
 	ready := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	if !ready {
@@ -1162,6 +1252,9 @@ func imageReferencesEqual(left, right *ImageReference) bool {
 }
 
 func (c *core) fileVisualsLocked(index int32) fileVisuals {
+	if c.diskIndex != nil {
+		return c.diskIndex.visuals(index)
+	}
 	if c.visualsByFile == nil {
 		c.visualsByFile = make(map[int32]fileVisuals)
 	}

@@ -59,7 +59,11 @@ func (s *ArchiveService) ListRegistrationOptions(fileIndex int32) (*FileRegistra
 		return nil, err
 	}
 	if s.c.indexStatus.State == IndexStateReady {
-		for _, tag := range s.c.treeTagsByFile[fileIndex] {
+		tags := s.c.treeTagsByFile[fileIndex]
+		if s.c.diskIndex != nil {
+			tags, _ = s.c.diskIndex.tags(fileIndex)
+		}
+		for _, tag := range tags {
 			if id := strings.TrimSpace(tag.ID); id != "" {
 				return nil, fmt.Errorf("当前文件已有索引 id: %s", id)
 			}

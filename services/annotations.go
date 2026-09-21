@@ -76,6 +76,42 @@ func buildPathAnnotations(engine *annotationrules.Engine, children map[string][]
 	return result
 }
 
+// annotationsForPathLocked keeps large archives from materializing one
+// annotation slice for every path. The caller must hold c.mu.
+func (c *core) annotationsForPathLocked(path string, directory ...bool) []TreeAnnotation {
+	if c.pathAnnotations != nil {
+		return cloneTreeAnnotations(c.pathAnnotations[path])
+	}
+	if c.annotationEngine == nil {
+		return nil
+	}
+	isDir := len(directory) > 0 && directory[0]
+	matches := c.annotationEngine.AnnotatePath(path, isDir)
+	if len(matches) == 0 {
+		return nil
+	}
+	result := make([]TreeAnnotation, 0, len(matches))
+	for _, match := range matches {
+		result = append(result, TreeAnnotation{Title: match.Title, Content: match.Content, Type: match.Type, RuleIDs: append([]string(nil), match.RuleIDs...)})
+	}
+	return result
+}
+
+func (c *core) annotationChainLocked(filePath string) map[string][]TreeAnnotation {
+	result := make(map[string][]TreeAnnotation)
+	current := filePath
+	for current != "" {
+		if annotations := c.annotationsForPathLocked(current); len(annotations) > 0 {
+			result[current] = annotations
+		}
+		current, _ = splitParent(current)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnotation, error) {
 	if c.annotationErr != nil {
 		return nil, c.annotationErr

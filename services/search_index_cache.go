@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -316,7 +317,7 @@ func (c *core) persistSearchIndexCacheAsync(a *pvf.Archive, gen uint64, metadata
 
 func (c *core) persistCurrentSearchIndexCacheAsync() {
 	c.mu.RLock()
-	if c.archive == nil || c.indexStatus.State != IndexStateReady || c.indexStatus.Refreshing {
+	if c.archive == nil || c.diskIndex != nil || c.indexStatus.State != IndexStateReady || c.indexStatus.Refreshing {
 		c.mu.RUnlock()
 		return
 	}
@@ -327,4 +328,64 @@ func (c *core) persistCurrentSearchIndexCacheAsync() {
 	skipped := c.indexStatus.Skipped
 	c.mu.RUnlock()
 	c.persistSearchIndexCacheAsync(a, gen, metadata, total, skipped)
+}
+
+// persistCurrentSQLiteIndexAsync rekeys a completed disk index after Save or
+// SaveAs. The archive contents are already reflected in the working database;
+// only the source identity changes when the packed PVF is written.
+func (c *core) persistCurrentSQLiteIndexAsync() {
+	c.mu.Lock()
+	if c.archive == nil || c.diskIndex == nil || !c.diskIndex.ready || c.archive.Modified() {
+		c.mu.Unlock()
+		return
+	}
+	index := c.diskIndex
+	a := c.archive
+	target, identity, err := archiveIndexCachePath(a)
+	if err != nil || target == index.path {
+		c.mu.Unlock()
+		return
+	}
+	index.dbMu.Lock()
+	defer index.dbMu.Unlock()
+	if _, err := index.db.Exec(`UPDATE meta SET value=? WHERE key='identity'`, identity); err != nil {
+		c.mu.Unlock()
+		return
+	}
+	_, _ = index.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	dir := filepath.Dir(target)
+	tmp, err := os.CreateTemp(dir, ".index-save-*.db")
+	if err == nil {
+		tmpPath := tmp.Name()
+		_ = tmp.Close()
+		if err = copySQLiteIndexFile(index.path, tmpPath); err == nil {
+			_ = os.Remove(target)
+			err = os.Rename(tmpPath, target)
+		}
+		if err != nil {
+			_ = os.Remove(tmpPath)
+		}
+	}
+	if err == nil {
+		index.path = target
+		index.identity = identity
+	}
+	c.mu.Unlock()
+}
+
+func copySQLiteIndexFile(source, target string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }

@@ -140,9 +140,11 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 		s.c.mu.RUnlock()
 		return nil, err
 	}
-	if _, _, err := buildIndex(stage); err != nil {
-		s.c.mu.RUnlock()
-		return nil, err
+	if stage.FileCount() < largeArchiveIndexThreshold {
+		if _, _, err := buildIndex(stage); err != nil {
+			s.c.mu.RUnlock()
+			return nil, err
+		}
 	}
 	if s.c.versionRepo != nil {
 		targetPaths := make([]string, 0, len(files))
@@ -204,10 +206,14 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 	result.TargetDir = targetDir
 	result.Mode = mode
 
-	children, paths, err := buildIndex(stage)
-	if err != nil {
-		s.c.mu.Unlock()
-		return nil, err
+	var children map[string][]*TreeNode
+	var paths []pathEntry
+	if stage.FileCount() < largeArchiveIndexThreshold {
+		children, paths, err = buildIndex(stage)
+		if err != nil {
+			s.c.mu.Unlock()
+			return nil, err
+		}
 	}
 	if s.c.versionRepo != nil {
 		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(stage, targetPaths)

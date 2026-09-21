@@ -281,6 +281,8 @@ func main() {
 wails3 task dev
 ```
 
+开发构建只对本项目（`pvfine/...`）禁用函数内联，保留业务代码的调试能力；SQLite 等依赖保持编译优化。不要使用 `-gcflags=all=-l` 做性能对比，它会显著拖慢纯 Go SQLite。复测开发版索引性能时，使用相同的 `-gcflags="pvfine/...=-l"` 参数。
+
 如需仅对前端进行调试：
 
 ```bash

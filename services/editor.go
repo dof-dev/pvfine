@@ -65,6 +65,9 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 		Tags:     cloneTreeTags(s.c.treeTagsByFile[index]),
 		Editable: false,
 	}
+	if s.c.diskIndex != nil {
+		meta.Tags, _ = s.c.diskIndex.tags(index)
+	}
 	visuals := s.c.fileVisualsLocked(index)
 	meta.Icon = cloneImageReference(visuals.icon)
 	meta.FieldImage = cloneImageReference(visuals.fieldImage)
@@ -168,6 +171,7 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 	}
 	info := a.Info()
 	s.c.mu.Unlock()
+	s.c.persistCurrentSQLiteIndexAsync()
 	s.c.persistCurrentSearchIndexCacheAsync()
 	emitEvent("archive:saved", info)
 	return info, nil
@@ -269,6 +273,7 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	}
 	info := a.Info()
 	s.c.mu.Unlock()
+	s.c.persistCurrentSQLiteIndexAsync()
 	s.c.persistCurrentSearchIndexCacheAsync()
 	emitEvent("archive:saved", info)
 	return path, nil
@@ -288,7 +293,12 @@ func (s *EditorService) ExportFilesDialog(scopes []string) (string, error) {
 		s.c.mu.RUnlock()
 		return "", ErrNoArchive
 	}
-	selections := collectExportSelections(a, s.c.sortedPaths, scopes)
+	var selections []exportSelection
+	if s.c.diskIndex != nil {
+		selections = collectDiskExportSelections(a, s.c.diskIndex, scopes)
+	} else {
+		selections = collectExportSelections(a, s.c.sortedPaths, scopes)
+	}
 	s.c.mu.RUnlock()
 	if len(selections) == 0 {
 		return "", fmt.Errorf("没有可导出的文件")
@@ -332,6 +342,40 @@ func (s *EditorService) ExportFilesDialog(scopes []string) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+func collectDiskExportSelections(a *pvf.Archive, index *sqliteArchiveIndex, scopes []string) []exportSelection {
+	selections := make([]exportSelection, 0, len(scopes))
+	seen := make(map[string]struct{}, len(scopes))
+	add := func(fileIndex int32, filePath string) {
+		filePath = normalizeExportPath(filePath)
+		if filePath == "" {
+			return
+		}
+		if _, ok := seen[filePath]; ok {
+			return
+		}
+		seen[filePath] = struct{}{}
+		selections = append(selections, exportSelection{index: fileIndex, path: filePath})
+	}
+	for _, rawScope := range scopes {
+		scope := normalizeExportPath(rawScope)
+		if scope == "" {
+			continue
+		}
+		if fileIndex, ok := a.Find(scope); ok {
+			add(fileIndex, a.Path(fileIndex))
+			continue
+		}
+		nodes, err := index.descendants(scope)
+		if err != nil {
+			continue
+		}
+		for _, node := range nodes {
+			add(node.FileIndex, node.Path)
+		}
+	}
+	return selections
 }
 
 func collectExportSelections(a *pvf.Archive, sortedPaths []pathEntry, scopes []string) []exportSelection {

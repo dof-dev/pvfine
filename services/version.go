@@ -1283,7 +1283,7 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 
 		var children map[string][]*TreeNode
 		var paths []pathEntry
-		if session.archive != archive {
+		if session.archive != archive && session.archive.FileCount() < largeArchiveIndexThreshold {
 			children, paths, err = buildIndex(session.archive)
 			if err != nil {
 				_ = session.repo.Close()
@@ -1675,6 +1675,10 @@ func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.
 // complete tree index is unnecessary for ordinary text undo operations.
 func refreshArchiveIndexMetadataLocked(c *core, indexes map[int32]struct{}) {
 	if len(indexes) == 0 || c.archive == nil {
+		return
+	}
+	if c.diskIndex != nil {
+		_ = c.diskIndex.refreshFileMetadata(c.archive, indexes)
 		return
 	}
 	for index := range c.sortedPaths {

@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -102,6 +103,7 @@ func (s *ArchiveService) IndexStatus() IndexStatus {
 // RebuildSearchIndex starts an asynchronous forced rebuild. An existing ready
 // snapshot remains available to Search while the replacement is prepared.
 func (s *ArchiveService) RebuildSearchIndex() (IndexStatus, error) {
+	log.Printf("[pvfine:index] forced rebuild requested")
 	s.c.mu.RLock()
 	if s.c.archive == nil {
 		s.c.mu.RUnlock()
@@ -118,6 +120,23 @@ func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
 	defer s.c.mu.RUnlock()
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
+	}
+	if s.c.diskIndex != nil {
+		result, err := s.c.diskIndex.children(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, node := range result {
+			node.Annotations = s.c.annotationsForPathLocked(node.Path, node.IsDir)
+			if !node.IsDir {
+				node.ChangeKind = archiveChangeKind(s.c.archive, node.FileIndex)
+				node.Tags, _ = s.c.diskIndex.tags(node.FileIndex)
+				visuals := s.c.diskIndex.visuals(node.FileIndex)
+				node.Icon = cloneImageReference(visuals.icon)
+				node.FieldImage = cloneImageReference(visuals.fieldImage)
+			}
+		}
+		return result, nil
 	}
 	list := s.c.dirChildren[path]
 	if list == nil {
@@ -145,10 +164,46 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 	scopePath = strings.Trim(strings.ReplaceAll(scopePath, "\\", "/"), "/")
 
 	s.c.mu.RLock()
-	defer s.c.mu.RUnlock()
 	if s.c.archive == nil {
+		s.c.mu.RUnlock()
 		return nil, ErrNoArchive
 	}
+	if s.c.diskIndex != nil {
+		index := s.c.diskIndex
+		archive := s.c.archive
+		s.c.mu.RUnlock()
+		descendantsStartedAt := time.Now()
+		log.Printf("[pvfine:index] descendants scan started: scope=%s", scopePath)
+		result, err := index.descendants(scopePath)
+		if err != nil {
+			log.Printf("[pvfine:index] descendants scan failed: scope=%s elapsed=%s error=%v", scopePath, time.Since(descendantsStartedAt).Round(time.Millisecond), err)
+			return nil, err
+		}
+		const annotationChunkSize = 2048
+		for start := 0; start < len(result); start += annotationChunkSize {
+			end := start + annotationChunkSize
+			if end > len(result) {
+				end = len(result)
+			}
+			s.c.mu.RLock()
+			if s.c.archive != archive || s.c.diskIndex != index {
+				s.c.mu.RUnlock()
+				return nil, ErrNoArchive
+			}
+			for _, node := range result[start:end] {
+				node.ChangeKind = archiveChangeKind(archive, node.FileIndex)
+				node.Annotations = s.c.annotationsForPathLocked(node.Path)
+				node.Tags, _ = index.tags(node.FileIndex)
+				visuals := index.visuals(node.FileIndex)
+				node.Icon = cloneImageReference(visuals.icon)
+				node.FieldImage = cloneImageReference(visuals.fieldImage)
+			}
+			s.c.mu.RUnlock()
+		}
+		log.Printf("[pvfine:index] descendants scan finished: scope=%s rows=%d elapsed=%s", scopePath, len(result), time.Since(descendantsStartedAt).Round(time.Millisecond))
+		return result, nil
+	}
+	defer s.c.mu.RUnlock()
 
 	prefix := scopePath
 	start := 0
@@ -188,6 +243,35 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 	defer s.c.mu.RUnlock()
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
+	}
+	if s.c.diskIndex != nil {
+		result := make([]*TreeNode, 0, len(paths))
+		seen := make(map[string]struct{}, len(paths))
+		for _, rawPath := range paths {
+			filePath := strings.Trim(strings.ReplaceAll(rawPath, "\\", "/"), "/")
+			if filePath == "" {
+				continue
+			}
+			if _, ok := seen[filePath]; ok {
+				continue
+			}
+			seen[filePath] = struct{}{}
+			node, err := s.c.diskIndex.resolve(filePath)
+			if err != nil {
+				return nil, err
+			}
+			if node == nil {
+				continue
+			}
+			node.ChangeKind = archiveChangeKind(s.c.archive, node.FileIndex)
+			node.Annotations = s.c.annotationsForPathLocked(node.Path)
+			node.Tags, _ = s.c.diskIndex.tags(node.FileIndex)
+			visuals := s.c.diskIndex.visuals(node.FileIndex)
+			node.Icon = cloneImageReference(visuals.icon)
+			node.FieldImage = cloneImageReference(visuals.fieldImage)
+			result = append(result, node)
+		}
+		return result, nil
 	}
 
 	result := make([]*TreeNode, 0, len(paths))
@@ -506,6 +590,9 @@ func (s *ArchiveService) SuggestDirectories(prefix string, limit int) ([]string,
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
 	}
+	if s.c.diskIndex != nil {
+		return s.c.diskIndex.suggest(prefix, limit)
+	}
 	result := make([]string, 0, limit)
 	for _, path := range s.c.directories {
 		if !strings.HasPrefix(strings.ToLower(path), prefix) {
@@ -559,6 +646,27 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
+	}
+	if s.c.diskIndex != nil {
+		if s.c.indexStatus.State == IndexStateBuilding {
+			return nil, ErrSearchIndexing
+		}
+		if s.c.indexStatus.State == IndexStateError {
+			return nil, errors.New(s.c.indexStatus.Error)
+		}
+		result, err := s.c.diskIndex.search(query, cursor, limit, exact)
+		if err != nil {
+			return nil, err
+		}
+		for _, hit := range result.Hits {
+			hit.ChangeKind = archiveChangeKind(s.c.archive, hit.FileIndex)
+			hit.Annotations = s.c.annotationsForPathLocked(hit.Path)
+			hit.PathAnnotations = s.c.annotationChainLocked(hit.Path)
+			visuals := s.c.diskIndex.visuals(hit.FileIndex)
+			hit.Icon = cloneImageReference(visuals.icon)
+			hit.FieldImage = cloneImageReference(visuals.fieldImage)
+		}
+		return result, nil
 	}
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {

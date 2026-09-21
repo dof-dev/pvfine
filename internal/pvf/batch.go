@@ -746,7 +746,10 @@ func (a *Archive) cloneForBatch() *Archive {
 		strWIdx:                 cloneStringOffsetMap(a.strWIdx),
 		poolsDirty:              a.poolsDirty,
 		resolveCache:            cloneStringMap(a.resolveCache),
+		resolveCacheOrder:       nil,
+		resolveCacheBytes:       0,
 		chunkCache:              make(map[int32][]byte),
+		chunkCacheMeta:          make(map[int32]chunkCacheEntry),
 		overlay:                 cloneBytesMap(a.overlay),
 		pathIndex:               cloneInt32Map(a.pathIndex),
 		structuralDirty:         a.structuralDirty,
@@ -824,6 +827,8 @@ func (a *Archive) commitBatch(stage *Archive, selected map[int32]struct{}) error
 	a.strWIdx = cloneStringOffsetMap(stage.strWIdx)
 	a.poolsDirty = stage.poolsDirty
 	a.resolveCache = cloneStringMap(stage.resolveCache)
+	a.resolveCacheOrder = nil
+	a.resolveCacheBytes = 0
 	a.overlay = nextOverlay
 	a.cacheMu.Unlock()
 	return nil

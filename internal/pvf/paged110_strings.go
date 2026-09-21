@@ -38,6 +38,8 @@ func (a *Archive) normalizeStringPools() error {
 	a.strA = nil
 	a.strAIdx = map[string]int32{}
 	a.resolveCache = map[int32]string{}
+	a.resolveCacheOrder = nil
+	a.resolveCacheBytes = 0
 	a.poolsDirty = true
 	a.cacheMu.Unlock()
 

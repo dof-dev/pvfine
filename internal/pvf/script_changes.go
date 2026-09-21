@@ -102,6 +102,8 @@ func (a *Archive) ApplyScriptChanges(stage *Archive, changes []ScriptChange) err
 	a.strWIdx = cloneStringOffsetMap(stage.strWIdx)
 	a.poolsDirty = stage.poolsDirty
 	a.resolveCache = cloneStringMap(stage.resolveCache)
+	a.resolveCacheOrder = nil
+	a.resolveCacheBytes = 0
 	a.cacheMu.Unlock()
 
 	if len(removals) > 0 {

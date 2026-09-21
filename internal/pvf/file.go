@@ -224,6 +224,8 @@ func (a *Archive) RemoveFiles(indexes []int32) ([]string, error) {
 	a.overlay = nextOverlay
 	a.pathIndex = nextPathIndex
 	a.resolveCache = make(map[int32]string)
+	a.resolveCacheOrder = nil
+	a.resolveCacheBytes = 0
 	a.removedSpans = nextRemovedSpans
 	a.structuralDirty = true
 	return paths, nil

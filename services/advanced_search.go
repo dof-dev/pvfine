@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -80,6 +81,9 @@ type advancedFileMatch struct {
 func (s *ArchiveService) AdvancedIndexStatus() AdvancedSearchIndexStatus {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
+	if s.c.diskIndex != nil {
+		return AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "streaming"}
+	}
 	return s.c.advancedStatus
 }
 
@@ -110,6 +114,12 @@ func (s *ArchiveService) AdvancedSearch(mode, query, scopePath string, regex boo
 }
 
 func (s *ArchiveService) searchAdvancedString(query, scope string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
+	s.c.mu.RLock()
+	disk := s.c.diskIndex != nil
+	s.c.mu.RUnlock()
+	if disk {
+		return s.searchAdvancedStringDisk(query, scope, regex, cursor, limit)
+	}
 	if regex {
 		if _, err := regexp.Compile(query); err != nil {
 			return nil, fmt.Errorf("正则表达式无效: %w", err)
@@ -159,12 +169,157 @@ func (s *ArchiveService) searchAdvancedBinary(query, scope string, cursor, limit
 	if len(pattern) == 0 {
 		return &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: -1}, nil
 	}
+	s.c.mu.RLock()
+	disk := s.c.diskIndex != nil
+	s.c.mu.RUnlock()
+	if disk {
+		return s.searchAdvancedBinaryDisk(pattern, scope, cursor, limit)
+	}
 
 	matched, err := s.c.binarySearch(pattern, scope)
 	if err != nil {
 		return nil, err
 	}
 	return s.paginateAdvancedFiles(matched, "", cursor, limit)
+}
+
+func (s *ArchiveService) searchAdvancedBinaryDisk(pattern []byte, scope string, cursor, limit int) (*AdvancedSearchResult, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil || s.c.diskIndex == nil {
+		return nil, ErrNoArchive
+	}
+	result := &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: -1}
+	matched := 0
+	var scanErr error
+	err := s.c.diskIndex.eachFileByPath(func(index int32, path string, size, dataType int32) bool {
+		if scope != "" && !advancedPathInScope(path, scope) {
+			return true
+		}
+		raw, err := s.c.archive.RawBytes(index)
+		if err != nil {
+			scanErr = err
+			return false
+		}
+		occurrences, byteOffsets, tokenOffsets := binaryMatchOffsets(raw, pattern)
+		if occurrences == 0 {
+			return true
+		}
+		if matched < cursor {
+			matched++
+			return true
+		}
+		hit := &AdvancedSearchHit{Name: "", Path: path, Size: size, DataType: dataType, FileIndex: index, Details: []*AdvancedSearchDetail{{Kind: "binary", Occurrences: occurrences, ByteOffsets: byteOffsets, TokenOffsets: tokenOffsets, Hex: formatHex(pattern)}}}
+		if name, nameErr := s.c.diskIndex.indexedNames(index); nameErr == nil {
+			hit.Name = name
+		}
+		result.Hits = append(result.Hits, hit)
+		matched++
+		return len(result.Hits) < limit
+	})
+	if err != nil {
+		return nil, err
+	}
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	if len(result.Hits) >= limit {
+		result.NextCursor = matched
+	}
+	result.Scanned = matched
+	return result, nil
+}
+
+func (s *ArchiveService) searchAdvancedStringDisk(query, scope string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	var match func(string) bool
+	if regex {
+		re, err := regexp.Compile(query)
+		if err != nil {
+			return nil, fmt.Errorf("正则表达式无效: %w", err)
+		}
+		match = re.MatchString
+	} else {
+		lower := strings.ToLower(query)
+		match = func(value string) bool { return strings.Contains(strings.ToLower(value), lower) }
+	}
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil || s.c.diskIndex == nil {
+		return nil, ErrNoArchive
+	}
+	result := &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: -1}
+	matched := 0
+	var scanErr error
+	err := s.c.diskIndex.eachFileByPath(func(index int32, path string, size, dataType int32) bool {
+		if scope != "" && !advancedPathInScope(path, scope) {
+			return true
+		}
+		raw, err := s.c.archive.RawBytes(index)
+		if err != nil {
+			scanErr = err
+			return false
+		}
+		file := s.c.archive.File(index)
+		details := make([]*AdvancedSearchDetail, 0)
+		add := func(value, field string, tokenType int32) {
+			if value == "" || !match(value) {
+				return
+			}
+			for _, detail := range details {
+				if detail.Value == value && detail.PoolOffset == tokenType {
+					detail.Occurrences++
+					return
+				}
+			}
+			details = append(details, &AdvancedSearchDetail{Kind: "string", Value: value, Pool: "token", PoolOffset: tokenType, Occurrences: 1, FileFields: []string{field}, TokenTypes: []int32{tokenType}})
+		}
+		add(file.Name, "name", -1)
+		add(file.Path, "path", -1)
+		if s.c.archive.File(index).DataType == pvf.TypeScript {
+			for pos := 0; pos+5 <= len(raw); pos += 5 {
+				typ := int32(raw[pos])
+				if typ != 3 && typ != 5 && typ != 6 && typ != 7 {
+					continue
+				}
+				value := s.c.archive.ResolveString(int32(binary.LittleEndian.Uint32(raw[pos+1:])))
+				add(value, "token", typ)
+			}
+		}
+		if len(details) == 0 {
+			return true
+		}
+		if matched < cursor {
+			matched++
+			return true
+		}
+		name, _ := s.c.diskIndex.indexedNames(index)
+		result.Hits = append(result.Hits, &AdvancedSearchHit{Name: name, Path: path, Size: size, DataType: dataType, FileIndex: index, Details: details})
+		matched++
+		return len(result.Hits) < limit
+	})
+	if err != nil {
+		return nil, err
+	}
+	if scanErr != nil {
+		return nil, scanErr
+	}
+	if len(result.Hits) >= limit {
+		result.NextCursor = matched
+	}
+	result.Scanned = matched
+	return result, nil
 }
 
 func (c *core) ensureAdvancedStringIndex() (*pvf.StringPoolIndex, error) {
@@ -339,6 +494,10 @@ func (s *ArchiveService) paginateAdvancedFiles(matches []advancedFileMatch, scop
 }
 
 func (c *core) indexedFileNameLocked(index int32) string {
+	if c.diskIndex != nil {
+		name, _ := c.diskIndex.indexedNames(index)
+		return name
+	}
 	seen := make(map[string]struct{})
 	names := make([]string, 0, 1)
 	for _, recordIndex := range c.searchByFile[index] {

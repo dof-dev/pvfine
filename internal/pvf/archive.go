@@ -64,12 +64,17 @@ type Archive struct {
 	strAIdx, strWIdx map[string]int32
 	poolsDirty       bool // pools gained appended strings since parse
 
-	resolveCache    map[int32]string
-	chunkCache      map[int32][]byte
-	overlay         map[int32][]byte // index -> replacement payload
-	pathIndex       map[string]int32
-	structuralDirty bool // file entries were added or removed since the last save
-	removedSpans    map[int32][]removedFileSpan
+	resolveCache      map[int32]string
+	resolveCacheOrder []int32
+	resolveCacheBytes int64
+	chunkCache        map[int32][]byte
+	chunkCacheMeta    map[int32]chunkCacheEntry
+	chunkCacheBytes   int64
+	chunkCacheClock   uint64
+	overlay           map[int32][]byte // index -> replacement payload
+	pathIndex         map[string]int32
+	structuralDirty   bool // file entries were added or removed since the last save
+	removedSpans      map[int32][]removedFileSpan
 
 	// scriptRenderer controls the user-facing decompiled layout. The
 	// canonical renderer is kept stable so version content hashes do not
@@ -84,6 +89,14 @@ type Archive struct {
 		state *stringTableState
 	}
 }
+
+type chunkCacheEntry struct {
+	bytes int64
+	used  uint64
+}
+
+const defaultChunkCacheLimit = int64(64 << 20)
+const defaultResolveCacheLimit = int64(16 << 20)
 
 // Open reads and parses the archive at path. Newer Paged110 containers keep
 // their per-page keys in sibling "sk.dat" / "DFO.exe" files, so the directory
@@ -125,6 +138,7 @@ func parseDetected(detected detectedArchive) (*Archive, error) {
 		data:                    data,
 		resolveCache:            map[int32]string{},
 		chunkCache:              map[int32][]byte{},
+		chunkCacheMeta:          map[int32]chunkCacheEntry{},
 		overlay:                 map[int32][]byte{},
 		pathIndex:               map[string]int32{},
 		removedSpans:            make(map[int32][]removedFileSpan),
@@ -241,6 +255,7 @@ func New() *Archive {
 		poolsDirty:              true,
 		resolveCache:            map[int32]string{},
 		chunkCache:              map[int32][]byte{},
+		chunkCacheMeta:          map[int32]chunkCacheEntry{},
 		overlay:                 map[int32][]byte{},
 		pathIndex:               map[string]int32{},
 		removedSpans:            make(map[int32][]removedFileSpan),
@@ -372,6 +387,10 @@ func (a *Archive) Chunk(ci int32) ([]byte, error) {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
 	if ch, ok := a.chunkCache[ci]; ok {
+		a.chunkCacheClock++
+		entry := a.chunkCacheMeta[ci]
+		entry.used = a.chunkCacheClock
+		a.chunkCacheMeta[ci] = entry
 		return ch, nil
 	}
 	raw, err := a.decompressChunk(ci)
@@ -381,7 +400,33 @@ func (a *Archive) Chunk(ci int32) ([]byte, error) {
 	if raw == nil {
 		return nil, nil
 	}
-	a.chunkCache[ci] = raw
+	if a.chunkCacheMeta == nil {
+		a.chunkCacheMeta = make(map[int32]chunkCacheEntry)
+	}
+	a.chunkCacheClock++
+	if int64(len(raw)) <= defaultChunkCacheLimit {
+		for a.chunkCacheBytes+int64(len(raw)) > defaultChunkCacheLimit && len(a.chunkCache) > 0 {
+			var oldest int32
+			var oldestUsed uint64
+			first := true
+			for index, entry := range a.chunkCacheMeta {
+				if first || entry.used < oldestUsed {
+					oldest, oldestUsed, first = index, entry.used, false
+				}
+			}
+			if first {
+				break
+			}
+			delete(a.chunkCache, oldest)
+			if entry, ok := a.chunkCacheMeta[oldest]; ok {
+				a.chunkCacheBytes -= entry.bytes
+			}
+			delete(a.chunkCacheMeta, oldest)
+		}
+		a.chunkCache[ci] = raw
+		a.chunkCacheMeta[ci] = chunkCacheEntry{bytes: int64(len(raw)), used: a.chunkCacheClock}
+		a.chunkCacheBytes += int64(len(raw))
+	}
 	return raw, nil
 }
 

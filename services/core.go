@@ -69,6 +69,7 @@ type pathEntry struct {
 type core struct {
 	mu                  sync.RWMutex
 	archive             *pvf.Archive
+	diskIndex           *sqliteArchiveIndex
 	annotationEngine    *annotationrules.Engine
 	annotationErr       error
 	renderingEngine     *renderingrules.Engine
@@ -163,8 +164,8 @@ func archiveChangeKind(a *pvf.Archive, index int32) string {
 	return ChangeKindModified
 }
 
-// setArchive loads an archive and builds derived indexes. Index building
-// walks every path once (~1M entries, well under a second in Go).
+// setArchive loads an archive and builds derived indexes. Large archives use a
+// disk-backed projection so the in-memory tree is never materialized.
 func (c *core) setArchive(a *pvf.Archive) error {
 	if c.annotationErr != nil {
 		return c.annotationErr
@@ -172,15 +173,74 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	if c.renderingErr != nil {
 		return c.renderingErr
 	}
+	if a.FileCount() >= largeArchiveIndexThreshold {
+		index, _, err := openSQLiteArchiveIndex(a)
+		if err != nil {
+			return err
+		}
+		c.mu.Lock()
+		c.detachVersionLocked()
+		if c.diskIndex != nil {
+			c.diskIndex.close()
+		}
+		c.diskIndex = index
+		c.installDiskArchiveIndexesLocked(a)
+		c.mu.Unlock()
+		return nil
+	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
 		return err
 	}
 	c.mu.Lock()
 	c.detachVersionLocked()
+	if c.diskIndex != nil {
+		c.diskIndex.close()
+		c.diskIndex = nil
+	}
 	c.installArchiveIndexesLocked(a, children, paths)
 	c.mu.Unlock()
 	return nil
+}
+
+func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
+	if c.indexCancel != nil {
+		c.indexCancel()
+		c.indexCancel = nil
+	}
+	if c.advancedCancel != nil {
+		c.advancedCancel()
+		c.advancedCancel = nil
+	}
+	c.indexGen++
+	c.batchRevision++
+	c.batchPlan = nil
+	c.invalidateScriptLocked()
+	c.bindRenderingEngineLocked(a)
+	c.archive = a
+	c.annotationRelations = make(map[string]map[string]*relationTarget)
+	c.editorText = make(map[int32]string)
+	c.editorAnnotation = editorAnnotationCache{}
+	c.pathAnnotations = nil
+	c.dirChildren = nil
+	c.directories = nil
+	c.sortedPaths = nil
+	c.searchRecords = nil
+	c.searchByFile = nil
+	c.searchMetadata = nil
+	c.searchSpecFingerprint = ""
+	c.searchIndexDeltaPending = false
+	c.searchIndexListPending = nil
+	c.treeTagsByFile = nil
+	c.visualsByFile = nil
+	c.indexStartedAt = time.Time{}
+	c.indexDirty = make(map[int32]struct{})
+	c.indexStatus = IndexStatus{State: IndexStateIdle}
+	c.advancedIndex = nil
+	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
+	c.binaryCache = make(map[binarySearchKey][]advancedFileMatch)
+	c.unpackCancel.Store(false)
+	c.unpackRunning.Store(false)
 }
 
 func (c *core) recordOpenDuration(duration time.Duration) {
@@ -194,6 +254,19 @@ func (c *core) recordOpenDuration(duration time.Duration) {
 // replaceArchiveLocked installs a newly materialized archive while retaining
 // the current version repository session. The caller must hold c.mu.
 func (c *core) replaceArchiveLocked(a *pvf.Archive) error {
+	if c.diskIndex != nil || a.FileCount() >= largeArchiveIndexThreshold {
+		if c.diskIndex != nil {
+			c.diskIndex.close()
+			c.diskIndex = nil
+		}
+		index, _, err := openSQLiteArchiveIndex(a)
+		if err != nil {
+			return err
+		}
+		c.diskIndex = index
+		c.installDiskArchiveIndexesLocked(a)
+		return nil
+	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
 		return err
@@ -225,7 +298,15 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.invalidateScriptLocked()
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
-	refreshArchiveIndexMetadataLocked(c, changedIndexes)
+	if c.diskIndex != nil {
+		if err := c.diskIndex.refreshFileMetadata(a, changedIndexes); err != nil {
+			return err
+		}
+		c.diskIndex.ready = false
+		c.diskIndex.dirty = true
+	} else {
+		refreshArchiveIndexMetadataLocked(c, changedIndexes)
+	}
 	if preserveSearch {
 		c.searchIndexDeltaPending = true
 		c.searchIndexListPending = nil
@@ -259,6 +340,19 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 // rebuildArchiveIndexesLocked refreshes every derived view after the archive's
 // file table changes. The caller must hold c.mu and must pass c.archive.
 func (c *core) rebuildArchiveIndexesLocked(a *pvf.Archive) error {
+	if c.diskIndex != nil || a.FileCount() >= largeArchiveIndexThreshold {
+		if c.diskIndex != nil {
+			c.diskIndex.close()
+			c.diskIndex = nil
+		}
+		index, _, err := openSQLiteArchiveIndex(a)
+		if err != nil {
+			return err
+		}
+		c.diskIndex = index
+		c.installDiskArchiveIndexesLocked(a)
+		return nil
+	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
 		return err
@@ -278,6 +372,20 @@ func (c *core) installArchiveIndexesPreservingSearchLocked(a *pvf.Archive, child
 }
 
 func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children map[string][]*TreeNode, paths []pathEntry, preserveSearch bool) {
+	if c.diskIndex != nil || a.FileCount() >= largeArchiveIndexThreshold {
+		if c.diskIndex != nil {
+			c.diskIndex.close()
+			c.diskIndex = nil
+		}
+		index, _, err := openSQLiteArchiveIndex(a)
+		if err != nil {
+			c.indexStatus = IndexStatus{State: IndexStateError, Stage: "sqlite", Error: err.Error()}
+			return
+		}
+		c.diskIndex = index
+		c.installDiskArchiveIndexesLocked(a)
+		return
+	}
 	preserveSearch = preserveSearch && c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	if c.indexCancel != nil {
 		c.indexCancel()
@@ -357,6 +465,10 @@ func (c *core) closeArchive() {
 	c.batchPlan = nil
 	c.invalidateScriptLocked()
 	c.archive = nil
+	if c.diskIndex != nil {
+		c.diskIndex.close()
+		c.diskIndex = nil
+	}
 	c.annotationRelations = nil
 	c.editorText = nil
 	c.editorAnnotation = editorAnnotationCache{}

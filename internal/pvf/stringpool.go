@@ -97,6 +97,16 @@ func (a *Archive) ResolveString(magicOff int32) string {
 		s = readUTF8(a.strA, int(magicOff>>1))
 	}
 	a.resolveCache[magicOff] = s
+	a.resolveCacheOrder = append(a.resolveCacheOrder, magicOff)
+	a.resolveCacheBytes += int64(len(s)) + 24
+	for a.resolveCacheBytes > defaultResolveCacheLimit && len(a.resolveCacheOrder) > 0 {
+		oldest := a.resolveCacheOrder[0]
+		a.resolveCacheOrder = a.resolveCacheOrder[1:]
+		if value, ok := a.resolveCache[oldest]; ok {
+			delete(a.resolveCache, oldest)
+			a.resolveCacheBytes -= int64(len(value)) + 24
+		}
+	}
 	return s
 }
 
