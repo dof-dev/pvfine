@@ -50,12 +50,14 @@ const (
 
 	// sealedPageKeyName / executableName are the sidecar files the client
 	// reads: the sealed page key table and the executable holding the key.
+	// The page-key table also has a built-in default for the bundled 110US
+	// client data.
 	sealedPageKeyName = "sk.dat"
 	executableName    = "DFO.exe"
 )
 
-// ErrPaged110Keys indicates a Paged110 archive whose sidecar files (sk.dat /
-// DFO.exe) are missing or do not unlock it.
+// ErrPaged110Keys indicates a Paged110 archive whose page-key material is
+// missing or does not unlock it.
 var ErrPaged110Keys = errors.New("pvf: paged110 page key table could not be unlocked")
 
 // ErrPaged110ReadOnly reports that a Paged110 container cannot be written back
@@ -317,17 +319,35 @@ func paged110Candidates(dir string) [][]byte {
 	return out
 }
 
+// loadPaged110SealedPageKeys returns an archive-local sk.dat when available,
+// falling back to the table bundled into the binary. The external file wins
+// so archives from other 110US client versions can still provide their own
+// page-key table.
+func loadPaged110SealedPageKeys(dir string) ([]byte, error) {
+	if dir != "" {
+		sealed, err := os.ReadFile(filepath.Join(dir, sealedPageKeyName))
+		if err == nil {
+			return sealed, nil
+		}
+	}
+	if len(paged110EmbeddedSealedPageKeys) == 0 {
+		return nil, os.ErrNotExist
+	}
+	return append([]byte(nil), paged110EmbeddedSealedPageKeys...), nil
+}
+
 // unlockPaged110 tries to turn a Paged110 container into a plain (decrypted)
 // archive buffer. It returns the decrypted copy, the unwrapped page key table,
 // the section keys and the decoded header. data is never modified.
 //
-// The embedded metadata key is tried first, so the common case never reads the
+// The bundled page-key table is used when no archive-local sk.dat exists, and
+// the bundled metadata key is tried first, so the common case never reads the
 // multi-hundred-megabyte sidecar executable.
 func unlockPaged110(data []byte, dir string) ([]byte, []byte, keySet, Header, bool) {
 	if len(data) < paged110PageGuardSize {
 		return nil, nil, keySet{}, Header{}, false
 	}
-	sealed, err := os.ReadFile(filepath.Join(dir, sealedPageKeyName))
+	sealed, err := loadPaged110SealedPageKeys(dir)
 	if err != nil {
 		return nil, nil, keySet{}, Header{}, false
 	}
@@ -387,7 +407,9 @@ func paged110DecryptWith(data, table []byte, keys keySet, cand []byte) ([]byte, 
 	return buf, unwrapped, hdr, true
 }
 
-// hasSealedKeyFile reports whether dir contains the sidecar key table.
+// hasSealedKeyFile reports whether dir contains the external sidecar key
+// table. The embedded fallback is intentionally not included here so generic
+// bad archives keep their existing error classification.
 func hasSealedKeyFile(dir string) bool {
 	if dir == "" {
 		return false
