@@ -2,6 +2,7 @@ package pvf
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,10 +47,9 @@ type Archive struct {
 	guard bool
 	keys  keySet // per-section LCG seeds (standard or recovered)
 
-	// paged110 marks a container whose 10 MiB page guards were unlocked with
-	// the sidecar key files. pageKeys is the unwrapped 32-byte-per-page key
-	// table used to re-apply the guards when the archive is written back.
-	paged110 bool
+	// format separates container transport from client content conventions.
+	// pageKeys retains the per-page state needed to write the container back.
+	format   formatProfile
 	pageKeys []byte
 
 	sourcePath string // file the archive was opened from
@@ -109,9 +109,17 @@ func Parse(data []byte) (*Archive, error) {
 }
 
 func parse(data []byte, sidecarDir string) (*Archive, error) {
-	if len(data) < headerSize {
-		return nil, ErrTruncated
+	detected, err := detectArchive(data, sidecarDir)
+	if err != nil {
+		return nil, err
 	}
+	return parseDetected(detected)
+}
+
+// parseDetected is the shared logical-container parser, independent of file
+// discovery and physical page unlocking.
+func parseDetected(detected detectedArchive) (*Archive, error) {
+	data := detected.data
 	renderer := defaultScriptRenderer()
 	a := &Archive{
 		data:                    data,
@@ -124,79 +132,8 @@ func parse(data []byte, sidecarDir string) (*Archive, error) {
 		canonicalScriptRenderer: renderer,
 	}
 
-	var raw [headerSize]byte
-	copy(raw[:], data[:headerSize])
-	// The guard XOR only touches bytes [24:28] (the FileCount field), so the
-	// signature alone cannot tell the variants apart — the decoded section
-	// layout must validate as well.
-	a.keys = standardKeys()
-	found := false
-	for _, guard := range [...]bool{true, false} {
-		b := raw
-		if guard {
-			applyGuard(b[:])
-		}
-		for _, magic := range [...]uint32{magicMain, magicAlt} {
-			bb := b
-			crypt(keyHead, magic, bb[:])
-			if binary.LittleEndian.Uint32(bb[:]) != MagicSignature {
-				continue
-			}
-			hdr := decodeHeader(bb)
-			if hdr.FileCount < 0 || hdr.Padding < 0 || hdr.BodySize < 0 ||
-				hdr.GroupCount < 0 || hdr.HashTableSize < 0 || hdr.NameTableSize < 0 {
-				continue
-			}
-			declared := int64(headerSize) + int64(hdr.FileCount)*0x18 +
-				int64(hdr.HashTableSize) + int64(hdr.NameTableSize) +
-				int64(hdr.GroupCount)*8 + int64(hdr.BodySize)
-			if declared > int64(len(data)) {
-				continue
-			}
-			a.guard = guard
-			a.hdr = hdr
-			a.keys.header = sectionKey{keySeed(keyHead), magic}
-			found = true
-			break
-		}
-		if found {
-			break
-		}
-	}
-	if !found {
-		// Variant archives derive their section seeds differently. The header
-		// is recovered from the signature plus the section-size equation, then
-		// the remaining seeds are recovered from the sections themselves.
-		hdr, guard, keys, ok := recoverHeader(data)
-		if !ok {
-			// Newest Paged110 containers: the page guards are AES encrypted and
-			// the section keys use the newer scheme, so the header is only
-			// readable after the guard pages have been unlocked with the
-			// sidecar key files (sk.dat / DFO.exe).
-			if dec, pageKeys, pagedKeys, phdr, ok := unlockPaged110(data, sidecarDir); ok {
-				data = dec
-				a.data = dec
-				a.paged110 = true
-				a.pageKeys = pageKeys
-				a.keys = pagedKeys
-				a.hdr = phdr
-				a.guard = false
-				found = true
-			} else if hasSealedKeyFile(sidecarDir) {
-				// The sidecar keys are right there but did not unlock this
-				// archive: say so instead of blaming the header.
-				return nil, ErrPaged110Keys
-			}
-		}
-		if !ok && !found {
-			return nil, ErrBadSignature
-		}
-		if ok {
-			a.guard = guard
-			a.hdr = hdr
-			a.keys = keys
-		}
-	}
+	a.hdr, a.guard, a.keys = detected.hdr, detected.guard, detected.keys
+	a.format, a.pageKeys = detected.format, detected.pageKeys
 
 	// Section layout.
 	pos := headerSize
@@ -244,6 +181,8 @@ func parse(data []byte, sidecarDir string) (*Archive, error) {
 				a.keys.grpi = key
 				copy(grpi, grpiRaw)
 				cryptSeed(key.seed, key.magic, grpi)
+			} else {
+				return nil, fmt.Errorf("%w: GRPI cannot be decoded", ErrInvalidSection)
 			}
 		}
 		a.groups = make([]groupItem, a.hdr.GroupCount)
@@ -254,15 +193,18 @@ func parse(data []byte, sidecarDir string) (*Archive, error) {
 	}
 
 	// String pools.
-	a.parseNameTable(data[a.nameOff : a.nameOff+a.nameSize])
+	if err := a.parseNameTable(data[a.nameOff : a.nameOff+a.nameSize]); err != nil {
+		return nil, err
+	}
 
 	// Hash section seed: known for the standard key set and the alternate
 	// variant family. When it is not (an unidentified variant, the Paged110
 	// containers), solve it from the section itself now that the string pools
 	// are available to validate candidate offsets.
-	if a.keys.hash.seed == 0 && a.hashSize > 0 {
+	if !a.keys.hashKnown && a.hashSize > 0 {
 		if key, ok := a.recoverHashSeed(data[a.hashOff:a.hashOff+a.hashSize], int(a.hdr.FileCount)); ok {
 			a.keys.hash = key
+			a.keys.hashKnown = true
 		}
 	}
 
@@ -272,6 +214,8 @@ func parse(data []byte, sidecarDir string) (*Archive, error) {
 		if key, ok := recoverZlibSeed(a.firstChunkSpan(), a.firstChunkOrigSize()); ok {
 			a.keys.body = key
 			a.keys.bodyRecovered = true
+		} else {
+			return nil, fmt.Errorf("%w: body cannot be decoded", ErrInvalidSection)
 		}
 	}
 
@@ -291,6 +235,7 @@ func New() *Archive {
 	return &Archive{
 		hdr:                     Header{Signature: MagicSignature},
 		keys:                    standardKeys(),
+		format:                  standardProfile,
 		strA:                    []byte{0},
 		strW:                    []byte{0, 0},
 		poolsDirty:              true,
@@ -328,7 +273,7 @@ func (a *Archive) Header() Header { return a.hdr }
 func (a *Archive) UsesGuard() bool { return a.guard }
 
 // IsPaged110 reports whether the archive uses the 110US page-guard layout.
-func (a *Archive) IsPaged110() bool { return a.paged110 }
+func (a *Archive) IsPaged110() bool { return a.format.container == pagedContainer }
 
 // FileCount returns the number of file entries.
 func (a *Archive) FileCount() int32 { return int32(len(a.items)) }
@@ -451,7 +396,7 @@ func (a *Archive) chunkSpan(ci int32) ([]byte, bool) {
 	}
 	start := a.bodyOff + int(prev)
 	end := a.bodyOff + int(a.groups[ci].compSize)
-	if start > end || end > len(a.data) {
+	if start < a.bodyOff || start > end || end > len(a.data) {
 		return nil, false
 	}
 	return a.data[start:end], true
@@ -487,24 +432,30 @@ func joinPath(dir, name string) string {
 
 // ArchiveInfoView is a UI-facing snapshot of the archive state.
 type ArchiveInfoView struct {
-	Path          string `json:"path"`
-	FileCount     int32  `json:"fileCount"`
-	GroupCount    int32  `json:"groupCount"`
-	BodySize      int32  `json:"bodySize"`
-	ModifiedCount int    `json:"modifiedCount"`
-	UsesGuard     bool   `json:"usesGuard"`
-	Paged110      bool   `json:"paged110"`
+	Path              string            `json:"path"`
+	FileCount         int32             `json:"fileCount"`
+	GroupCount        int32             `json:"groupCount"`
+	BodySize          int32             `json:"bodySize"`
+	ModifiedCount     int               `json:"modifiedCount"`
+	UsesGuard         bool              `json:"usesGuard"`
+	Paged110          bool              `json:"paged110"`
+	Format            string            `json:"format"`
+	ContentRules      ContentRules      `json:"contentRules"`
+	WriteCapabilities WriteCapabilities `json:"writeCapabilities"`
 }
 
 // Info returns the current state snapshot.
 func (a *Archive) Info() ArchiveInfoView {
 	return ArchiveInfoView{
-		Path:          a.sourcePath,
-		FileCount:     int32(len(a.items)),
-		GroupCount:    a.hdr.GroupCount,
-		BodySize:      a.hdr.BodySize,
-		ModifiedCount: a.ModifiedCount(),
-		UsesGuard:     a.guard,
-		Paged110:      a.paged110,
+		Path:              a.sourcePath,
+		FileCount:         int32(len(a.items)),
+		GroupCount:        a.hdr.GroupCount,
+		BodySize:          a.hdr.BodySize,
+		ModifiedCount:     a.ModifiedCount(),
+		UsesGuard:         a.guard,
+		Paged110:          a.IsPaged110(),
+		Format:            a.Format(),
+		ContentRules:      a.ContentRules(),
+		WriteCapabilities: a.WriteCapabilities(),
 	}
 }

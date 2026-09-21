@@ -63,7 +63,7 @@ func TestStringPoolEditCountsAsModified(t *testing.T) {
 
 func TestPaged110NewScriptStringsUseUTF16Pool(t *testing.T) {
 	a := New()
-	a.paged110 = true
+	a.format = paged110Profile
 	a.strA = []byte("legacy\x00")
 	a.strAIdx = nil
 	a.strWIdx = nil
@@ -93,7 +93,7 @@ func TestPaged110NewScriptStringsUseUTF16Pool(t *testing.T) {
 
 func TestNormalizePaged110StringPoolsMigratesLegacyReferences(t *testing.T) {
 	a := New()
-	a.paged110 = true
+	a.format = paged110Profile
 	a.strA = []byte("legacy-name\x00legacy-tag\x00")
 	a.strW = []byte{0, 0}
 	a.strAIdx = nil
@@ -110,7 +110,7 @@ func TestNormalizePaged110StringPoolsMigratesLegacyReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := a.normalizePaged110StringPools(); err != nil {
+	if err := a.normalizeStringPools(); err != nil {
 		t.Fatal(err)
 	}
 	if len(a.strA) != 0 {
@@ -195,7 +195,7 @@ func TestVariantChineseNameEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	if a.paged110 {
+	if a.IsPaged110() {
 		t.Skip("Paged110 archive: covered elsewhere")
 	}
 	listIndex, ok := a.FindList("equipment/equipment.lst")

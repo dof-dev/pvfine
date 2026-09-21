@@ -12,4 +12,27 @@ export interface ArchiveInfoView {
     "modifiedCount": number;
     "usesGuard": boolean;
     "paged110": boolean;
+    "format": string;
+    "contentRules": ContentRules;
+    "writeCapabilities": WriteCapabilities;
+}
+
+/**
+ * ContentRules describes client content conventions independently of the
+ * physical container. Future containers can reuse or combine these rules.
+ */
+export interface ContentRules {
+    "utf16Only": boolean;
+    "requiresIndexHash": boolean;
+    "supportsStringReferences": boolean;
+}
+
+/**
+ * WriteCapabilities is derived from both the format and recovered archive
+ * state. Structural edits include appending or remapping string-pool entries.
+ */
+export interface WriteCapabilities {
+    "canSave": boolean;
+    "canChangeStructure": boolean;
+    "reason": string;
 }

@@ -307,7 +307,7 @@ function isCancel(e: any): boolean {
           style="width: 160px"
         />
       </div>
-      <NTooltip v-if="archive.info?.paged110" trigger="hover">
+      <NTooltip v-if="archive.info?.contentRules.requiresIndexHash" trigger="hover">
         <template #trigger>
           <NButton
             quaternary

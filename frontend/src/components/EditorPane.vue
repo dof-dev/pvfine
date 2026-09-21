@@ -500,7 +500,7 @@ async function confirmFileRegistration(): Promise<void> {
     if (!result) throw new Error("后端没有返回注册结果");
     fileRegistration.show = false;
     message.success(
-      archive.info?.paged110
+      archive.info?.contentRules.requiresIndexHash
         ? `已注册到 ${result.listPath}，并写入 indexhash`
         : `已注册到 ${result.listPath}`,
     );
@@ -864,7 +864,7 @@ function onDrop(event: DragEvent): void {
               {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
             </NTooltip>
 
-            <NTooltip v-if="archive.info?.paged110" trigger="hover">
+            <NTooltip v-if="archive.info?.contentRules.supportsStringReferences" trigger="hover">
               <template #trigger>
                 <NButton
                   quaternary
@@ -945,7 +945,7 @@ function onDrop(event: DragEvent): void {
           <template #prefix>id</template>
         </NInput>
         <div class="placeholder-edit-hint">
-          默认 id：{{ fileRegistration.generatedID }}；可以直接修改。{{ archive.info?.paged110 ? "110page 会同步写入 indexhash。" : "当前归档只写入 lst。" }}
+          默认 id：{{ fileRegistration.generatedID }}；可以直接修改。{{ archive.info?.contentRules.requiresIndexHash ? "此归档会同步写入 indexhash。" : "当前归档只写入 lst。" }}
         </div>
       </div>
       <template #footer>

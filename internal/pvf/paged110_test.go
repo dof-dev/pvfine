@@ -41,7 +41,7 @@ func openPaged110Fixture(t *testing.T) (*Archive, string) {
 // unlocked from sk.dat, header, file table, name pools and body chunks.
 func TestPaged110Open(t *testing.T) {
 	a, archive := openPaged110Fixture(t)
-	if !a.paged110 {
+	if !a.IsPaged110() {
 		t.Fatalf("archive was not recognised as Paged110")
 	}
 	h := a.Header()
@@ -325,7 +325,7 @@ func TestPaged110SaveEditRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopening the saved archive: %v", err)
 	}
-	if !reopened.paged110 {
+	if !reopened.IsPaged110() {
 		t.Error("saved archive is no longer recognised as Paged110")
 	}
 	if got := reopened.FileCount(); got != fileCount {

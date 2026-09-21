@@ -87,7 +87,7 @@ func (s *ArchiveService) ListRegistrationOptions(fileIndex int32) (*FileRegistra
 		if err != nil {
 			continue
 		}
-		suggestedID, err := nextListID(pairs, a.IsPaged110())
+		suggestedID, err := nextListID(pairs, a.ContentRules().RequiresIndexHash)
 		if err != nil {
 			continue
 		}
@@ -172,11 +172,11 @@ func (s *ArchiveService) RegisterFileToList(fileIndex int32, listPath, id string
 	var numericID uint32
 	var hashPath string
 	hashIndex := int32(-1)
-	if a.IsPaged110() {
+	if a.ContentRules().RequiresIndexHash {
 		parsed, parseErr := strconv.ParseUint(id, 10, 32)
 		if parseErr != nil {
 			s.c.mu.Unlock()
-			return nil, fmt.Errorf("110page 的 id 必须是 uint32 数字: %s", id)
+			return nil, fmt.Errorf("此归档的 indexhash id 必须是 uint32 数字: %s", id)
 		}
 		numericID = uint32(parsed)
 		var hashOK bool
@@ -254,8 +254,8 @@ func (s *ArchiveService) IndexHashTargets() ([]*IndexHashTarget, error) {
 	if a == nil {
 		return nil, ErrNoArchive
 	}
-	if !a.IsPaged110() {
-		return nil, fmt.Errorf("当前归档不是 110page 类型")
+	if !a.ContentRules().RequiresIndexHash {
+		return nil, fmt.Errorf("当前归档不使用 indexhash")
 	}
 	result := make([]*IndexHashTarget, 0)
 	for index := int32(0); index < a.FileCount(); index++ {
@@ -286,9 +286,9 @@ func (s *ArchiveService) RegisterMissingIndexHashes(listPath string, rawIDs []st
 		s.c.mu.Unlock()
 		return nil, ErrNoArchive
 	}
-	if !a.IsPaged110() {
+	if !a.ContentRules().RequiresIndexHash {
 		s.c.mu.Unlock()
-		return nil, fmt.Errorf("当前归档不是 110page 类型")
+		return nil, fmt.Errorf("当前归档不使用 indexhash")
 	}
 	listIndex, ok := a.FindList(listPath)
 	if !ok {
@@ -426,7 +426,7 @@ func listEntryPath(listPath, filePath string) string {
 	return filePath
 }
 
-func nextListID(pairs []pvf.ListPair, paged110 bool) (string, error) {
+func nextListID(pairs []pvf.ListPair, requiresIndexHash bool) (string, error) {
 	used := make(map[string]struct{}, len(pairs))
 	var next uint64 = 1
 	for _, pair := range pairs {
@@ -437,7 +437,7 @@ func nextListID(pairs []pvf.ListPair, paged110 bool) (string, error) {
 		}
 	}
 	for {
-		if paged110 && next > uint64(^uint32(0)) {
+		if requiresIndexHash && next > uint64(^uint32(0)) {
 			return "", fmt.Errorf("列表没有可用的 uint32 id")
 		}
 		candidate := strconv.FormatUint(next, 10)

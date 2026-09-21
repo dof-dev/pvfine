@@ -2,13 +2,13 @@ package pvf
 
 import "bytes"
 
-// normalizePaged110StringPools repairs archives written by older versions of
+// normalizeStringPools repairs archives written by older versions of
 // the editor. Retail Paged110 archives keep all referenced strings in sTrW;
 // an older save could append new ASCII strings to sTrA and leave even offsets
 // in file entries and TypeScript payloads. The client accepts the container but
 // can crash when it resolves one of those newly added item scripts.
-func (a *Archive) normalizePaged110StringPools() error {
-	if !a.paged110 || len(a.strA) == 0 {
+func (a *Archive) normalizeStringPools() error {
+	if !a.ContentRules().UTF16Only || len(a.strA) == 0 {
 		return nil
 	}
 

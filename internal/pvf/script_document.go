@@ -941,7 +941,7 @@ func (a *Archive) scriptStringOffset(value string, pool ScriptStringPool) int32 
 	}
 	// Same rule as StringOffset: Paged110 writes new strings to UTF-16 even if
 	// an older damaged save left bytes in the UTF-8 pool.
-	if a.paged110 || !isASCIIString(value) || !a.hasUTF8PoolLocked() {
+	if a.ContentRules().UTF16Only || !isASCIIString(value) || !a.hasUTF8PoolLocked() {
 		return a.appendUTF16StringLocked(value)
 	}
 	old := len(a.strA)

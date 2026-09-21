@@ -35,6 +35,7 @@ type sectionKey struct {
 // different, equally fixed set of seeds (see variantKeys).
 type keySet struct {
 	header, hash, grpi, body, strA, strW sectionKey
+	hashKnown                            bool // separate validity from the numeric seed, which may be zero
 
 	// maskA/maskW are the name-pool section size obfuscation constants, which
 	// differ between the 90US scheme and the newer Paged110 scheme.
@@ -55,14 +56,15 @@ func keySeed(key string) uint32 {
 // standardKeys is the key set used by the reference "S4A21" archives.
 func standardKeys() keySet {
 	return keySet{
-		header: sectionKey{keySeed(keyHead), magicMain},
-		hash:   sectionKey{keySeed(keyHash), magicMain},
-		grpi:   sectionKey{keySeed(keyGrpi), magicMain},
-		body:   sectionKey{keySeed(keyBody), magicMain},
-		strA:   sectionKey{keySeed(keyStrA), magicAlt},
-		strW:   sectionKey{keySeed(keyStrW), magicAlt},
-		maskA:  xorStrA,
-		maskW:  xorStrW,
+		hashKnown: true,
+		header:    sectionKey{keySeed(keyHead), magicMain},
+		hash:      sectionKey{keySeed(keyHash), magicMain},
+		grpi:      sectionKey{keySeed(keyGrpi), magicMain},
+		body:      sectionKey{keySeed(keyBody), magicMain},
+		strA:      sectionKey{keySeed(keyStrA), magicAlt},
+		strW:      sectionKey{keySeed(keyStrW), magicAlt},
+		maskA:     xorStrA,
+		maskW:     xorStrW,
 	}
 }
 
@@ -81,14 +83,15 @@ func standardKeys() keySet {
 // section instead of copying the original bytes.
 func variantKeys() keySet {
 	return keySet{
-		header: sectionKey{0x4A454634, magicMain},
-		hash:   sectionKey{wideSeed(keyHashVariant), magicMain},
-		grpi:   sectionKey{0x1FBB7078, magicMain},
-		body:   sectionKey{0xDD4FF706, magicMain},
-		strA:   sectionKey{0x712A98D4, magicAlt},
-		strW:   sectionKey{0x712AE776, magicAlt},
-		maskA:  xorStrA,
-		maskW:  xorStrW,
+		hashKnown: true,
+		header:    sectionKey{0x4A454634, magicMain},
+		hash:      sectionKey{wideSeed(keyHashVariant), magicMain},
+		grpi:      sectionKey{0x1FBB7078, magicMain},
+		body:      sectionKey{0xDD4FF706, magicMain},
+		strA:      sectionKey{0x712A98D4, magicAlt},
+		strW:      sectionKey{0x712AE776, magicAlt},
+		maskA:     xorStrA,
+		maskW:     xorStrW,
 	}
 }
 
@@ -272,7 +275,7 @@ var validZlibFLG = [...]byte{0x9C, 0xDA, 0x01, 0x5E, 0x20, 0x3F, 0x7D, 0xBB, 0xF
 
 // grpiLooksSane reports whether an already-decrypted GRPI section satisfies the
 // cumulative-size invariants: strictly increasing compressed sizes ending at
-// BodySize, with every chunk's original size positive.
+// BodySize, with every chunk's original size non-negative.
 func (a *Archive) grpiLooksSane(grpi []byte) bool {
 	count := int(a.hdr.GroupCount)
 	if count <= 0 || len(grpi) < count*8 {
@@ -282,7 +285,7 @@ func (a *Archive) grpiLooksSane(grpi []byte) bool {
 	for i := 0; i < count; i++ {
 		comp := int32(binary.LittleEndian.Uint32(grpi[i*8:]))
 		orig := int32(binary.LittleEndian.Uint32(grpi[i*8+4:]))
-		if comp <= prev || orig <= 0 || orig > 1<<30 {
+		if comp <= prev || orig < 0 || orig > 1<<30 {
 			return false
 		}
 		prev = comp
@@ -452,7 +455,7 @@ func deflateHeaderLooksValid(cipher []byte, seed, magic uint32) bool {
 
 // validateGRPI decrypts a GRPI section with seed and checks the structural
 // invariants: every cumulative compressed size strictly increasing and the
-// last one equal to bodySize, with every chunk's original size positive.
+// last one equal to bodySize, with every chunk's original size non-negative.
 func validateGRPI(cipher []byte, seed, magic uint32, count int, bodySize int32) bool {
 	return decodeGRPI(cipher, seed, magic, count, bodySize, nil)
 }
@@ -479,7 +482,7 @@ func decodeGRPI(cipher []byte, seed, magic uint32, count int, bodySize int32, ds
 				orig = v
 			}
 		}
-		if comp <= prev || orig <= 0 || orig > 1<<30 {
+		if comp <= prev || orig < 0 || orig > 1<<30 {
 			return false
 		}
 		prev = comp
@@ -522,34 +525,11 @@ func headerSizeFits(hdr Header, size int) bool {
 	return declared == int64(size)
 }
 
-// recoverHeader decodes the header of an archive that is not using the standard
-// key set. The known variant family is tried first, which is a single decrypt;
-// an unknown variant falls back to solving for the seed, where the signature
-// dword pins the first keystream dword and the section-size equation identifies
-// the right candidate among the remaining 65536 possibilities.
+// recoverHeader is the fallback for unidentified section-key variants.
+// Known formats are probed separately before invoking recovery.
 func recoverHeader(data []byte) (Header, bool, keySet, bool) {
 	var raw [headerSize]byte
 	copy(raw[:], data[:headerSize])
-
-	// Fast path: the known variant's fixed keys.
-	keys := variantKeys()
-	for _, guard := range [...]bool{true, false} {
-		b := raw
-		if guard {
-			applyGuard(b[:])
-		}
-		dec := b
-		cryptSeed(keys.header.seed, keys.header.magic, dec[:])
-		if binary.LittleEndian.Uint32(dec[:]) != MagicSignature {
-			continue
-		}
-		hdr := decodeHeader(dec)
-		if !headerSizeFits(hdr, len(data)) {
-			continue
-		}
-		return hdr, guard, keys, true
-	}
-
 	// Slow path: unknown variant, solve for the header seed.
 	for _, guard := range [...]bool{true, false} {
 		for _, magic := range [...]uint32{magicMain, magicAlt} {
@@ -576,6 +556,7 @@ func recoverHeader(data []byte) (Header, bool, keySet, bool) {
 				// re-encrypting them under a key the client cannot read.
 				keys := standardKeys()
 				keys.hash = sectionKey{}
+				keys.hashKnown = false
 				keys.header = sectionKey{seed, magic}
 				return hdr, guard, keys, true
 			}

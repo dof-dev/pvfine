@@ -40,6 +40,7 @@ const MagicSignature uint32 = 0x69706B6E
 const headerSize = 0x30
 
 var (
+	ErrInvalidSection       = errors.New("pvf: invalid archive section")
 	ErrTruncated            = errors.New("pvf: data too short to contain a header")
 	ErrBadSignature         = errors.New("pvf: header decryption failed (unknown format or key)")
 	ErrOverflow             = errors.New("pvf: header sections exceed the file boundary")

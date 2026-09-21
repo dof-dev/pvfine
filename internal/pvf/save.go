@@ -153,56 +153,49 @@ func sanitizeName(name string) string {
 // sections. A Paged110 container gets its page guards re-encrypted on the way
 // out, so the result is a file the client accepts.
 func (a *Archive) SaveTo(w io.Writer) error {
-	if a.paged110 {
-		return a.savePaged110(w)
-	}
-	if !a.Modified() && a.data != nil && int32(len(a.items)) == a.hdr.FileCount {
-		_, err := w.Write(a.data)
+	if err := a.validateWrite(); err != nil {
 		return err
 	}
-	out, err := a.rebuild()
-	if err != nil {
+	// Repair can create structural edits; reject before it mutates the archive
+	// when the original HASH cannot be rebuilt.
+	if len(a.strA) > 0 && a.ContentRules().UTF16Only && !a.canRebuildHash() {
+		return a.structureLockedError()
+	}
+	if err := a.normalizeStringPools(); err != nil {
 		return err
 	}
-	if _, err := w.Write(out); err != nil {
+	if err := a.validateWrite(); err != nil {
 		return err
-	}
-	a.adoptRebuilt(out)
-	return nil
-}
-
-// savePaged110 writes a Paged110 container back: the logical bytes (page guards
-// decrypted) are rebuilt as usual and the guards are re-applied page by page
-// with the key table recovered when the archive was opened.
-func (a *Archive) savePaged110(w io.Writer) error {
-	if len(a.pageKeys) == 0 {
-		return ErrPaged110ReadOnly
-	}
-	if err := a.normalizePaged110StringPools(); err != nil {
-		return err
-	}
-	if (a.structuralDirty || a.poolsDirty) && a.keys.hash.seed == 0 {
-		// Without the HASH seed the section can only be copied through verbatim,
-		// and a rebuilt name pool would leave it pointing at stale offsets.
-		return ErrPaged110StructureLocked
 	}
 	logical := a.data
-	rebuilt := false
-	if a.Modified() || logical == nil || int32(len(a.items)) != a.hdr.FileCount {
+	rebuilt := a.Modified() || logical == nil || int32(len(a.items)) != a.hdr.FileCount
+	if rebuilt {
 		out, err := a.rebuild()
 		if err != nil {
 			return err
 		}
 		logical = out
-		rebuilt = true
 	}
-	if err := writePageGuarded(w, logical, a.pageKeys); err != nil {
+	if err := a.writeContainer(w, logical); err != nil {
 		return err
 	}
 	if rebuilt {
 		a.adoptRebuilt(logical)
 	}
 	return nil
+}
+
+// writeContainer owns only the physical wrapping of logical archive bytes.
+// Shared reconstruction and write validation stay in SaveTo.
+func (a *Archive) writeContainer(w io.Writer, logical []byte) error {
+	if a.format.container == pagedContainer {
+		return writePageGuarded(w, logical, a.pageKeys)
+	}
+	n, err := w.Write(logical)
+	if err == nil && n != len(logical) {
+		return io.ErrShortWrite
+	}
+	return err
 }
 
 type chunkOut struct {
@@ -297,7 +290,7 @@ func (a *Archive) rebuild() ([]byte, error) {
 	// files. Only an archive whose seed could not be established keeps its
 	// original bytes, which is the best a rebuild can do there.
 	var hashBytes []byte
-	if a.keys.hash.seed != 0 || a.data == nil || a.hashSize == 0 {
+	if a.canRebuildHash() {
 		hashBytes = a.buildHashTable()
 	} else {
 		hashBytes = a.data[a.hashOff : a.hashOff+a.hashSize]

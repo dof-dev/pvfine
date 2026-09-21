@@ -3,6 +3,7 @@ package pvf
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"unicode/utf16"
 )
 
@@ -12,7 +13,7 @@ import (
 //	  u32 encSize ^ xorConst
 //	  u32 rawLen  ^ encSize
 //	  encSize bytes: crypt2(key) -> zlib
-func (a *Archive) parseNameTable(nb []byte) {
+func (a *Archive) parseNameTable(nb []byte) error {
 	maskA, maskW := a.keys.maskA, a.keys.maskW
 	if maskA == 0 {
 		maskA = xorStrA
@@ -21,24 +22,28 @@ func (a *Archive) parseNameTable(nb []byte) {
 		maskW = xorStrW
 	}
 	idx := 8
-	for _, sec := range [...]struct {
+	for poolIndex, sec := range [...]struct {
 		key  sectionKey
 		xorC uint32
 	}{{a.keys.strA, maskA}, {a.keys.strW, maskW}} {
 		if idx+8 > len(nb) {
-			return
+			return fmt.Errorf("%w: name pool %d header truncated", ErrInvalidSection, poolIndex)
 		}
 		cnt1 := binary.LittleEndian.Uint32(nb[idx:])
 		cnt2 := binary.LittleEndian.Uint32(nb[idx+4:])
 		idx += 8
 		encSize := int64(cnt1 ^ sec.xorC)
-		if encSize <= 0 || idx+int(encSize) > len(nb) {
+		rawLen := int(int32(cnt2 ^ uint32(encSize)))
+		// Some writers omit the compressed stream for an empty pool.
+		if encSize == 0 && rawLen == 0 {
 			continue
+		}
+		if encSize <= 0 || idx+int(encSize) > len(nb) {
+			return fmt.Errorf("%w: name pool %d size invalid", ErrInvalidSection, poolIndex)
 		}
 		enc := make([]byte, encSize)
 		copy(enc, nb[idx:idx+int(encSize)])
 		idx += int(encSize)
-		rawLen := int(int32(cnt2 ^ uint32(encSize)))
 		cryptSeed(sec.key.seed, sec.key.magic, enc)
 		raw, err := zlibDecompress(enc)
 		if err != nil {
@@ -48,25 +53,29 @@ func (a *Archive) parseNameTable(nb []byte) {
 			copy(enc2, nb[idx-int(encSize):idx])
 			recovered, ok := recoverZlibSeed(enc2, rawLen)
 			if !ok {
-				continue
+				return fmt.Errorf("%w: name pool %d cannot be decoded", ErrInvalidSection, poolIndex)
 			}
 			cryptSeed(recovered.seed, recovered.magic, enc2)
 			raw, err = zlibDecompress(enc2)
 			if err != nil {
-				continue
+				return fmt.Errorf("%w: name pool %d decompression failed", ErrInvalidSection, poolIndex)
 			}
-			if sec.xorC == maskA {
+			if poolIndex == 0 {
 				a.keys.strA = recovered
 			} else {
 				a.keys.strW = recovered
 			}
 		}
-		if sec.xorC == maskA {
+		if rawLen < 0 || len(raw) != rawLen {
+			return fmt.Errorf("%w: name pool %d length mismatch", ErrInvalidSection, poolIndex)
+		}
+		if poolIndex == 0 {
 			a.strA = raw
 		} else {
 			a.strW = raw
 		}
 	}
+	return nil
 }
 
 // ResolveString maps a magic pool offset to its string.
@@ -196,7 +205,7 @@ func (a *Archive) StringOffset(s string) int32 {
 	if off, ok := a.strWIdx[s]; ok {
 		return off
 	}
-	if a.paged110 || !isASCIIString(s) || !a.hasUTF8PoolLocked() {
+	if a.ContentRules().UTF16Only || !isASCIIString(s) || !a.hasUTF8PoolLocked() {
 		return a.appendUTF16StringLocked(s)
 	}
 	old := len(a.strA)

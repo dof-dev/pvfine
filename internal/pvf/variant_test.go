@@ -331,7 +331,7 @@ func TestVariantNewItemRecipe(t *testing.T) {
 	if a.keys.hash.seed == 0 {
 		t.Fatal("HASH seed was not established")
 	}
-	if a.paged110 {
+	if a.IsPaged110() {
 		t.Skip("Paged110 archive: covered by the Paged110 round-trip tests")
 	}
 
