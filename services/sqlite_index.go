@@ -953,8 +953,8 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 	}
 	where := "rowid>?"
 	args := []any{cursor}
-	if !strings.ContainsAny(q, "*?") {
-		op := "instr"
+	wildcard := strings.ContainsAny(q, "*?")
+	if !wildcard {
 		if exact {
 			where += " AND (lower_path=? OR lower_name=? OR lower_id=?)"
 			args = append(args, q, q, q)
@@ -962,10 +962,16 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 			where += " AND (instr(lower_path,?)>0 OR instr(lower_name,?)>0 OR instr(lower_id,?)>0)"
 			args = append(args, q, q, q)
 		}
-		_ = op
 	}
 	batchLimit := limit*32 + 1
-	rows, err := i.db.Query(`SELECT rowid,name,record_id,path,category,size,data_type,file_index FROM records WHERE `+where+` ORDER BY rowid LIMIT ?`, append(args, batchLimit)...)
+	querySQL := `SELECT rowid,name,record_id,path,category,size,data_type,file_index FROM records WHERE ` + where + ` ORDER BY rowid`
+	// Wildcards are filtered below, so a SQL row limit can produce an empty
+	// page before reaching any matches. Stream until the page is full or EOF.
+	if !wildcard {
+		querySQL += ` LIMIT ?`
+		args = append(args, batchLimit)
+	}
+	rows, err := i.db.Query(querySQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -983,13 +989,8 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 		}
 		last = rowid
 		scanned = int(rowid)
-		if strings.ContainsAny(q, "*?") && !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
+		if !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
 			continue
-		}
-		if !strings.ContainsAny(q, "*?") { /* SQL is a candidate filter; exact semantics are still checked for Unicode. */
-			if !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
-				continue
-			}
 		}
 		hit.ChangeKind = ""
 		result.Hits = append(result.Hits, &hit)
@@ -1000,7 +1001,7 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if last > 0 && (len(result.Hits) >= limit || rowsSeen > batchLimit-1) {
+	if last > 0 && (len(result.Hits) >= limit || (!wildcard && rowsSeen >= batchLimit)) {
 		result.NextCursor = int(last)
 	}
 	result.Scanned = scanned

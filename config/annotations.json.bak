@@ -967,9 +967,6 @@
   ],
   "rules": [
     {
-      "pvfVersions": [
-        "90US"
-      ],
       "id": "booster装备关联",
       "match": {
         "extensions": [
