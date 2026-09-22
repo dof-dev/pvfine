@@ -21,7 +21,6 @@ function add() { emit("update:modelValue", { ...props.modelValue, materials: [..
       <NButton :disabled="disabled || materialsEnabled === false" @click="remove(i)">移除</NButton>
     </div>
     <NButton dashed :disabled="disabled || materialsEnabled === false" @click="add">添加兑换道具</NButton>
-    <small>金币与道具可并存；兑换道具清空后将取消材料成本。</small>
   </div>
 </template>
 <style scoped>

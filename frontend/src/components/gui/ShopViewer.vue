@@ -132,9 +132,33 @@ onBeforeUnmount(() => session.invalidate(true));
       <div class="shop-products" role="tabpanel" :aria-label="document.tabs?.[tabIndex]?.name">
         <div v-if="items.length" class="shop-grid">
           <article v-for="entry in items" :key="entry.sourceStart" class="shop-card">
-            <div v-if="file.editable" class="shop-item-actions">
-              <button type="button" :disabled="!canEdit" :aria-label="`编辑商品 ${entry.item.id}`" @click="openEdit('edit-item', entry)">编辑</button>
-              <button type="button" :disabled="!canEdit" :aria-label="`删除商品 ${entry.item.id}`" @click="openEdit('delete-item', entry)">删除</button>
+            <div v-if="file.editable" class="shop-item-actions" role="toolbar" :aria-label="`操作商品 ${entry.item.name}`">
+              <button
+                type="button"
+                class="shop-item-btn shop-item-btn-edit"
+                :disabled="!canEdit"
+                :aria-label="`编辑商品 ${entry.item.id}`"
+                title="编辑商品"
+                @click="openEdit('edit-item', entry)"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                  <path d="M9.5 4.5l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="shop-item-btn shop-item-btn-delete"
+                :disabled="!canEdit"
+                :aria-label="`删除商品 ${entry.item.id}`"
+                title="删除商品"
+                @click="openEdit('delete-item', entry)"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M2.5 4h11M6 4V2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V4M4.5 4l.65 8.45A1.5 1.5 0 0 0 6.64 14h2.72a1.5 1.5 0 0 0 1.49-1.55L11.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M6.5 7v4M9.5 7v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                </svg>
+              </button>
             </div>
             <div class="shop-icon">
               <ImageThumbnail :reference="entry.item.icon" :size="32" show-fallback animated />
@@ -194,14 +218,115 @@ onBeforeUnmount(() => session.invalidate(true));
 </template>
 
 <style scoped>
-.shop-item-actions { position: absolute; top: 2px; right: 2px; z-index: 1; display: flex; gap: 3px; opacity: 0; pointer-events: none; }
-.shop-card:hover .shop-item-actions, .shop-card:focus-within .shop-item-actions { opacity: 1; pointer-events: auto; }
-.shop-item-actions button { padding: 2px 6px; border: 1px solid #536680; border-radius: 2px; background: #122540; color: #d9eafa; font: inherit; cursor: pointer; }
-.shop-action-btn:not(:disabled) { cursor: pointer; opacity: 1; }
-.shop-action-btn:disabled, .shop-item-actions button:disabled { opacity: .45; cursor: not-allowed; }
-.shop-action-btn:focus-visible, .shop-item-actions button:focus-visible { outline: 2px solid #83c9e6; outline-offset: 2px; }
-.shop-edit-status { padding: 0 10px 6px; color: #a9c3d5; font-size: 11px; }
-@media (hover: none) { .shop-item-actions { opacity: 1; pointer-events: auto; } }
+.shop-item-actions {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(10, 15, 23, 0.78);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shop-card:hover .shop-item-actions,
+.shop-card:focus-within .shop-item-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.shop-item-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transform: scale(0.85);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.shop-item-btn svg {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.shop-card:hover .shop-item-btn,
+.shop-card:focus-within .shop-item-btn {
+  transform: scale(1);
+}
+
+.shop-item-btn-edit {
+  background: linear-gradient(180deg, #19365c 0%, #0f223b 100%);
+  border: 1px solid #2b568c;
+  color: #9cd2fa;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.shop-item-btn-edit:hover:not(:disabled) {
+  background: linear-gradient(180deg, #254e85 0%, #15345d 100%);
+  border-color: #4b92ec;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(39, 111, 204, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.shop-item-btn-delete {
+  background: linear-gradient(180deg, #3d1b1b 0%, #261111 100%);
+  border: 1px solid #6b2d2d;
+  color: #fca5a5;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.shop-item-btn-delete:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5b2222 0%, #3b1515 100%);
+  border-color: #a84242;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(184, 45, 45, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.shop-item-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.shop-item-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.shop-item-btn:focus-visible,
+.shop-action-btn:focus-visible {
+  outline: 2px solid #83c9e6;
+  outline-offset: 1px;
+}
+
+.shop-action-btn:not(:disabled) {
+  cursor: pointer;
+  opacity: 1;
+}
+
+.shop-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.shop-edit-status {
+  padding: 0 10px 6px;
+  color: #a9c3d5;
+  font-size: 11px;
+}
 
 .shop-view {
   color: #eee6d5;
@@ -436,6 +561,7 @@ onBeforeUnmount(() => session.invalidate(true));
   background: linear-gradient(180deg, #171c21 0%, #101317 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.5);
   transition: border-color 0.15s ease, background 0.15s ease;
+  overflow: hidden;
 }
 
 .shop-card:hover {
@@ -525,9 +651,7 @@ onBeforeUnmount(() => session.invalidate(true));
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  flex-wrap: wrap;
+  justify-content: center;
   padding: 8px 10px 10px;
   margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
@@ -558,11 +682,19 @@ onBeforeUnmount(() => session.invalidate(true));
 }
 
 .shop-footer-meta {
+  position: absolute;
+  right: 12px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   color: #7b889b;
   font-size: 11px;
+}
+
+@media (max-width: 420px) {
+  .shop-footer-meta {
+    display: none;
+  }
 }
 
 .shop-meta-dot {
@@ -727,6 +859,12 @@ onBeforeUnmount(() => session.invalidate(true));
   .skeleton-pulse,
   .shop-content {
     animation: none;
+  }
+
+  .shop-item-actions,
+  .shop-item-btn {
+    transition: none;
+    transform: none;
   }
 }
 </style>

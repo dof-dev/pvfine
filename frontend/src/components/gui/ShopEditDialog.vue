@@ -123,11 +123,10 @@ async function apply(action: string) {
           <NAlert v-if="itemError" type="error">{{ itemError }}</NAlert>
         </template>
         <template v-else>
-          <NAlert type="info">设置“{{ tab?.name }}”下全部大分类的 {{ uniqueItems }} 个不同商品。重复商品只修改一次。</NAlert>
           <div class="shop-dialog-row"><NCheckbox v-model:checked="setGold" :disabled="busy">设置金币</NCheckbox><NCheckbox v-model:checked="setMaterials" :disabled="busy">设置兑换道具</NCheckbox></div>
         </template>
         <ShopCostFields v-model="form" :disabled="busy || itemLoading || (editingItem && !item)" :gold-enabled="setGold" :materials-enabled="setMaterials" />
-        <NAlert type="warning">价格与兑换道具保存在物品文件中，修改会影响所有引用该物品的商店。确认后写入内存，保存 PVF 后落盘。</NAlert>
+        <NAlert type="warning">价格与兑换道具保存在物品文件中，修改会影响所有引用该物品的商店。</NAlert>
         <div v-if="formError" class="shop-form-error">{{ formError }}</div>
         <div class="shop-dialog-footer"><NButton :disabled="busy" @click="emit('close')">取消</NButton><NButton type="primary" :loading="busy" :disabled="!canApply" @click="apply(action)">确认修改</NButton></div>
       </template>
