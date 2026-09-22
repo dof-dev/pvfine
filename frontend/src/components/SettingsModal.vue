@@ -35,7 +35,13 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
-import { AnnotationService, RenderingService, UpdateService } from "../../bindings/pvfine/services";
+import {
+  AnnotationService,
+  CacheService,
+  RenderingService,
+  UpdateService,
+} from "../../bindings/pvfine/services";
+import type { CacheUsage } from "../../bindings/pvfine/services/models";
 import {
   maxAutosaveIntervalMinutes,
   minAutosaveIntervalMinutes,
@@ -72,6 +78,9 @@ const reloadingRendering = ref(false);
 const selectingNPK = ref(false);
 const rebuildingNPK = ref(false);
 const selectingAutosavePath = ref(false);
+const cacheUsage = ref<CacheUsage | null>(null);
+const cacheUsageLoading = ref(false);
+const clearingCache = ref(false);
 
 const autosaveIntervalMinutes = computed(() =>
   Math.max(
@@ -91,10 +100,24 @@ const autosaveStatusLabel = computed(() => {
   return `上次缓存：${time} · ${formatBytes(status.sizeBytes)}`;
 });
 
+const cacheUsageSummary = computed(() => {
+  if (cacheUsageLoading.value) return "正在统计缓存占用…";
+  const usage = cacheUsage.value;
+  if (!usage) return "尚未统计";
+  const parts = [`共 ${formatBytes(usage.totalBytes)}，${usage.files} 个文件`];
+  if (usage.inUseBytes > 0) {
+    parts.push(`其中 ${formatBytes(usage.inUseBytes)} 正在被当前归档使用`);
+  }
+  return parts.join("；");
+});
+
+// 打开设置界面时统计一次缓存占用,避免常驻轮询。
 watch(
   () => settings.visible,
   (visible) => {
-    if (visible) void autosave.refreshStatus();
+    if (!visible) return;
+    void autosave.refreshStatus();
+    void refreshCacheUsage();
   }
 );
 
@@ -243,6 +266,80 @@ async function onDiscardAutosave(): Promise<void> {
   } catch (error: any) {
     message.error(`删除备份缓存失败: ${error?.message ?? error}`);
   }
+}
+
+/** 统计应用缓存占用(搜索索引、归档索引、高级搜索索引、图标索引与定时缓存)。 */
+async function refreshCacheUsage(): Promise<void> {
+  if (cacheUsageLoading.value) return;
+  cacheUsageLoading.value = true;
+  try {
+    cacheUsage.value = await CacheService.Usage();
+  } catch (error: any) {
+    message.error(`统计缓存占用失败：${error?.message ?? error}`);
+  } finally {
+    cacheUsageLoading.value = false;
+  }
+}
+
+async function onClearCache(): Promise<void> {
+  const instance = dialog.warning({
+    title: "清理缓存",
+    content: () =>
+      h("div", { class: "recovery-prompt" }, [
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          `将删除搜索索引、归档索引、高级搜索索引与图标索引等可重建的缓存（当前 ${formatBytes(
+            cacheUsage.value?.totalBytes ?? 0
+          )}）。`
+        ),
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          "设置、书签、文件集等配置数据不在缓存目录内，不会被删除。"
+        ),
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          "当前归档正在使用的索引无法立即删除，关闭归档或重启后会自动回收。"
+        ),
+        autosave.status?.exists
+          ? h(
+              "div",
+              { class: "recovery-prompt-line" },
+              "注意：定时缓存里未保存的工作区备份会被一并删除，之后不再有崩溃恢复副本。"
+            )
+          : null,
+        clearingCache.value
+          ? h(
+              "div",
+              { class: "recovery-prompt-line recovery-prompt-line--busy" },
+              "正在清理缓存…"
+            )
+          : null,
+      ]),
+    positiveText: "清理",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      if (clearingCache.value) return false;
+      clearingCache.value = true;
+      setDialogBusy(instance, true, "清理", "正在清理…");
+      try {
+        const result = await CacheService.Clear();
+        cacheUsage.value = result.usage;
+        message.success(`已清理 ${formatBytes(result.freedBytes)}`);
+        // 定时缓存可能被清理,同步刷新设置页里的缓存状态。
+        void autosave.refreshStatus();
+        instance.destroy();
+      } catch (error: any) {
+        message.error(`清理缓存失败：${error?.message ?? error}`);
+        setDialogBusy(instance, false, "清理");
+      } finally {
+        clearingCache.value = false;
+      }
+      return false;
+    },
+  });
 }
 
 async function onReloadAnnotations() {
@@ -992,6 +1089,51 @@ function formatBytes(bytes: number): string {
                   >
                     <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
                     检查更新
+                  </NButton>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 存储与缓存 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">存储与缓存</div>
+              <div class="group-subtitle">
+                统计搜索索引、归档索引与应用备份等缓存文件的磁盘占用，可一键清理
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存占用</div>
+                  <div class="setting-item-desc">{{ cacheUsageSummary }}</div>
+                  <div v-if="cacheUsage?.path" class="setting-item-desc setting-item-desc--path">
+                    {{ cacheUsage.path }}
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton
+                    size="small"
+                    secondary
+                    :loading="cacheUsageLoading"
+                    aria-label="重新统计缓存占用"
+                    @click="refreshCacheUsage"
+                  >
+                    重新统计
+                  </NButton>
+                  <NButton
+                    size="small"
+                    :disabled="!cacheUsage || cacheUsage.totalBytes === 0"
+                    :loading="clearingCache"
+                    aria-label="清理缓存"
+                    @click="onClearCache"
+                  >
+                    清理缓存
                   </NButton>
                 </div>
               </div>

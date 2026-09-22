@@ -226,6 +226,29 @@ export interface BookmarkGroup {
 }
 
 /**
+ * CacheClearResult reports what one clear pass removed.
+ */
+export interface CacheClearResult {
+    "freedBytes": number;
+    "usage": CacheUsage;
+}
+
+/**
+ * CacheUsage is the disk footprint reported to the settings page.
+ */
+export interface CacheUsage {
+    "path": string;
+    "files": number;
+    "totalBytes": number;
+
+    /**
+     * InUseBytes covers the indexes the running session holds open. They are
+     * rebuilt once the archive is closed, so a clear pass has to skip them.
+     */
+    "inUseBytes": number;
+}
+
+/**
  * DropRateApplyRequest applies the complete editor snapshot atomically.
  */
 export interface DropRateApplyRequest {

@@ -123,6 +123,7 @@ func main() {
 	// The backup service attaches itself to the core so saving or closing the
 	// workspace can drop a cache that no longer protects anything.
 	autosaveService := services.NewAutosaveService(core, settingsService)
+	cacheService := services.NewCacheService(core, settingsService)
 	// One file set service backs both the sidebar and the script API, so a
 	// scripted change and a manual save target the same document.
 	fileSetService := services.NewFileSetService()
@@ -144,6 +145,7 @@ func main() {
 			application.NewService(services.NewImageService(core, settingsService)),
 			application.NewService(services.NewFileGUIService(core)),
 			application.NewService(autosaveService),
+			application.NewService(cacheService),
 			application.NewService(settingsService),
 			application.NewService(fileSetService),
 			application.NewService(services.NewBookmarkService()),
