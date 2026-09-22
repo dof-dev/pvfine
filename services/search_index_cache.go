@@ -15,7 +15,7 @@ import (
 	"pvfine/internal/pvf"
 )
 
-const searchIndexCacheVersion = 1
+const searchIndexCacheVersion = 2
 
 // searchIndexCacheIdentity is the cheap source identity used by the search
 // cache. The archive itself is already read before the index starts, but the

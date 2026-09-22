@@ -521,6 +521,21 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 			}
 		}
 	}
+	// Character lists identify base jobs, not the generic [name] of a character.
+	// Keep this in the shared metadata projection so every index and relation
+	// uses the same name and localization dependency tracking.
+	path := strings.ToLower(a.Path(i))
+	if strings.HasPrefix(path, "character/") && strings.HasSuffix(path, ".chr") {
+		for _, section := range sections {
+			if section.depth != 0 || !strings.EqualFold(section.name, "growtype name") || len(section.values) == 0 {
+				continue
+			}
+			if value := section.values[0].text; strings.TrimSpace(value) != "" {
+				metadata.Name, metadata.HasName = value, true
+			}
+			break
+		}
+	}
 	if metadata.HasName {
 		metadata.StringTableReferences = stringTableReferences(metadata.Name)
 		metadata.Name, metadata.NameFallback = a.resolvePlaceholders(metadata.Name, "")

@@ -319,6 +319,7 @@ func archiveIndexIdentity(a *pvf.Archive) (string, string, error) {
 		return "", "", err
 	}
 	h := sha256.New()
+	fmt.Fprintf(h, "metadata:%d\x00", searchIndexCacheVersion)
 	fmt.Fprintf(h, "%s\x00%d\x00%d\x00%d\x00%d\x00%d", filepath.Clean(path), info.Size(), info.ModTime().UnixNano(), a.FileCount(), a.Header().GroupCount, a.Header().BodySize)
 	identity := hex.EncodeToString(h.Sum(nil))
 	return identity, filepath.Clean(path), nil

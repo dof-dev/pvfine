@@ -7,6 +7,7 @@ import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
 import * as DropService from "./dropservice.js";
 import * as EditorService from "./editorservice.js";
+import * as FileGUIService from "./fileguiservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
 import * as PreviewService from "./previewservice.js";
@@ -23,6 +24,7 @@ export {
     BookmarkService,
     DropService,
     EditorService,
+    FileGUIService,
     FileSetService,
     ImageService,
     PreviewService,
@@ -95,6 +97,13 @@ export type {
     ScriptSession,
     SearchHit,
     SearchResult,
+    ShopCategory,
+    ShopCost,
+    ShopDocument,
+    ShopEntry,
+    ShopGroup,
+    ShopItem,
+    ShopTab,
     StoredFileSet,
     StoredFileSetEntry,
     StructuredOperation,

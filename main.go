@@ -139,6 +139,7 @@ func main() {
 			application.NewService(services.NewRenderingService(core)),
 			application.NewService(services.NewPreviewService(core)),
 			application.NewService(services.NewImageService(core, settingsService)),
+			application.NewService(services.NewFileGUIService(core)),
 			application.NewService(settingsService),
 			application.NewService(fileSetService),
 			application.NewService(services.NewBookmarkService()),

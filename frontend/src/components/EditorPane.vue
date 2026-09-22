@@ -42,6 +42,10 @@ import CodeEditor, { type PlaceholderEditRequest } from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
 import ImageThumbnail from "./ImageThumbnail.vue";
 import PreviewHost from "./previews/PreviewHost.vue";
+import FileGUIHost from "./gui/FileGUIHost.vue";
+import { getGUIProvider } from "../gui/registry";
+import { createGUIModes } from "../gui/state";
+import { useFileGUIStore } from "../stores/fileGUI";
 import { getPreviewProvider } from "../previews/registry";
 import type { PreviewFile } from "../previews/types";
 import type { ResolvedThemeId } from "../theme";
@@ -67,6 +71,10 @@ const bookmarking = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
 const previewVisibility = reactive(new Map<number, boolean>());
+const gui = useFileGUIStore();
+const guiModes = createGUIModes();
+function isGUI(index: number): boolean { return guiModes.entries.get(index)?.mode === "gui"; }
+watch(() => gui.epoch, () => guiModes.reset(), { flush: "sync" });
 const tabContextMenu = ref({
   show: false,
   x: 0,
@@ -215,6 +223,7 @@ const paneTabs = computed(() => {
     .map((index) => editor.tabs.find((tab) => tab.index === index))
     .filter((tab): tab is EditorTab => !!tab);
 });
+watch(() => paneTabs.value.map((tab) => tab.index), (indexes) => guiModes.prune(indexes), { flush: "sync" });
 const activeKeyStr = computed(() => {
   const key = pane.value?.activeKey;
   return key === null || key === undefined ? undefined : String(key);
@@ -876,13 +885,17 @@ function onDrop(event: DragEvent): void {
               </template>
               在光标处插入 {8=`&lt;表号::键名&gt;`}，并创建/更新字符串表条目
             </NTooltip>
+            <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
+              <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
+                :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">文本</NButton>
+              <NButton size="tiny" :type="isGUI(tab.index) ? 'primary' : 'default'"
+                :disabled="tab.loading || !!tab.loadError" :aria-pressed="isGUI(tab.index)"
+                @click="guiModes.set(tab.index, 'gui')">GUI</NButton>
+            </div>
           </div>
         </div>
 
         <div class="pane-body">
-          <div v-if="!tab.loading && !tab.loadError && !tab.editable" class="readonly-hint">
-            该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
-          </div>
           <div v-if="tab.loading" class="file-load-state" role="status" aria-live="polite">
             <NSpin :size="28" />
             <span>正在读取文件并加载标注…</span>
@@ -891,25 +904,38 @@ function onDrop(event: DragEvent): void {
             <span>文件加载失败：{{ tab.loadError }}</span>
             <NButton size="small" @click="editor.retryOpenFile(tab.index)">重试</NButton>
           </div>
-          <CodeEditor
-            v-else
-            :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
-            :doc="tab.text"
-            :read-only="!tab.editable"
-            :annotations="tab.annotations"
-            :tag-placement="settings.annotationTagPlacement"
-            :vim-mode="settings.vimMode"
-            :theme-id="props.themeId"
-            @change="(text: string) => editor.updateContent(tab.index, text)"
-            @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
-            @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
-          />
-          <PreviewHost
-            v-if="!tab.loading && !tab.loadError && previewProviderFor(tab)"
+          <!-- CodeEditor has a fragment root: v-show must target a real element.
+               Keep the text subtree mounted to preserve selection and undo. -->
+          <div v-else v-show="!isGUI(tab.index)" class="text-mode-content">
+            <div v-if="!tab.editable" class="readonly-hint">
+              该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
+            </div>
+            <CodeEditor
+              :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
+              :doc="tab.text"
+              :read-only="!tab.editable"
+              :annotations="tab.annotations"
+              :tag-placement="settings.annotationTagPlacement"
+              :vim-mode="settings.vimMode"
+              :theme-id="props.themeId"
+              @change="(text: string) => editor.updateContent(tab.index, text)"
+              @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
+              @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
+            />
+            <PreviewHost
+              v-if="previewProviderFor(tab)"
+              :file="previewFile(tab)"
+              :active="!isGUI(tab.index) && editor.activePaneId === paneId && activeTab?.index === tab.index"
+              :open="isPreviewOpen(tab.index)"
+              @close="closePreview(tab.index)"
+            />
+          </div>
+          <FileGUIHost
+            v-if="!tab.loading && !tab.loadError && guiModes.entries.get(tab.index)?.opened"
+            v-show="isGUI(tab.index)"
+            :key="`${gui.epoch}:${tab.index}`"
             :file="previewFile(tab)"
-            :active="editor.activePaneId === paneId && activeTab?.index === tab.index"
-            :open="isPreviewOpen(tab.index)"
-            @close="closePreview(tab.index)"
+            :active="isGUI(tab.index) && activeTab?.index === tab.index"
           />
         </div>
       </NTabPane>
@@ -1058,6 +1084,7 @@ function onDrop(event: DragEvent): void {
 </template>
 
 <style scoped>
+.gui-mode-switch { display: inline-flex; gap: 2px; margin-left: 4px; }
 .placeholder-edit {
   display: flex;
   flex-direction: column;
@@ -1276,7 +1303,8 @@ function onDrop(event: DragEvent): void {
   align-items: center;
   gap: 2px;
 }
-.pane-body {
+.pane-body,
+.text-mode-content {
   position: relative;
   flex: 1;
   min-width: 0;

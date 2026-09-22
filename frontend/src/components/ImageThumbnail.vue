@@ -10,12 +10,14 @@ const props = withDefaults(
     reference?: ImageReference | null;
     size?: number;
     showFallback?: boolean;
+    animated?: boolean;
   }>(),
-  { reference: null, size: 16, showFallback: false }
+  { reference: null, size: 16, showFallback: false, animated: false }
 );
 
 const images = useImageStore();
 const dataUrl = ref("");
+const loading = ref(false);
 let requestID = 0;
 
 const style = computed(() => ({
@@ -26,9 +28,11 @@ const style = computed(() => ({
 async function load(): Promise<void> {
   const request = ++requestID;
   dataUrl.value = "";
+  loading.value = !!props.reference;
   const data = await images.loadImage(props.reference);
   if (request !== requestID) return;
   dataUrl.value = data?.dataUrl ?? "";
+  loading.value = false;
 }
 
 watch(
@@ -39,7 +43,7 @@ watch(
 </script>
 
 <template>
-  <span class="image-thumbnail" :style="style" aria-hidden="true">
+  <span class="image-thumbnail" :class="{ 'image-thumbnail--animated': animated, 'image-thumbnail--loading': animated && loading }" :style="style" aria-hidden="true">
     <img v-if="dataUrl" :src="dataUrl" :width="size" :height="size" alt="" />
     <NIcon v-else-if="showFallback" :size="Math.max(12, size - 1)"><Document24Regular /></NIcon>
   </span>
@@ -60,5 +64,11 @@ watch(
   height: 100%;
   object-fit: contain;
 }
+.image-thumbnail--animated img { animation: thumbnail-reveal 150ms ease-out; }
+.image-thumbnail--loading { background: #514938; animation: thumbnail-pulse 1.3s ease-in-out infinite alternate; }
+@keyframes thumbnail-reveal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes thumbnail-pulse { to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .image-thumbnail--animated img, .image-thumbnail--loading { animation: none; }
+}
 </style>
-

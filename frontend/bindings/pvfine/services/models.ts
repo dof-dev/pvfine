@@ -681,6 +681,52 @@ export interface SearchResult {
     "scanned": number;
 }
 
+export interface ShopCategory {
+    "id": string;
+    "name": string;
+}
+
+export interface ShopCost {
+    "kind": string;
+    "itemId": string;
+    "quantity": string;
+    "name": string;
+    "icon": ImageReference | null;
+}
+
+export interface ShopDocument {
+    "name": string;
+    "categoryType": string;
+    "categories": ShopCategory[] | null;
+    "tabs": ShopTab[] | null;
+    "issues": PreviewIssue[] | null;
+}
+
+export interface ShopEntry {
+    "item": ShopItem;
+    "sourceStart": number;
+    "sourceEnd": number;
+}
+
+export interface ShopGroup {
+    "categoryId": string;
+    "sourceStart": number;
+    "items": ShopEntry[] | null;
+}
+
+export interface ShopItem {
+    "id": string;
+    "name": string;
+    "icon": ImageReference | null;
+    "costs": ShopCost[] | null;
+}
+
+export interface ShopTab {
+    "name": string;
+    "sourceStart": number;
+    "groups": ShopGroup[] | null;
+}
+
 export interface StoredFileSet {
     "id": string;
     "name": string;

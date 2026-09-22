@@ -420,3 +420,32 @@ func TestRealScriptMetadata(t *testing.T) {
 		t.Fatalf("real field image = %#v", metadata.FieldImage)
 	}
 }
+
+func TestCharacterMetadataUsesFirstGrowtypeName(t *testing.T) {
+	a := New()
+	for _, tc := range []struct{ text, want string }{
+		{"[name]\n`generic`\n[growtype name]\n`鬼剑士` `剑魂`", "鬼剑士"},
+		{"[growtype name]\n`鬼剑士` `剑魂`\n[name]\n`generic`", "鬼剑士"},
+		{"[name]\n`fallback`", "fallback"},
+		{"[growtype name]\n`` `not the first`\n[name]\n`fallback`", "fallback"},
+	} {
+		i, err := a.AddFileText("character/test.chr", tc.text, TypeScript)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := a.ScriptMetadata(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Name != tc.want {
+			t.Fatalf("name=%q want=%q", m.Name, tc.want)
+		}
+		if err := a.SetText(i, "[growtype name]\n`新职业` `转职`"); err != nil {
+			t.Fatal(err)
+		}
+		m, err = a.ScriptMetadata(i)
+		if err != nil || m.Name != "新职业" {
+			t.Fatalf("updated metadata=%#v, err=%v", m, err)
+		}
+	}
+}

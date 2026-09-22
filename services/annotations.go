@@ -329,6 +329,11 @@ func (c *core) readRelationTargetNameLocked(fileIndex int32, listPath, nameSecti
 }
 
 func (c *core) readRelationTargetNameFromTextLocked(listPath, nameSection, text string) string {
+	if sameSearchPath(listPath, "character/character.lst") {
+		if name := firstSectionValue(text, "growtype name"); strings.TrimSpace(name) != "" {
+			return resolvePreviewText(c.archive, name)
+		}
+	}
 	name := firstSectionValue(text, nameSection)
 	if name != "" || !sameSearchPath(listPath, itemShopListPath) {
 		return name
