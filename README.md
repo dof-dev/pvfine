@@ -35,6 +35,7 @@
 - **双向无损反编译**：将 5 字节二进制 Token 流还原为可读性高、具备语法层级感知的结构化脚本。
 - **110US 字符串表与占位符就地编辑**：深度解析 `<表号::键名>` 占位符、字符串表与伴生 `list/*_indexhash.etc`，支持在编辑器内直接修改译文与自动生成 `hashindex`。
 - **丰富的多媒体与资产预览**：原生集成 ANI 动作动画播放器、装备属性面板与 NPK / DXT 纹理渲染，按文件类型自动分派预览宿主。
+- **结构化数据 GUI 编辑**：为 `.shp` 商店与基础掉率提供专用可视化编辑器，按文件类型注册 GUI provider 并与文本编辑随时切换；编辑经独立 staging 校验后一次性提交内存改动，原归档不自动写盘。
 - **轻量本地版本控制**：基于 SQLite 与 CAS 对象存储构建旁路版本库，支持工作区修改检测、快照提交对比与安全检出回退。
 - **智能标注与 LST 跳转**：规则驱动关联 LST 列表（兼顾 90US 目录相对与 110US 根相对双布局），代码内嵌标注 Tag，支持跨脚本一键导航跳转。
 - **JavaScript 脚本工作区**：内置 Goja 沙箱按脚本批量改写归档，支持 LST 列表、文件集与文件增删改 API，事务隔离、预览确认后选择性应用。
@@ -107,6 +108,14 @@
 - **DXT 纹理解码**：原生支持 DXT1、DXT3、DXT5 压缩纹理解压，以及 1555、4444、8888 等常见像素格式。
 - **行内贴图与悬停预览**：脚本中的贴图标注支持直接嵌入 16x16 行内缩略图；鼠标悬停标签时弹出清晰大图预览卡片。
 
+### 🗂️ 结构化数据 GUI 编辑（商店 / 基础掉率）
+- **文件 GUI 模式框架**：文件默认以文本打开，命中 GUI provider 后才出现模式切换入口；显示模式归属窗格，每个窗格独立保存，隐藏时保留组件状态、关闭文件时才销毁（文本编辑器采用隐藏而非卸载，保留光标、滚动与撤销历史）。provider 通过 `frontend/src/gui/registry.ts` 以唯一 `id`、显示名称、`readOnly` 能力、文件匹配条件与异步 Vue 组件注册；异步读取必须校验归档 epoch 与内容 revision，防止旧请求覆盖新内容。
+- **商店查看与编辑（`.shp`）**：保留 Tab、分类区块与商品出现顺序，不合并重复商品；区块与商品记录携带 UTF-16 源位置，支持精确修改或删除某一次商品出现。商品成本来自商品文件本身（`[price]` 金币、`[need material]` 成对的道具 ID 与数量），两类成本可共存，缺失成本与显式零金币语义不同，未知引用与异常结构返回数据提示、缺图使用占位。
+- **商品与分页管理**：商品 hover 或键盘聚焦后显示编辑、删除按钮，更换商品 ID 会先读取新商品成本再允许修改，删除只移除当前出现而不删除物品文件。底部提供添加商品、分页管理与批量设置入口：分页管理支持新增、重命名与删除（删除分页会移除其中全部分类的引用）；批量设置按关联物品文件去重覆盖当前分页全部大分类，金币与兑换材料可分别选择保持或替换，空金币移除 `[price]`、空材料移除 `[need material]`。
+- **通用装备/道具选择器**：`ItemPicker` 支持图标、ID/名称/路径检索、延迟搜索与分页，并隔离过期请求；`ArchiveService.SearchItems` 在内存与 SQLite 索引中均先限定物品范围再分页。
+- **基础掉率编辑器**：可视化编辑 `basis of rarity dicision` 各分组（每 7 项一组、5 个数值）的掉率，面向 90US / 90CN 归档；保存前校验数据代次，避免过期表单覆盖最新内容。
+- **安全提交语义**：编辑请求先校验归档 revision、文件路径与 UTF-16 定位，再在独立 staging 中构造全部受影响文件，全部校验通过才一次性提交 overlay，并记录为一次版本撤销操作；原 PVF 不会自动写盘，仍需手动保存，过期表单会被拒绝而不覆盖更新后的内容。
+
 ### 🗃️ 资源版本控制（VCS）
 - **本地旁路版本库**：在 PVF 归档旁自动创建 `.pvfine` 侧边版本库，基于 SQLite 元数据与 SHA-256 CAS 不可变对象存储。
 - **版本历史与提交**：直观的版本控制面板，支持查看工作区改动清单、填写提交说明并生成版本快照（支持快捷键提交）。
@@ -171,8 +180,9 @@
 │  - Explorer: 虚拟树形懒加载 / 修改标记 / 路径复制 / 游标分页搜索       │
 │  - CodeEditor: CodeMirror 6 / Vim 模式 / LST 标注与贴图 / 分屏协同     │
 │  - Previews: PreviewHost 统一宿主 / AniPreview 动画 / EquipmentPreview │
-│  - Sidebars & Modals: 占位符修改 / IndexHash 注册 / 批处理 / 设置 ...   │
-│  - Pinia Stores: archive / editor / bookmarks / fileSets / version ... │
+│  - FileGUI: GUI Provider 注册 / 商店查看与编辑 / 常规装备道具选择器    │
+│  - Sidebars & Modals: 占位符修改 / IndexHash 注册 / 批处理 / 设置 ...  │
+│  - Pinia Stores: archive / editor / fileGUI / dropRate / autosave ...  │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Wails v3 IPC (Auto Bindings)
 ┌───────────────────────────────────▼────────────────────────────────────┐
@@ -183,6 +193,7 @@
 │  - ListRegistration: 列表关联注册与 list/*_indexhash.etc 自动生成     │
 │  - SearchIndexCache: 归档元数据与搜索索引持久化缓存                    │
 │  - AdvancedSearchSQLite: 字符串反向索引、分页查询与结果磁盘缓存        │
+│  - SearchMutation: 变更影响分类与搜索索引增量刷新                      │
 │  - VersionService: 本地版本库生命周期、提交、快照差异与检出            │
 │  - AnnotationService: 规则引擎绑定、LST 索引构建与关联计算             │
 │  - ImageService: NPK 资源索引、DXT 图像解码与缩略图缓存                │
@@ -190,6 +201,10 @@
 │  - ScriptService: Goja 沙箱执行、结构化脚本预览与选择性应用            │
 │  - RenderingService: 渲染规则校验、热重载与编辑器排版配置              │
 │  - BookmarkService & FileSetService: 嵌套书签簿与文件集持久化          │
+│  - FileGUIService: 商店文档读取、编辑校验与 staging 提交               │
+│  - DropRateService: 基础掉率分组读取与写回                             │
+│  - AutosaveService: 定时工作区缓存与异常退出恢复                       │
+│  - CacheService: 可重建缓存占用统计与一键清理                          │
 │  - SettingsService: 全局用户配置 (主题、打开方式、Vim、备份等)         │
 │  - Core: 读写锁守卫的共享并发状态模型                                  │
 └───────────────────────────────────┬────────────────────────────────────┘
@@ -201,7 +216,7 @@
 │  - internal/script: Goja 沙箱运行时与事务化 PVF 宿主 API               │
 │  - internal/rendering: 渲染规则编译与编辑器展示格式解析                │
 │  - internal/npk: NPK 容器读取、IMG 图像帧解析与 DXT1/3/5 解码          │
-│  - internal/annotations: 规则加载、LST 双布局映射、装备/道具联合索引   │
+│  - internal/annotations: 规则加载、版本过滤、LST 双布局映射与联合索引  │
 │  - internal/version: SQLite 版本库管理与 SHA-256 CAS 对象存储          │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -297,10 +312,17 @@ npm run dev
 
 ### 运行测试与基准测试
 
-运行核心内核与服务层单元测试（涵盖 PVF、Paged110 分页归档、90CN 变体与种子恢复、HASH/indexhash、字符串表与编码防乱码、ANI/装备预览、NPK、标注引擎、脚本沙箱、渲染规则、版本控制与应用服务）：
+运行核心内核与服务层单元测试（涵盖 PVF、Paged110 分页归档、90CN 变体与种子恢复、HASH/indexhash、字符串表与编码防乱码、ANI/装备预览、NPK、标注与版本过滤、脚本沙箱、渲染规则、商店编辑、基础掉率、缓存与自动保存、版本控制及应用服务）：
 
 ```bash
 go test ./...
+```
+
+运行前端单元测试（Vitest，覆盖编辑器加载与标注、文件 GUI、商店表单、掉率与自动保存）：
+
+```bash
+cd frontend
+npm test
 ```
 
 使用真实 PVF 归档进行完整往返重打包与字节级一致性回归验证：
@@ -354,6 +376,7 @@ wails3 task package
 │   ├── search_index_cache.go # 归档元数据与搜索索引持久化缓存
 │   ├── advanced_search_sqlite.go # 高级字符串反向索引与查询结果缓存
 │   ├── sqlite_index.go       # 文件索引与语义索引的 SQLite 构建
+│   ├── search_mutation.go    # 归档变更影响分类与搜索索引增量刷新
 │   ├── annotations.go        # AnnotationService：标注查询与 LST 关联
 │   ├── batch.go              # BatchService：批处理规则解析与 Diff 预览
 │   ├── script.go             # ScriptService：脚本运行、预览计划、脚本目录与应用
@@ -362,6 +385,11 @@ wails3 task package
 │   ├── filesets.go           # FileSetService：文件集持久化管理
 │   ├── image_service.go      # ImageService：NPK 资源管理与图像缓存
 │   ├── import.go             # 资源批量导入与冲突预览
+│   ├── file_gui.go           # FileGUIService：商店文档读取与编辑校验提交
+│   ├── shop_edit.go          # 商店商品/分页编辑、批量设置与表单校验提交
+│   ├── drop.go               # DropRateService：基础掉率分组读取与写回
+│   ├── autosave.go           # AutosaveService：定时工作区缓存与崩溃恢复
+│   ├── cache.go              # CacheService：可重建缓存占用统计与一键清理
 │   ├── settings.go           # SettingsService：全局用户配置与偏好设置
 │   ├── version.go            # VersionService：版本仓库控制与快照管理
 │   └── window.go             # 窗口服务（支持脚本工作区分离独立窗口）
@@ -371,18 +399,24 @@ wails3 task package
 │   │   │                     #         BookmarkSidebar, FileSetSidebar, VersionPanel, BatchProcessModal,
 │   │   │                     #         ScriptWorkbench, CodeEditor（PVF / JavaScript 双模式）,
 │   │   │                     #         previews/ (AniPreview, EquipmentPreview, PreviewHost),
+│   │   │                     #         gui/ (FileGUIHost, ShopViewer, ShopEditDialog, ShopCostFields),
+│   │   │                     #         DropRateEditorModal, ItemPicker, RecoveryPrompt,
 │   │   │                     #         IndexHashRegistrationModal, AdvancedSearchModal, ImportModal, SettingsModal, StatusBar, CloseGuard)
-│   │   ├── stores/           # Pinia 状态管理 (archive, explorer, editor, bookmarks, fileSets,
-│   │   │                     #                 version, images, settings, batch, script, advancedSearch, import)
+│   │   ├── gui/              # 文件 GUI provider 注册表、状态模型与商店表单
+│   │   ├── stores/           # Pinia 状态管理 (archive, explorer, editor, fileGUI, dropRate,
+│   │   │                     #                 autosave, bookmarks, fileSets, version, images,
+│   │   │                     #                 settings, batch, script, advancedSearch, import)
 │   │   ├── theme.ts          # 深色 / 浅色 / 跟随系统主题配色体系
 │   │   ├── App.vue           # 主界面布局、侧边栏集成与全局快捷键监听
 │   │   └── main.ts           # 前端入口
+│   ├── tests/                # Vitest 前端单元测试（编辑器 / 文件 GUI / 商店 / 掉率 / 自动保存）
 │   └── bindings/             # Wails 自动生成的 TypeScript 服务端点绑定
 ├── docs/                     # 技术规格文档
 │   ├── FORMAT.md             # S4A21 PVF 二进制格式逆向分析规格与数学算法
 │   ├── PVF新格式分析.md       # 110US (Paged110) 容器结构、sk.dat 密钥推导与字符串表分析
 │   ├── 脚本工作区设计.md     # Goja 沙箱 API、事务边界与预览应用流程
 │   ├── 渲染规则设计.md       # 渲染规则 JSON 结构与匹配优先级
+│   ├── 文件GUI模式.md        # GUI provider 扩展、商店数据结构与编辑检索流程
 │   ├── 标注功能设计.md       # 标注系统规格与规则配置
 │   └── 版本控制设计.md       # 本地版本库设计
 ├── scripts/                  # 工程脚本（基准测试、版本更新注入等）
