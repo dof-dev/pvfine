@@ -16,6 +16,7 @@ import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import BatchProcessModal from "./components/BatchProcessModal.vue";
 import ImportModal from "./components/ImportModal.vue";
 import VersionPanel from "./components/VersionPanel.vue";
+import DropRateEditorModal from "./components/DropRateEditorModal.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
 import EditorCloseGuard from "./components/EditorCloseGuard.vue";
@@ -158,6 +159,7 @@ async function onKeydown(e: KeyboardEvent) {
           <BatchProcessModal />
           <ImportModal />
           <VersionPanel />
+          <DropRateEditorModal />
           <SettingsModal />
           <div class="app-body">
             <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">

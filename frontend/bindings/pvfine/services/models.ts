@@ -197,6 +197,48 @@ export interface BookmarkGroup {
     "entries"?: BookmarkEntry[] | null;
 }
 
+/**
+ * DropRateApplyRequest applies the complete editor snapshot atomically.
+ */
+export interface DropRateApplyRequest {
+    "revision": number;
+    "sections": (DropRateSection | null)[] | null;
+}
+
+/**
+ * DropRateApplyResult reports the in-memory archive state after applying.
+ */
+export interface DropRateApplyResult {
+    "revision": number;
+    "fileIndexes": number[] | null;
+    "modifiedCount": number;
+}
+
+/**
+ * DropRateDocument is the structured view consumed by the drop-rate editor.
+ * Rates are percentage hundredths: 1234 means 12.34%.
+ */
+export interface DropRateDocument {
+    "pvfVersion": string;
+    "revision": number;
+    "sections": (DropRateSection | null)[] | null;
+}
+
+/**
+ * DropRateGroup contains five rarity probabilities in percentage hundredths.
+ */
+export interface DropRateGroup {
+    "rates": number[] | null;
+}
+
+/**
+ * DropRateSection identifies one of the four supported drop files.
+ */
+export interface DropRateSection {
+    "key": string;
+    "groups": (DropRateGroup | null)[] | null;
+}
+
 export interface EditorAnnotation {
     "start": number;
     "end": number;

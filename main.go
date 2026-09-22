@@ -131,6 +131,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(services.NewArchiveService(core)),
 			application.NewService(services.NewEditorService(core, settingsService)),
+			application.NewService(services.NewDropService(core)),
 			application.NewService(services.NewBatchService(core)),
 			application.NewService(services.NewScriptService(core, fileSetService)),
 			application.NewService(services.NewVersionService(core)),

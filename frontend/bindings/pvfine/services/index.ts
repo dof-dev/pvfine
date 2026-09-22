@@ -5,6 +5,7 @@ import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
 import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
+import * as DropService from "./dropservice.js";
 import * as EditorService from "./editorservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
@@ -20,6 +21,7 @@ export {
     ArchiveService,
     BatchService,
     BookmarkService,
+    DropService,
     EditorService,
     FileSetService,
     ImageService,
@@ -53,6 +55,11 @@ export type {
     BookmarkDocument,
     BookmarkEntry,
     BookmarkGroup,
+    DropRateApplyRequest,
+    DropRateApplyResult,
+    DropRateDocument,
+    DropRateGroup,
+    DropRateSection,
     EditorAnnotation,
     EquipmentPreviewAttribute,
     EquipmentPreviewDocument,

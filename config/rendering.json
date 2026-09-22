@@ -86,8 +86,10 @@
       }
     },
     {
-      "id": "section.basis of rarity dicision",
-      "match": {},
+      "id": "section.basis of rarity dicision.hell",
+      "match": {
+        "glob": "etc/itemdropinfo_monster_hell.etc"
+      },
       "target": {
         "kind": "section",
         "section": "basis of rarity dicision"
@@ -95,6 +97,17 @@
       "format": {
         "tokensPerLine": 7,
         "offset": 1
+      }
+    },
+    {
+      "id": "section.basis of rarity dicision",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "basis of rarity dicision"
+      },
+      "format": {
+        "tokensPerLine": 7
       }
     }
   ]

@@ -143,6 +143,18 @@
         {
           "path": "etc/itemdropinfo_monster_hell.etc",
           "name": "深渊掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_clearreward.etc",
+          "name": "翻牌掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_monseter.etc",
+          "name": "怪物掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_monseter_extra.etc",
+          "name": "精英掉落"
         }
       ]
     },

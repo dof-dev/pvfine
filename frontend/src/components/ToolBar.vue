@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, h, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
@@ -12,12 +12,15 @@ import {
   Code24Regular,
   DocumentText24Regular,
   DocumentSync24Regular,
+  Drop24Regular,
   Key24Regular,
   Settings24Regular,
+  Toolbox24Regular,
 } from "@vicons/fluent";
 import {
   NBadge,
   NButton,
+  NDropdown,
   NIcon,
   NTooltip,
   NProgress,
@@ -31,6 +34,7 @@ import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
+import { useDropRateStore } from "../stores/dropRate";
 import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
 
 const archive = useArchiveStore();
@@ -40,6 +44,7 @@ const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
 const script = useScriptStore();
+const dropRate = useDropRateStore();
 const message = useMessage();
 const dialog = useDialog();
 const hashRegistrationVisible = ref(false);
@@ -66,6 +71,14 @@ const versionTooltip = computed(() => {
   }
   return "管理工作区版本、提交和历史";
 });
+const toolOptions = computed(() => [
+  {
+    label: "基础掉率",
+    key: "drop-rate",
+    disabled: !dropRate.supported,
+    icon: () => h(NIcon, null, { default: () => h(Drop24Regular) }),
+  },
+]);
 watch(
   () => archive.unpackMessage,
   (msg) => {
@@ -152,6 +165,14 @@ function onUnpack() {
 
 function onCancelUnpack() {
   archive.cancelUnpack();
+}
+
+async function onToolSelect(key: string): Promise<void> {
+  if (key !== "drop-rate") return;
+  const opened = await dropRate.open();
+  if (!opened) {
+    message.error(dropRate.error || "无法打开基础掉率编辑器");
+  }
 }
 
 function isCancel(e: any): boolean {
@@ -319,6 +340,22 @@ function isCancel(e: any): boolean {
           </NButton>
         </template>
         为指定 lst 补齐缺失的 indexhash
+      </NTooltip>
+    </div>
+
+    <div class="tb-sep" />
+
+    <div class="tb-group" role="group" aria-label="工具">
+      <NTooltip trigger="hover" :disabled="dropRate.supported">
+        <template #trigger>
+          <NDropdown :options="toolOptions" @select="onToolSelect">
+            <NButton quaternary>
+              <template #icon><NIcon><Toolbox24Regular /></NIcon></template>
+              工具
+            </NButton>
+          </NDropdown>
+        </template>
+        {{ archive.open ? "仅支持 90US/90CN 归档" : "需先打开 PVF 归档" }}
       </NTooltip>
     </div>
 
