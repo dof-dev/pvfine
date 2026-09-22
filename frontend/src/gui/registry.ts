@@ -5,7 +5,7 @@ const providers: GUIProvider[] = [
   {
     id: "shop",
     label: "商店",
-    readOnly: true,
+    readOnly: false,
     matches: (file) => file.path.toLowerCase().endsWith(".shp"),
     component: defineAsyncComponent(() => import("../components/gui/ShopViewer.vue")),
   },

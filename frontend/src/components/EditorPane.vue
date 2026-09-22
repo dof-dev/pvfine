@@ -909,7 +909,7 @@ function onDrop(event: DragEvent): void {
             <CodeEditor
               :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
               :doc="tab.text"
-              :read-only="!tab.editable"
+              :read-only="!tab.editable || editor.guiApplying"
               :annotations="tab.annotations"
               :tag-placement="settings.annotationTagPlacement"
               :vim-mode="settings.vimMode"

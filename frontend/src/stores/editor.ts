@@ -1,7 +1,9 @@
 import { defineStore } from "pinia";
 import { computed, markRaw, nextTick, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
-import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
+import { ArchiveService, EditorService, FileGUIService } from "../../bindings/pvfine/services";
+import type { ShopEditRequest, ShopEditResult } from "../../bindings/pvfine/services/models";
+import { useFileGUIStore } from "./fileGUI";
 import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
@@ -87,6 +89,8 @@ export const useEditorStore = defineStore("editor", () => {
     )?.id ?? null
   );
   const saving = ref(false);
+  const guiApplying = ref(false);
+  const guiRefreshWarning = ref("");
   const script = useScriptStore();
   let paneSequence = 1;
   let splitSequence = 0;
@@ -511,6 +515,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 编辑器内容变化:只更新本地文本,写入 overlay 由保存动作显式触发。 */
   function updateContent(index: number, text: string) {
+    if (guiApplying.value) return;
     const tab = tabs.value.find((item) => item.index === index);
     if (!tab || !tab.editable) return;
     tab.text = text;
@@ -518,6 +523,42 @@ export const useEditorStore = defineStore("editor", () => {
 
   function isDirty(tab: EditorTab): boolean {
     return tab.editable && tab.text !== tab.original;
+  }
+
+  /** 提交商店 GUI 编辑:校验草稿一致性与归档代次,成功后同步受影响标签的文本。 */
+  async function applyShopEdit(request: ShopEditRequest): Promise<ShopEditResult> {
+    if (saving.value) throw new Error("正在保存，请稍后再试");
+    const source = tabs.value.find((tab) => tab.index === request.fileIndex && tab.path === request.path);
+    if (!source || source.text !== request.text) throw new Error("商店草稿已变化，请关闭表单并重新打开");
+    const gui = useFileGUIStore();
+    const epoch = gui.epoch;
+    request = { ...request, drafts: tabs.value.filter(isDirty).map((tab) => ({ fileIndex: tab.index, path: tab.path, text: tab.text })) };
+    saving.value = true;
+    guiApplying.value = true;
+    guiRefreshWarning.value = "";
+    try {
+      await nextTick();
+      const result = await FileGUIService.ApplyShopEdit(request);
+      if (!result) throw new Error("未收到商店编辑结果");
+      if (gui.epoch !== epoch) throw new Error("归档已切换，已忽略旧界面的编辑结果");
+      for (const file of result.files ?? []) {
+        const tab = tabs.value.find((item) => item.index === file.fileIndex && item.path === file.path);
+        if (!tab) continue;
+        if (tab.text === file.beforeText || tab.text === file.text) {
+          tab.text = file.text;
+          tab.original = file.text;
+          tab.modified = true;
+        }
+      }
+      const refreshes = await Promise.allSettled([refreshBatchFiles((result.files ?? []).map((file) => file.fileIndex)), useArchiveStore().refreshInfo()]);
+      if (refreshes.some((refresh) => refresh.status === "rejected")) {
+        guiRefreshWarning.value = "修改已应用，部分标签信息刷新失败，可重新打开相关文件";
+      }
+      return result;
+    } finally {
+      saving.value = false;
+      guiApplying.value = false;
+    }
   }
 
   /** 把单个标签的本地文本写入后端 overlay,成功后重置脏基线。 */
@@ -881,6 +922,9 @@ export const useEditorStore = defineStore("editor", () => {
     opening: computed(() => tabs.value.some((tab) => tab.loading)),
     openingPaneId,
     saving,
+    guiApplying,
+    guiRefreshWarning,
+    applyShopEdit,
     pendingClose,
     openFile,
     retryOpenFile,

@@ -2,10 +2,10 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { nextTick } from "vue";
 
-const api = vi.hoisted(() => ({ GetFile: vi.fn(), showArchiveEditor: vi.fn() }));
+const api = vi.hoisted(() => ({ GetFile: vi.fn(), showArchiveEditor: vi.fn(), ApplyShopEdit: vi.fn(), refreshInfo: vi.fn() }));
 vi.mock("@wailsio/runtime", () => ({ Events: { On: vi.fn() } }));
-vi.mock("../bindings/pvfine/services", () => ({ EditorService: api, ArchiveService: {} }));
-vi.mock("../src/stores/archive", () => ({ useArchiveStore: () => ({}) }));
+vi.mock("../bindings/pvfine/services", () => ({ EditorService: api, ArchiveService: {}, FileGUIService: api }));
+vi.mock("../src/stores/archive", () => ({ useArchiveStore: () => ({ refreshInfo: api.refreshInfo }) }));
 vi.mock("../src/stores/script", () => ({ useScriptStore: () => api }));
 vi.mock("../src/stores/explorer", () => ({
   useExplorerStore: () => ({ getFilePath: (index: number) => `map/${index}.lst`, selectedKey: null }),
@@ -122,4 +122,37 @@ test("多个文件同时加载时各自维护状态", async () => {
   first.resolve(meta(1));
   await openingFirst;
   expect(store.opening).toBe(false);
+});
+
+test("商店修改携带未保存草稿并同步所有受影响标签，不写磁盘", async () => {
+  api.GetFile.mockImplementation(async (index) => meta(index, "original"));
+  const store = useEditorStore();
+  await store.openFile(1); await store.openFile(2);
+  store.updateContent(1, "shop draft"); store.updateContent(2, "item draft");
+  const pending = deferred<any>(); api.ApplyShopEdit.mockReturnValue(pending.promise);
+  const request = { fileIndex: 1, path: "map/1.lst", text: "shop draft", revision: 1, action: "edit-item" } as any;
+  const applying = store.applyShopEdit(request); await nextTick();
+  expect(store.guiApplying).toBe(true);
+  expect(api.ApplyShopEdit.mock.calls[0][0].drafts).toEqual([
+    { fileIndex: 1, path: "map/1.lst", text: "shop draft" }, { fileIndex: 2, path: "map/2.lst", text: "item draft" },
+  ]);
+  store.updateContent(1, "must not change during apply");
+  expect(store.tabs.find((tab) => tab.index === 1)?.text).toBe("shop draft");
+  api.GetFile.mockImplementation(async (index) => ({ ...meta(index, `after ${index}`), modified: true }));
+  pending.resolve({ revision: 2, files: [1, 2].map((index) => ({ fileIndex: index, path: `map/${index}.lst`, beforeText: index === 1 ? "shop draft" : "item draft", text: `after ${index}` })) });
+  await applying;
+  for (const tab of store.tabs) { expect(tab.text).toBe(`after ${tab.index}`); expect(tab.original).toBe(tab.text); expect(tab.modified).toBe(true); }
+  expect(store.guiApplying).toBe(false);
+});
+
+test("商店草稿过期或提交失败保留现有内容并释放锁", async () => {
+  api.GetFile.mockResolvedValue(meta(1, "new draft"));
+  const store = useEditorStore(); await store.openFile(1);
+  const request = { fileIndex: 1, path: "map/1.lst", text: "old draft" } as any;
+  await expect(store.applyShopEdit(request)).rejects.toThrow("草稿已变化");
+  expect(api.ApplyShopEdit).not.toHaveBeenCalled();
+  api.ApplyShopEdit.mockRejectedValue(new Error("已过期"));
+  await expect(store.applyShopEdit({ ...request, text: "new draft" })).rejects.toThrow("已过期");
+  expect(store.tabs[0].text).toBe("new draft");
+  expect(store.guiApplying).toBe(false); expect(store.saving).toBe(false);
 });

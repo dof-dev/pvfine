@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { FileGUIService } from "../../../bindings/pvfine/services";
+import ShopEditDialog from "./ShopEditDialog.vue";
+import type { ShopEntry, ShopEditResult } from "../../../bindings/pvfine/services/models";
+import { useEditorStore } from "../../stores/editor";
 import ImageThumbnail from "../ImageThumbnail.vue";
 import { createShopSession } from "../../gui/state";
 import type { GUIFile } from "../../gui/types";
@@ -10,6 +13,21 @@ const props = defineProps<{ file: GUIFile; active: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
 
 const gui = useFileGUIStore();
+const editor = useEditorStore();
+const dialog = ref<{ kind: string; entry?: ShopEntry; key: number } | null>(null);
+let dialogSequence = 0;
+const editMessage = ref("");
+const canEdit = computed(() => props.file.editable && !loading.value && !error.value && !editor.saving);
+function openEdit(kind: string, entry?: ShopEntry) {
+  if (canEdit.value) dialog.value = { kind, entry, key: ++dialogSequence };
+}
+async function applied(result: ShopEditResult, nextTab: number) {
+  dialog.value = null;
+  editMessage.value = editor.guiRefreshWarning || `已更新 ${result.files?.length ?? 0} 个文件，保存 PVF 后落盘`;
+  await reload();
+  tabIndex.value = nextTab;
+}
+watch(() => [props.file.index, props.file.path, props.active, gui.epoch], () => { dialog.value = null; editMessage.value = ""; });
 const session = createShopSession(FileGUIService.ReadShop);
 const { document, loading, error, tabIndex, categoryID } = session;
 
@@ -28,7 +46,7 @@ function reload() { return session.load(props.file, String(gui.epoch)); }
 
 watch(
   () => [props.active, props.file.index, props.file.path, props.file.text, gui.epoch, gui.revision] as const,
-  () => { if (props.active) void reload(); else session.invalidate(); },
+  () => { if (editor.guiApplying) return; if (props.active) void reload(); else session.invalidate(); },
   { immediate: true, flush: "sync" },
 );
 onBeforeUnmount(() => session.invalidate(true));
@@ -114,6 +132,10 @@ onBeforeUnmount(() => session.invalidate(true));
       <div class="shop-products" role="tabpanel" :aria-label="document.tabs?.[tabIndex]?.name">
         <div v-if="items.length" class="shop-grid">
           <article v-for="entry in items" :key="entry.sourceStart" class="shop-card">
+            <div v-if="file.editable" class="shop-item-actions">
+              <button type="button" :disabled="!canEdit" :aria-label="`编辑商品 ${entry.item.id}`" @click="openEdit('edit-item', entry)">编辑</button>
+              <button type="button" :disabled="!canEdit" :aria-label="`删除商品 ${entry.item.id}`" @click="openEdit('delete-item', entry)">删除</button>
+            </div>
             <div class="shop-icon">
               <ImageThumbnail :reference="entry.item.icon" :size="32" show-fallback animated />
             </div>
@@ -149,9 +171,9 @@ onBeforeUnmount(() => session.invalidate(true));
 
       <footer class="shop-footer">
         <div class="shop-actions">
-          <button type="button" class="shop-action-btn" disabled title="只读展示模式">一键出售(A)</button>
-          <button type="button" class="shop-action-btn" disabled title="只读展示模式">出售</button>
-          <button type="button" class="shop-action-btn" disabled title="只读展示模式">购买</button>
+          <button type="button" class="shop-action-btn" :disabled="!canEdit || !document.tabs?.length" @click="openEdit('add-item')">添加商品</button>
+          <button type="button" class="shop-action-btn" :disabled="!canEdit" @click="openEdit('manage-tabs')">分页管理</button>
+          <button type="button" class="shop-action-btn" :disabled="!canEdit || !document.tabs?.length" @click="openEdit('batch-costs')">批量设置</button>
         </div>
         <div v-if="!error && document" class="shop-footer-meta" :title="`当前显示 ${items.length} 件商品`">
           <span class="shop-meta-dot" />
@@ -159,15 +181,28 @@ onBeforeUnmount(() => session.invalidate(true));
         </div>
       </footer>
 
+      <div v-if="loading || editMessage" class="shop-edit-status" role="status">{{ loading ? "正在更新…" : editMessage }}</div>
       <details v-if="document.issues?.length" class="shop-issues">
         <summary>{{ document.issues.length }} 条数据提示</summary>
         <ul><li v-for="(issue, i) in document.issues" :key="i">{{ issue.message }}</li></ul>
       </details>
     </div>
+    <ShopEditDialog v-if="dialog && document" :key="dialog.key" :file="file" :document="document"
+      :tab-index="tabIndex" :category-i-d="categoryID" :action="dialog.kind" :entry="dialog.entry"
+      @close="dialog = null" @applied="applied" />
   </section>
 </template>
 
 <style scoped>
+.shop-item-actions { position: absolute; top: 2px; right: 2px; z-index: 1; display: flex; gap: 3px; opacity: 0; pointer-events: none; }
+.shop-card:hover .shop-item-actions, .shop-card:focus-within .shop-item-actions { opacity: 1; pointer-events: auto; }
+.shop-item-actions button { padding: 2px 6px; border: 1px solid #536680; border-radius: 2px; background: #122540; color: #d9eafa; font: inherit; cursor: pointer; }
+.shop-action-btn:not(:disabled) { cursor: pointer; opacity: 1; }
+.shop-action-btn:disabled, .shop-item-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.shop-action-btn:focus-visible, .shop-item-actions button:focus-visible { outline: 2px solid #83c9e6; outline-offset: 2px; }
+.shop-edit-status { padding: 0 10px 6px; color: #a9c3d5; font-size: 11px; }
+@media (hover: none) { .shop-item-actions { opacity: 1; pointer-events: auto; } }
+
 .shop-view {
   color: #eee6d5;
   width: 100%;
@@ -388,6 +423,7 @@ onBeforeUnmount(() => session.invalidate(true));
 }
 
 .shop-card {
+  position: relative;
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 6px;
@@ -489,7 +525,9 @@ onBeforeUnmount(() => session.invalidate(true));
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
   padding: 8px 10px 10px;
   margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
@@ -520,8 +558,6 @@ onBeforeUnmount(() => session.invalidate(true));
 }
 
 .shop-footer-meta {
-  position: absolute;
-  right: 12px;
   display: inline-flex;
   align-items: center;
   gap: 5px;

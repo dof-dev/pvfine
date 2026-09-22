@@ -227,6 +227,14 @@ export function SearchExact(query: string, cursor: number, limit: number): $Canc
 }
 
 /**
+ * SearchItems searches only registered equipment and stackable items. Filtering
+ * happens before pagination, so unrelated records cannot hide valid choices.
+ */
+export function SearchItems(query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
+    return $Call.ByID(2107665645, query, cursor, limit);
+}
+
+/**
  * SelectImportFilesDialog opens the native multi-selection picker without
  * changing the current archive. The returned paths can be previewed first.
  */

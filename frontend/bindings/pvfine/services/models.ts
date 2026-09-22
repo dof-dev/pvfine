@@ -695,11 +695,54 @@ export interface ShopCost {
 }
 
 export interface ShopDocument {
+    "revision": number;
     "name": string;
     "categoryType": string;
     "categories": ShopCategory[] | null;
     "tabs": ShopTab[] | null;
     "issues": PreviewIssue[] | null;
+}
+
+export interface ShopDraft {
+    "fileIndex": number;
+    "path": string;
+    "text": string;
+}
+
+export interface ShopEditRequest {
+    "fileIndex": number;
+    "path": string;
+    "text": string;
+    "revision": number;
+    "action": string;
+    "tabIndex": number;
+    "sourceStart": number;
+    "categoryId": string;
+    "itemId": string;
+    "name": string;
+    "setGold": boolean;
+
+    /**
+     * empty removes [price], "0" is an explicit zero
+     */
+    "gold": string;
+    "setMaterials": boolean;
+    "materials": ShopMaterialInput[] | null;
+    "drafts": ShopDraft[] | null;
+}
+
+export interface ShopEditResult {
+    "revision": number;
+    "files": ShopEditedFile[] | null;
+    "affectedItems": number;
+    "modifiedCount": number;
+}
+
+export interface ShopEditedFile {
+    "fileIndex": number;
+    "path": string;
+    "beforeText": string;
+    "text": string;
 }
 
 export interface ShopEntry {
@@ -715,10 +758,17 @@ export interface ShopGroup {
 }
 
 export interface ShopItem {
+    "fileIndex": number;
+    "path": string;
     "id": string;
     "name": string;
     "icon": ImageReference | null;
     "costs": ShopCost[] | null;
+}
+
+export interface ShopMaterialInput {
+    "itemId": string;
+    "quantity": string;
 }
 
 export interface ShopTab {

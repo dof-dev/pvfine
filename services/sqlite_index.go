@@ -939,6 +939,10 @@ func (i *sqliteArchiveIndex) visuals(fileIndex int32) fileVisuals {
 }
 
 func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool) (*SearchResult, error) {
+	return i.searchScoped(query, cursor, limit, exact, false, "")
+}
+
+func (i *sqliteArchiveIndex) searchScoped(query string, cursor, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	result := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -954,6 +958,14 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 	}
 	where := "rowid>?"
 	args := []any{cursor}
+	if excludeID != "" {
+		where += " AND record_id<>?"
+		args = append(args, excludeID)
+	}
+	if itemsOnly {
+		where += " AND category IN (?,?)"
+		args = append(args, SearchCategoryEquipment, SearchCategoryStackable)
+	}
 	wildcard := strings.ContainsAny(q, "*?")
 	if !wildcard {
 		if exact {

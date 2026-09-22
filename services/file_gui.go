@@ -9,8 +9,7 @@ import (
 	"pvfine/internal/pvf"
 )
 
-// FileGUIService projects current editor drafts into read-only GUI documents.
-// It never commits text or mutates archive content.
+// FileGUIService reads GUI documents and applies validated edits to the overlay.
 type FileGUIService struct{ c *core }
 
 func NewFileGUIService(c *core) *FileGUIService { return &FileGUIService{c: c} }
@@ -27,10 +26,12 @@ type ShopCost struct {
 	Icon     *ImageReference `json:"icon"`
 }
 type ShopItem struct {
-	ID    string          `json:"id"`
-	Name  string          `json:"name"`
-	Icon  *ImageReference `json:"icon"`
-	Costs []ShopCost      `json:"costs"`
+	FileIndex int32           `json:"fileIndex"`
+	Path      string          `json:"path"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Icon      *ImageReference `json:"icon"`
+	Costs     []ShopCost      `json:"costs"`
 }
 type ShopEntry struct {
 	Item        ShopItem `json:"item"`
@@ -48,6 +49,7 @@ type ShopTab struct {
 	Groups      []ShopGroup `json:"groups"`
 }
 type ShopDocument struct {
+	Revision     uint64         `json:"revision"`
 	Name         string         `json:"name"`
 	CategoryType string         `json:"categoryType"`
 	Categories   []ShopCategory `json:"categories"`
@@ -73,6 +75,7 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 		return nil, fmt.Errorf("物品关联索引未初始化")
 	}
 	doc := parseShop(text)
+	doc.Revision = s.c.batchRevision
 	doc.Name = path.Base(s.c.archive.Path(fileIndex))
 	if npc := firstSectionValue(text, "npc"); npc != "" {
 		if ref, ok := s.c.resolveAnnotationReferenceLocked("npc", npc); ok && ref.Name != "" {
@@ -105,7 +108,7 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 		if item, exists := metadata[id]; exists {
 			return item, ref.FileIndex, true
 		}
-		item := ShopItem{ID: id, Name: ref.Name, Costs: []ShopCost{}}
+		item := ShopItem{ID: id, Name: ref.Name, FileIndex: ref.FileIndex, Path: s.c.archive.Path(ref.FileIndex), Costs: []ShopCost{}}
 		if item.Name == "" {
 			item.Name = "物品 #" + id
 		}

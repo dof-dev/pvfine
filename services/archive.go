@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -665,6 +666,72 @@ func (s *ArchiveService) SearchExact(query string, cursor int, limit int) (*Sear
 }
 
 func (s *ArchiveService) search(query string, cursor int, limit int, exact bool) (*SearchResult, error) {
+	return s.searchScoped(query, cursor, limit, exact, false, "")
+}
+
+// SearchItems searches only registered equipment and stackable items. Filtering
+// happens before pagination, so unrelated records cannot hide valid choices.
+func (s *ArchiveService) SearchItems(query string, cursor int, limit int) (*SearchResult, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 30
+	}
+	var exact *SearchHit
+	var exactArchive *pvf.Archive
+	firstPage := cursor <= 0
+	rawCursor := 0
+	if cursor > 0 {
+		rawCursor = cursor - 1
+	}
+	query = strings.TrimSpace(query)
+	if _, err := strconv.ParseInt(query, 10, 32); err == nil {
+		s.c.mu.Lock()
+		if s.c.archive != nil && s.c.annotationEngine != nil {
+			if ref, ok := s.c.resolveAnnotationReferenceLocked("物品", query); ok {
+				if meta, err := s.c.archive.ScriptMetadata(ref.FileIndex); err == nil {
+					file := s.c.archive.File(ref.FileIndex)
+					category := SearchCategoryStackable
+					if strings.HasSuffix(strings.ToLower(s.c.archive.Path(ref.FileIndex)), ".equ") {
+						category = SearchCategoryEquipment
+					}
+					exact = &SearchHit{ID: query, Name: markedName(meta), Path: s.c.archive.Path(ref.FileIndex), FileIndex: ref.FileIndex, Icon: imageReferenceFromPVF(meta.Icon), Category: category, Size: file.DataSize, DataType: file.DataType}
+					exactArchive = s.c.archive
+				}
+			}
+		}
+		s.c.mu.Unlock()
+	}
+	if exact != nil && firstPage && limit == 1 {
+		return &SearchResult{Hits: []*SearchHit{exact}, NextCursor: 1}, nil
+	}
+	excludeID := ""
+	if exact != nil {
+		excludeID = exact.ID
+	}
+	if exact != nil && firstPage {
+		limit--
+	}
+	result, err := s.searchScoped(query, rawCursor, limit, false, true, excludeID)
+	if err != nil {
+		return nil, err
+	}
+	if exact != nil {
+		s.c.mu.RLock()
+		current := s.c.archive == exactArchive
+		s.c.mu.RUnlock()
+		if !current {
+			return nil, fmt.Errorf("归档已变化，请重新搜索")
+		}
+		if firstPage {
+			result.Hits = append([]*SearchHit{exact}, result.Hits...)
+		}
+	}
+	if result.NextCursor >= 0 {
+		result.NextCursor++
+	}
+	return result, nil
+}
+
+func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
 	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -678,7 +745,7 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 		if s.c.indexStatus.State == IndexStateError {
 			return nil, errors.New(s.c.indexStatus.Error)
 		}
-		result, err := s.c.diskIndex.search(query, cursor, limit, exact)
+		result, err := s.c.diskIndex.searchScoped(query, cursor, limit, exact, itemsOnly, excludeID)
 		if err != nil {
 			return nil, err
 		}
@@ -713,6 +780,12 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 	i := cursor
 	for ; i < len(records) && len(res.Hits) < limit; i++ {
 		record := &records[i]
+		if excludeID != "" && record.hit.ID == excludeID {
+			continue
+		}
+		if itemsOnly && record.hit.Category != SearchCategoryEquipment && record.hit.Category != SearchCategoryStackable {
+			continue
+		}
 		matched := matcher.match(record.lowerPath) ||
 			matcher.match(record.lowerName) ||
 			matcher.match(record.lowerID)
