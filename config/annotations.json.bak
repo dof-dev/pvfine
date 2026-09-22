@@ -1360,6 +1360,21 @@
         "relation": "物品"
       },
       "group": "shp"
+    },
+    {
+      "id": "path.etc",
+      "match": {
+        "glob": "etc/itemdropinfo_monster_hell.etc"
+      },
+      "target": {
+        "kind": "path",
+        "section": "name"
+      },
+      "annotation": {
+        "title": "深渊diao'l",
+        "type": "text"
+      },
+      "group": "path"
     }
   ]
 }

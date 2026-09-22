@@ -84,6 +84,18 @@
       "format": {
         "tokensPerLine": 2
       }
+    },
+    {
+      "id": "section.basis of rarity dicision",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "basis of rarity dicision"
+      },
+      "format": {
+        "tokensPerLine": 7,
+        "offset": 1
+      }
     }
   ]
 }

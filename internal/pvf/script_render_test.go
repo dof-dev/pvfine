@@ -69,6 +69,56 @@ func TestScriptRenderingSupportsLeadingTokenOffset(t *testing.T) {
 	}
 }
 
+func TestScriptRenderingSupportsLegacyUnpairedSection(t *testing.T) {
+	a := New()
+	encoded, err := a.encodeScript("[basis of rarity dicision]\n99 1 2 3 4 5 6 7 8\n[next]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "etc.basis-of-rarity-dicision",
+    "match": {},
+    "target": {"kind": "section", "section": "basis of rarity dicision"},
+    "format": {"tokensPerLine": 7, "offset": 1}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	want := "[basis of rarity dicision]\n\t99\n\t1\t2\t3\t4\t5\t6\t7\n\t8\n\n[next]\n"
+	if got := a.decodeScriptForPath(encoded, "etc/itemdropinfo_monster_hell.etc"); got != want {
+		t.Fatalf("unpaired section rendering = %q, want %q", got, want)
+	}
+}
+
+func TestScriptRenderingUsesTokenValueForLegacyUnpairedSection(t *testing.T) {
+	a := New()
+	encoded, err := a.encodeScript("[basis of rarity dicision]\n3 100 200 300 400 500\n[next]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "etc.basis-of-rarity-dicision-dynamic",
+    "match": {},
+    "target": {"kind": "section", "section": "basis of rarity dicision"},
+    "format": {"offset": 1, "tokensPerLine": 1, "tokensPerLineIndex": 0}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	want := "[basis of rarity dicision]\n\t3\n\t100\t200\t300\n\t400\t500\n\n[next]\n"
+	if got := a.decodeScriptForPath(encoded, "etc/itemdropinfo_monster_hell.etc"); got != want {
+		t.Fatalf("dynamic unpaired section rendering = %q, want %q", got, want)
+	}
+}
+
 func TestScriptRenderingUsesTokenValueForTokensPerLine(t *testing.T) {
 	a := New()
 	encoded, err := a.encodeScript("[records]\n2 100 200 300 400 500\n[/records]")

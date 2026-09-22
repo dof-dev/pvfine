@@ -135,12 +135,26 @@
           "name": "副本接口"
         }
       ]
-    }
-  ],
-  "entries": [
+    },
     {
-      "path": "stackable/consumption_1254.stk",
-      "name": "consumption_1254.stk"
+      "id": "bookmark-group-2",
+      "name": "掉落",
+      "entries": [
+        {
+          "path": "etc/itemdropinfo_monster_hell.etc",
+          "name": "深渊掉落"
+        }
+      ]
+    },
+    {
+      "id": "bookmark-group-3",
+      "name": "常用道具",
+      "entries": [
+        {
+          "path": "stackable/consumption_1254.stk",
+          "name": "红气息"
+        }
+      ]
     }
   ]
 }
