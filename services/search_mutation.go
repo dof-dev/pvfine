@@ -213,10 +213,7 @@ func (c *core) registeredMetadataChangedLocked(a *pvf.Archive, index int32, path
 		return true
 	}
 	name := metadata.Name
-	visuals := fileVisuals{
-		icon:       imageReferenceFromPVF(metadata.Icon),
-		fieldImage: imageReferenceFromPVF(metadata.FieldImage),
-	}
+	visuals := visualsFromMetadata(metadata)
 	matched := false
 	for _, value := range c.searchMetadata {
 		if value.fileIndex != index && !sameSearchPath(value.path, path) {
@@ -226,7 +223,7 @@ func (c *core) registeredMetadataChangedLocked(a *pvf.Archive, index int32, path
 			continue
 		}
 		matched = true
-		if value.name != name || !imageReferencesEqual(value.icon, visuals.icon) || !imageReferencesEqual(value.fieldImage, visuals.fieldImage) {
+		if value.name != name || value.rarity != visuals.rarity || !imageReferencesEqual(value.icon, visuals.icon) || !imageReferencesEqual(value.fieldImage, visuals.fieldImage) {
 			return true
 		}
 	}
@@ -240,7 +237,7 @@ func (c *core) registeredMetadataChangedLocked(a *pvf.Archive, index int32, path
 					return true
 				}
 			}
-			if !imageReferencesEqual(oldVisuals.icon, visuals.icon) || !imageReferencesEqual(oldVisuals.fieldImage, visuals.fieldImage) {
+			if oldVisuals.rarity != visuals.rarity || !imageReferencesEqual(oldVisuals.icon, visuals.icon) || !imageReferencesEqual(oldVisuals.fieldImage, visuals.fieldImage) {
 				return true
 			}
 		}

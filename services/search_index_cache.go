@@ -15,7 +15,11 @@ import (
 	"pvfine/internal/pvf"
 )
 
-const searchIndexCacheVersion = 2
+// searchIndexCacheVersion covers both cache formats: the small JSON snapshot's
+// Version field and the SQLite index identity string. Bump it whenever the
+// persisted metadata shape changes, so older files are rebuilt instead of
+// silently missing a newer field.
+const searchIndexCacheVersion = 3
 
 // searchIndexCacheIdentity is the cheap source identity used by the search
 // cache. The archive itself is already read before the index starts, but the
@@ -40,6 +44,7 @@ type persistedIndexedMetadata struct {
 	FileIndex  int32           `json:"fileIndex"`
 	Size       int32           `json:"size"`
 	DataType   int32           `json:"dataType"`
+	Rarity     int32           `json:"rarity"`
 	Icon       *ImageReference `json:"icon,omitempty"`
 	FieldImage *ImageReference `json:"fieldImage,omitempty"`
 }
@@ -204,6 +209,7 @@ func loadSearchIndexCache(a *pvf.Archive, specs []searchableListSpec, override s
 			fileIndex:  fileIndex,
 			size:       file.DataSize,
 			dataType:   file.DataType,
+			rarity:     saved.Rarity,
 			icon:       cloneImageReference(saved.Icon),
 			fieldImage: cloneImageReference(saved.FieldImage),
 		})
@@ -246,6 +252,7 @@ func saveSearchIndexCache(snapshot searchIndexCacheSnapshot, override string) er
 			FileIndex:  value.fileIndex,
 			Size:       value.size,
 			DataType:   value.dataType,
+			Rarity:     value.rarity,
 			Icon:       cloneImageReference(value.icon),
 			FieldImage: cloneImageReference(value.fieldImage),
 		})

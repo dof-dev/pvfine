@@ -35,6 +35,7 @@ export interface SearchItem {
   id: string;
   category: string;
   fileIndex: number;
+  rarity: number;
   size: number;
   dataType: number;
   changeKind: string;
@@ -104,6 +105,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       id: n.id,
       category: n.category,
       fileIndex: n.fileIndex,
+      rarity: n.rarity,
       size: n.size,
       dataType: n.dataType,
       changeKind: n.changeKind ?? "",

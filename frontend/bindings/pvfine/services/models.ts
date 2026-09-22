@@ -729,6 +729,7 @@ export interface SearchHit {
     "size": number;
     "dataType": number;
     "fileIndex": number;
+    "rarity": number;
     "changeKind"?: string;
     "annotations"?: TreeAnnotation[] | null;
     "pathAnnotations"?: { [_ in string]?: TreeAnnotation[] | null } | null;
@@ -826,6 +827,7 @@ export interface ShopItem {
     "path": string;
     "id": string;
     "name": string;
+    "rarity": number;
     "icon": ImageReference | null;
     "costs": ShopCost[] | null;
 }
@@ -916,6 +918,12 @@ export interface TreeTag {
     "id": string;
     "name": string;
     "category": string;
+
+    /**
+     * Rarity is the target file's [rarity] value, or pvf.RarityUnknown when the
+     * file declares none. The explorer colors the tag with it.
+     */
+    "rarity": number;
 }
 
 /**

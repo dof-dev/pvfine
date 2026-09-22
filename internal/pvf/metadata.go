@@ -48,10 +48,29 @@ type ScriptMetadata struct {
 	FieldImage            *ScriptImageReference  `json:"fieldImage,omitempty"`
 	StringTableReferences []StringTableReference `json:"-"`
 
+	// Rarity is the raw value of the first [rarity] section, which the
+	// frontend maps to a display color (equipment and stackables share the
+	// same 0..6 scale). HasRarity reports whether the section exists at all.
+	Rarity    int32 `json:"rarity"`
+	HasRarity bool  `json:"-"`
+
 	// NameFallback reports that the name's `<table::key>` placeholder was
 	// answered by a language overlay because the archive's own localization has
 	// no text for that key, so a caller that displays the name can flag it.
 	NameFallback bool `json:"-"`
+}
+
+// RarityUnknown is the sentinel used by callers that project Rarity into a
+// plain int32: it means the file declares no [rarity] section.
+const RarityUnknown = -1
+
+// RarityValue returns Rarity, or RarityUnknown when the script has no
+// [rarity] section, so callers never mistake an absent value for "普通".
+func (m ScriptMetadata) RarityValue() int32 {
+	if !m.HasRarity {
+		return RarityUnknown
+	}
+	return m.Rarity
 }
 
 // ScriptListPairs parses a TypeScript .lst payload as consecutive id/path
@@ -383,8 +402,9 @@ func (a *Archive) ListID(i int32, path string) (string, bool, error) {
 	return "", false, nil
 }
 
-// ScriptMetadata extracts [name], [icon] and [field image] in one raw token
-// scan without formatting or materializing the full decompiled script.
+// ScriptMetadata extracts [name], [icon], [field image] and [rarity] in one
+// raw token scan without formatting or materializing the full decompiled
+// script.
 //
 // The name is display text: type 8/10 string-pool references are handled like
 // the older 5/6/7 ones, and `<table::key>` placeholders (which is what the
@@ -518,6 +538,22 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 					metadata.FieldImage = reference
 				}
 				break
+			}
+		case "rarity":
+			// The preview reads the same field as "the first [rarity] token in
+			// document order", so the index uses that occurrence too. Both
+			// equipment and stackables store the value as an integer token, but
+			// a quoted number is also accepted.
+			if metadata.HasRarity || len(section.values) == 0 {
+				continue
+			}
+			value := section.values[0]
+			if value.typ == 0 {
+				metadata.Rarity, metadata.HasRarity = value.value, true
+				continue
+			}
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(value.text), 10, 32); err == nil {
+				metadata.Rarity, metadata.HasRarity = int32(parsed), true
 			}
 		}
 	}

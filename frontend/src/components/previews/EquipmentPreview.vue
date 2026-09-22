@@ -12,6 +12,7 @@ import type {
   PreviewIssue,
 } from "../../../bindings/pvfine/services/models";
 import { useImageStore } from "../../stores/images";
+import { RARITY_COLORS, rarityColor } from "../../rarity";
 import type { PreviewFile } from "../../previews/types";
 
 const props = defineProps<{
@@ -29,10 +30,7 @@ const detailMode = ref(false);
 let parseTimer: number | undefined;
 let parseRequest = 0;
 
-const rarityClass = computed(() => {
-  const rarity = document.value?.rarity ?? 0;
-  return ["normal", "magic", "rare", "artifact", "epic", "brave", "legendary"][rarity] ?? "unknown";
-});
+const rarityNameColor = computed(() => rarityColor(document.value?.rarity) ?? RARITY_COLORS.normal);
 const explanation = computed(() => {
   if (detailMode.value && document.value?.detailExplain) return document.value.detailExplain;
   return document.value?.baseExplain ?? "";
@@ -193,7 +191,7 @@ onBeforeUnmount(() => {
           <img class="equ-icon" :src="iconData.dataUrl" alt="装备图标" />
         </div>
         <div class="equ-title-block">
-          <div class="equ-name" :class="`equ-name--${rarityClass}`">
+          <div class="equ-name" :style="{ color: rarityNameColor }">
             {{ document.name || "未命名装备" }}
           </div>
           <div v-if="document.name2" class="equ-name2">{{ document.name2 }}</div>
@@ -205,7 +203,7 @@ onBeforeUnmount(() => {
           <span v-if="document.qualityText" class="equ-quality">
             <span class="equ-quality-label">{{ qualityParts.label }}</span><span v-if="qualityParts.detail" class="equ-quality-detail">{{ qualityParts.detail }}</span>
           </span>
-          <span v-if="document.rarityLabel" class="equ-rarity" :class="`equ-rarity--${rarityClass}`">{{ document.rarityLabel }}</span>
+          <span v-if="document.rarityLabel" class="equ-rarity" :style="{ color: rarityNameColor }">{{ document.rarityLabel }}</span>
         </div>
         <div
           v-if="baseAttributes.length || document.equipmentType || document.itemGroupName || document.attachType"
@@ -330,22 +328,6 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.equ-name--normal,
-.equ-rarity--normal { color: #fff; }
-.equ-name--magic,
-.equ-rarity--magic { color: #5e9dff; }
-.equ-name--rare,
-.equ-rarity--rare { color: #b46cff; }
-.equ-name--artifact,
-.equ-rarity--artifact { color: #dc57b7; }
-.equ-name--epic,
-.equ-rarity--epic { color: #ffd438; }
-.equ-name--brave,
-.equ-rarity--brave { color: #ff4a4a; }
-.equ-name--legendary,
-.equ-rarity--legendary { color: #ff7903; }
-.equ-name--unknown,
-.equ-rarity--unknown { color: #fff; }
 .equ-name2 {
   margin-top: 1px;
   color: #aaa;

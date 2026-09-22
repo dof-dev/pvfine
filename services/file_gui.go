@@ -30,6 +30,7 @@ type ShopItem struct {
 	Path      string          `json:"path"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
+	Rarity    int32           `json:"rarity"`
 	Icon      *ImageReference `json:"icon"`
 	Costs     []ShopCost      `json:"costs"`
 }
@@ -108,13 +109,14 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 		if item, exists := metadata[id]; exists {
 			return item, ref.FileIndex, true
 		}
-		item := ShopItem{ID: id, Name: ref.Name, FileIndex: ref.FileIndex, Path: s.c.archive.Path(ref.FileIndex), Costs: []ShopCost{}}
+		item := ShopItem{ID: id, Name: ref.Name, FileIndex: ref.FileIndex, Path: s.c.archive.Path(ref.FileIndex), Rarity: pvf.RarityUnknown, Costs: []ShopCost{}}
 		if item.Name == "" {
 			item.Name = "物品 #" + id
 		}
 		m, err := s.c.archive.ScriptMetadata(ref.FileIndex)
 		if err == nil {
 			item.Icon = imageReferenceFromPVF(m.Icon)
+			item.Rarity = m.RarityValue()
 			if m.HasName {
 				item.Name = markedName(m)
 			}

@@ -8,6 +8,7 @@ import ImageThumbnail from "../ImageThumbnail.vue";
 import { createShopSession } from "../../gui/state";
 import type { GUIFile } from "../../gui/types";
 import { useFileGUIStore } from "../../stores/fileGUI";
+import { rarityColor } from "../../rarity";
 
 const props = defineProps<{ file: GUIFile; active: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -42,6 +43,11 @@ const currentCategoryName = computed(() => {
 });
 
 const number = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+// 商品名按稀有度着色；没有 [rarity] 的物品（如材料）保留默认的青色。
+function itemNameStyle(entry: ShopEntry): Record<string, string> | undefined {
+  const color = rarityColor(entry.item.rarity);
+  return color ? { color } : undefined;
+}
 function reload() { return session.load(props.file, String(gui.epoch)); }
 
 watch(
@@ -164,7 +170,7 @@ onBeforeUnmount(() => session.invalidate(true));
               <ImageThumbnail :reference="entry.item.icon" :size="32" show-fallback animated />
             </div>
             <div class="shop-card-main">
-              <div class="shop-item-name" :title="`${entry.item.name}\nID: ${entry.item.id}`">
+              <div class="shop-item-name" :style="itemNameStyle(entry)" :title="`${entry.item.name}\nID: ${entry.item.id}`">
                 {{ entry.item.name }}
               </div>
               <div class="shop-costs">

@@ -711,7 +711,7 @@ func (s *ArchiveService) SearchItems(query string, cursor int, limit int) (*Sear
 					if strings.HasSuffix(strings.ToLower(s.c.archive.Path(ref.FileIndex)), ".equ") {
 						category = SearchCategoryEquipment
 					}
-					exact = &SearchHit{ID: query, Name: markedName(meta), Path: s.c.archive.Path(ref.FileIndex), FileIndex: ref.FileIndex, Icon: imageReferenceFromPVF(meta.Icon), Category: category, Size: file.DataSize, DataType: file.DataType}
+					exact = &SearchHit{ID: query, Name: markedName(meta), Path: s.c.archive.Path(ref.FileIndex), FileIndex: ref.FileIndex, Rarity: meta.RarityValue(), Icon: imageReferenceFromPVF(meta.Icon), Category: category, Size: file.DataSize, DataType: file.DataType}
 					exactArchive = s.c.archive
 				}
 			}
@@ -774,6 +774,7 @@ func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact
 			visuals := s.c.diskIndex.visuals(hit.FileIndex)
 			hit.Icon = cloneImageReference(visuals.icon)
 			hit.FieldImage = cloneImageReference(visuals.fieldImage)
+			hit.Rarity = visuals.rarity
 		}
 		return result, nil
 	}

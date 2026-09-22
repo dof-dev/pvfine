@@ -56,6 +56,7 @@ type SearchHit struct {
 	Size            int32                       `json:"size"`
 	DataType        int32                       `json:"dataType"`
 	FileIndex       int32                       `json:"fileIndex"`
+	Rarity          int32                       `json:"rarity"`
 	ChangeKind      string                      `json:"changeKind,omitempty"`
 	Annotations     []TreeAnnotation            `json:"annotations,omitempty"`
 	PathAnnotations map[string][]TreeAnnotation `json:"pathAnnotations,omitempty"`
@@ -68,6 +69,9 @@ type TreeTag struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Category string `json:"category"`
+	// Rarity is the target file's [rarity] value, or pvf.RarityUnknown when the
+	// file declares none. The explorer colors the tag with it.
+	Rarity int32 `json:"rarity"`
 }
 
 type searchRecord struct {
@@ -86,6 +90,7 @@ type indexedMetadata struct {
 	fileIndex  int32
 	size       int32
 	dataType   int32
+	rarity     int32
 	icon       *ImageReference
 	fieldImage *ImageReference
 }
@@ -93,6 +98,20 @@ type indexedMetadata struct {
 type fileVisuals struct {
 	icon       *ImageReference
 	fieldImage *ImageReference
+	// rarity is the file's [rarity] value, or pvf.RarityUnknown when the file
+	// declares none. Empty visuals must carry RarityUnknown, never 0.
+	rarity int32
+}
+
+// visualsFromMetadata projects a script's display metadata onto the per-file
+// visual snapshot shared by the explorer, the search results and the stale
+// checks of the mutation classifier.
+func visualsFromMetadata(metadata pvf.ScriptMetadata) fileVisuals {
+	return fileVisuals{
+		icon:       imageReferenceFromPVF(metadata.Icon),
+		fieldImage: imageReferenceFromPVF(metadata.FieldImage),
+		rarity:     metadata.RarityValue(),
+	}
 }
 
 type searchableListSpec struct {
@@ -364,6 +383,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 				visuals[value.fileIndex] = fileVisuals{
 					icon:       cloneImageReference(value.icon),
 					fieldImage: cloneImageReference(value.fieldImage),
+					rarity:     value.rarity,
 				}
 			}
 			records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
@@ -464,6 +484,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 		ref.name = scriptMetadata.Name
 		ref.icon = imageReferenceFromPVF(scriptMetadata.Icon)
 		ref.fieldImage = imageReferenceFromPVF(scriptMetadata.FieldImage)
+		ref.rarity = scriptMetadata.RarityValue()
 		ref.fileIndex = fileIndex
 		ref.path = canonicalPath
 		ref.size = f.DataSize
@@ -477,10 +498,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 	treeTagsByFile := buildTreeTags(records, recordsByFile)
 	visualsByFile := make(map[int32]fileVisuals, len(metadataByIndex))
 	for fileIndex, scriptMetadata := range metadataByIndex {
-		visualsByFile[fileIndex] = fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visualsByFile[fileIndex] = visualsFromMetadata(scriptMetadata)
 	}
 
 	if !c.publishSearchCandidate(a, gen, ctx, startedAt, records, recordsByFile, metadata, treeTagsByFile, visualsByFile, len(refs), skipped, searchIndexSpecFingerprint(specs), cacheEligible, false) {
@@ -603,6 +621,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 					fileIndex:  targetIndex,
 					size:       file.DataSize,
 					dataType:   file.DataType,
+					rarity:     scriptMetadata.RarityValue(),
 					icon:       imageReferenceFromPVF(scriptMetadata.Icon),
 					fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
 				})
@@ -639,10 +658,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 		if err != nil {
 			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		visuals := fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visuals := visualsFromMetadata(scriptMetadata)
 		for index := range metadata {
 			if metadata[index].fileIndex != dirtyIndex && metadata[index].path != canonicalPath {
 				continue
@@ -652,6 +668,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 			metadata[index].size = file.DataSize
 			metadata[index].dataType = file.DataType
 			metadata[index].name = scriptMetadata.Name
+			metadata[index].rarity = visuals.rarity
 			metadata[index].icon = cloneImageReference(visuals.icon)
 			metadata[index].fieldImage = cloneImageReference(visuals.fieldImage)
 		}
@@ -671,6 +688,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 		visuals[value.fileIndex] = fileVisuals{
 			icon:       cloneImageReference(value.icon),
 			fieldImage: cloneImageReference(value.fieldImage),
+			rarity:     value.rarity,
 		}
 	}
 	records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
@@ -739,10 +757,7 @@ func (c *core) publishSearchCandidate(
 		if err != nil {
 			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		visuals := fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visuals := visualsFromMetadata(scriptMetadata)
 		visualsByFile[fileIndex] = visuals
 		for metadataIndex := range metadata {
 			if metadata[metadataIndex].fileIndex != fileIndex {
@@ -751,6 +766,7 @@ func (c *core) publishSearchCandidate(
 			metadata[metadataIndex].name = scriptMetadata.Name
 			metadata[metadataIndex].size = fileSize
 			metadata[metadataIndex].dataType = fileType
+			metadata[metadataIndex].rarity = visuals.rarity
 			metadata[metadataIndex].icon = cloneImageReference(visuals.icon)
 			metadata[metadataIndex].fieldImage = cloneImageReference(visuals.fieldImage)
 		}
@@ -766,6 +782,7 @@ func (c *core) publishSearchCandidate(
 			}
 			record.hit.Name = scriptMetadata.Name
 			record.lowerName = strings.ToLower(scriptMetadata.Name)
+			record.hit.Rarity = visuals.rarity
 			record.hit.Icon = cloneImageReference(visuals.icon)
 			record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
 		}
@@ -1035,7 +1052,7 @@ func (c *core) refreshIndexedRecordsLocked(index int32, previousVisuals fileVisu
 		metadata = pvf.ScriptMetadata{}
 	}
 	name := metadata.Name
-	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	visuals := visualsFromMetadata(metadata)
 	c.visualsByFile[index] = visuals
 	updated := false
 	for _, recordIndex := range recordIndexes {
@@ -1050,6 +1067,7 @@ func (c *core) refreshIndexedRecordsLocked(index int32, previousVisuals fileVisu
 		record.hit.Icon = cloneImageReference(visuals.icon)
 		record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
 		if record.hit.Category != SearchCategoryFile {
+			record.hit.Rarity = visuals.rarity
 			updated = true
 		}
 	}
@@ -1276,18 +1294,26 @@ func (c *core) fileVisualsLocked(index int32) fileVisuals {
 		c.visualsByFile = make(map[int32]fileVisuals)
 	}
 	if visuals, ok := c.visualsByFile[index]; ok {
-		return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
+		return fileVisuals{
+			icon:       cloneImageReference(visuals.icon),
+			fieldImage: cloneImageReference(visuals.fieldImage),
+			rarity:     visuals.rarity,
+		}
 	}
 	if c.archive == nil || index < 0 || index >= c.archive.FileCount() || c.archive.File(index).DataType != pvf.TypeScript {
-		return fileVisuals{}
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
 	metadata, err := c.archive.ScriptMetadata(index)
 	if err != nil {
-		return fileVisuals{}
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
-	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	visuals := visualsFromMetadata(metadata)
 	c.visualsByFile[index] = visuals
-	return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
+	return fileVisuals{
+		icon:       cloneImageReference(visuals.icon),
+		fieldImage: cloneImageReference(visuals.fieldImage),
+		rarity:     visuals.rarity,
+	}
 }
 
 func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
@@ -1407,6 +1433,7 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 				Size:       p.size,
 				DataType:   p.typ,
 				FileIndex:  p.idx,
+				Rarity:     pvf.RarityUnknown,
 				ChangeKind: p.changeKind,
 			})
 			continue
@@ -1421,6 +1448,7 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 				Size:       entry.size,
 				DataType:   entry.dataType,
 				FileIndex:  entry.fileIndex,
+				Rarity:     entry.rarity,
 				ChangeKind: p.changeKind,
 				Icon:       cloneImageReference(entry.icon),
 				FieldImage: cloneImageReference(entry.fieldImage),
@@ -1467,6 +1495,7 @@ func treeTagsForRecords(records []searchRecord, recordIndexes []int) []TreeTag {
 			ID:       hit.ID,
 			Name:     hit.Name,
 			Category: hit.Category,
+			Rarity:   hit.Rarity,
 		})
 	}
 	return tags

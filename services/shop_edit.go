@@ -95,7 +95,7 @@ func (s *FileGUIService) readItemLocked(id string, draftText *string) (*ShopItem
 		text = *draftText
 	}
 	doc := &ShopDocument{}
-	item := &ShopItem{ID: id, FileIndex: ref.FileIndex, Path: a.Path(ref.FileIndex), Name: markedName(meta), Icon: imageReferenceFromPVF(meta.Icon), Costs: shopCosts(text, id, doc)}
+	item := &ShopItem{ID: id, FileIndex: ref.FileIndex, Path: a.Path(ref.FileIndex), Name: markedName(meta), Rarity: meta.RarityValue(), Icon: imageReferenceFromPVF(meta.Icon), Costs: shopCosts(text, id, doc)}
 	if len(doc.Issues) > 0 {
 		return nil, fmt.Errorf("物品成本格式异常，请先在文本模式修正：%s", doc.Issues[0].Message)
 	}

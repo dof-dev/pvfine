@@ -498,9 +498,9 @@ CREATE TABLE records(
 CREATE TABLE tags(file_index INTEGER NOT NULL, tag_id TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
  PRIMARY KEY(file_index, tag_id, category));
 CREATE TABLE visuals(file_index INTEGER PRIMARY KEY, icon_path TEXT NOT NULL, icon_index INTEGER NOT NULL,
- field_path TEXT NOT NULL, field_index INTEGER NOT NULL);
+ field_path TEXT NOT NULL, field_index INTEGER NOT NULL, rarity INTEGER NOT NULL DEFAULT -1);
 INSERT INTO dirs(path,parent,name,child_count) VALUES('','','',0);
-INSERT INTO meta(key,value) VALUES('schema','1'),('identity',?),('complete','0');
+INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0');
 `
 	tx, err := db.Begin()
 	if err != nil {
@@ -657,7 +657,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 		_ = recordStmt.Close()
 		return rollback(err)
 	}
-	visualStmt, err := tx.Prepare(`INSERT OR REPLACE INTO visuals(file_index,icon_path,icon_index,field_path,field_index) VALUES(?,?,?,?,?)`)
+	visualStmt, err := tx.Prepare(`INSERT OR REPLACE INTO visuals(file_index,icon_path,icon_index,field_path,field_index,rarity) VALUES(?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tagStmt.Close()
 		_ = recordStmt.Close()
@@ -767,7 +767,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 				fieldPath, fieldIndex = metadata.FieldImage.Path, metadata.FieldImage.Index
 			}
 			if _, written := visualsWritten[index]; !written {
-				if _, err := visualStmt.Exec(index, iconPath, iconIndex, fieldPath, fieldIndex); err != nil {
+				if _, err := visualStmt.Exec(index, iconPath, iconIndex, fieldPath, fieldIndex, metadata.RarityValue()); err != nil {
 					_ = visualStmt.Close()
 					_ = tagStmt.Close()
 					_ = recordStmt.Close()
@@ -904,7 +904,10 @@ func (i *sqliteArchiveIndex) suggest(prefix string, limit int) ([]string, error)
 func (i *sqliteArchiveIndex) tags(fileIndex int32) ([]TreeTag, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
-	rows, err := i.db.Query(`SELECT tag_id,name,category FROM tags WHERE file_index=? ORDER BY category,tag_id`, fileIndex)
+	// The rarity lives with the file's visuals; a file without a visuals row
+	// (an unregistered file) reports RarityUnknown.
+	rows, err := i.db.Query(`SELECT t.tag_id,t.name,t.category,COALESCE(v.rarity,?) FROM tags t
+LEFT JOIN visuals v ON v.file_index=t.file_index WHERE t.file_index=? ORDER BY t.category,t.tag_id`, pvf.RarityUnknown, fileIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +915,7 @@ func (i *sqliteArchiveIndex) tags(fileIndex int32) ([]TreeTag, error) {
 	result := make([]TreeTag, 0)
 	for rows.Next() {
 		var tag TreeTag
-		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Category); err != nil {
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Category, &tag.Rarity); err != nil {
 			return nil, err
 		}
 		result = append(result, tag)
@@ -924,11 +927,11 @@ func (i *sqliteArchiveIndex) visuals(fileIndex int32) fileVisuals {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	var iconPath, fieldPath string
-	var iconIndex, fieldIndex int32
-	if err := i.db.QueryRow(`SELECT icon_path,icon_index,field_path,field_index FROM visuals WHERE file_index=?`, fileIndex).Scan(&iconPath, &iconIndex, &fieldPath, &fieldIndex); err != nil {
-		return fileVisuals{}
+	var iconIndex, fieldIndex, rarity int32
+	if err := i.db.QueryRow(`SELECT icon_path,icon_index,field_path,field_index,rarity FROM visuals WHERE file_index=?`, fileIndex).Scan(&iconPath, &iconIndex, &fieldPath, &fieldIndex, &rarity); err != nil {
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
-	var result fileVisuals
+	result := fileVisuals{rarity: rarity}
 	if iconPath != "" && iconIndex >= 0 {
 		result.icon = &ImageReference{Path: iconPath, Index: iconIndex}
 	}
