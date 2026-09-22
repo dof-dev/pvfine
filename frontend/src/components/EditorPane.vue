@@ -571,10 +571,6 @@ function sizeText(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function isOpeningTab(index: number): boolean {
-  return editor.openingPaneId === paneId && pane.value?.activeKey === index;
-}
-
 function onDragStart(event: DragEvent, index: number): void {
   draggingIndex.value = index;
   editor.beginTabDrag(paneId, index);
@@ -707,7 +703,8 @@ function onDrop(event: DragEvent): void {
             @mousedown="onTabMouseDown($event, tab.index)"
             @contextmenu.stop="onTabContextMenu($event, tab.index)"
           >
-            <ImageThumbnail v-if="tab.icon" :reference="tab.icon" :size="16" />
+            <NSpin v-if="tab.loading" :size="12" />
+            <ImageThumbnail v-else-if="tab.icon" :reference="tab.icon" :size="16" />
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
             <span class="tab-title">{{ tab.title }}</span>
             <NTooltip>
@@ -883,10 +880,17 @@ function onDrop(event: DragEvent): void {
         </div>
 
         <div class="pane-body">
-          <div v-if="!tab.editable" class="readonly-hint">
+          <div v-if="!tab.loading && !tab.loadError && !tab.editable" class="readonly-hint">
             该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
           </div>
-          <NSpin v-if="isOpeningTab(tab.index)" style="margin-top: 120px" />
+          <div v-if="tab.loading" class="file-load-state" role="status" aria-live="polite">
+            <NSpin :size="28" />
+            <span>正在读取文件并加载标注…</span>
+          </div>
+          <div v-else-if="tab.loadError" class="file-load-state" role="alert">
+            <span>文件加载失败：{{ tab.loadError }}</span>
+            <NButton size="small" @click="editor.retryOpenFile(tab.index)">重试</NButton>
+          </div>
           <CodeEditor
             v-else
             :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
@@ -901,7 +905,7 @@ function onDrop(event: DragEvent): void {
             @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
           />
           <PreviewHost
-            v-if="previewProviderFor(tab)"
+            v-if="!tab.loading && !tab.loadError && previewProviderFor(tab)"
             :file="previewFile(tab)"
             :active="editor.activePaneId === paneId && activeTab?.index === tab.index"
             :open="isPreviewOpen(tab.index)"
@@ -1281,6 +1285,15 @@ function onDrop(event: DragEvent): void {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.file-load-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--pvf-text-muted);
 }
 .readonly-hint {
   padding: 6px 12px;

@@ -210,6 +210,14 @@ export const useExplorerStore = defineStore("explorer", () => {
     revealRequest.value = null;
   }
 
+  /** 已加载目录/搜索结果中的文件名，用于内容返回前的标签占位。 */
+  function getFilePath(index: number): string | undefined {
+    for (const item of itemsByKey.values()) {
+      if (!item.isDir && item.fileIndex === index) return item.key;
+    }
+    return hits.value.find((item) => item.fileIndex === index)?.path;
+  }
+
   function getItem(path: string): TreeItem | undefined {
     return itemsByKey.get(path);
   }
@@ -370,6 +378,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     toTreeItem,
     toSearchItem,
     getItem,
+    getFilePath,
     loadRoots,
     reload,
     loadChildren,

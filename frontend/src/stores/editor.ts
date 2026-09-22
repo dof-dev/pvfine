@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, reactive, ref } from "vue";
+import { computed, markRaw, nextTick, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
@@ -24,6 +24,8 @@ export interface EditorTab {
   annotations: EditorAnnotation[];
   icon: ImageReference | null;
   fieldImage: ImageReference | null;
+  loading: boolean;
+  loadError: string | null;
 }
 
 export interface EditorPaneState {
@@ -79,7 +81,11 @@ export const useEditorStore = defineStore("editor", () => {
   const layout = ref<EditorLayoutNode>({ kind: "pane", paneId: initialPaneId });
   const activePaneId = ref<EditorPaneId>(initialPaneId);
   const draggingTab = ref<DraggedEditorTab | null>(null);
-  const openingPaneId = ref<EditorPaneId | null>(null);
+  const openingPaneId = computed<EditorPaneId | null>(() =>
+    Object.values(paneStates).find((pane) =>
+      tabs.value.some((tab) => tab.loading && pane.activeKey === tab.index)
+    )?.id ?? null
+  );
   const saving = ref(false);
   const script = useScriptStore();
   let paneSequence = 1;
@@ -170,17 +176,44 @@ export const useEditorStore = defineStore("editor", () => {
       return;
     }
 
-    openingPaneId.value = targetPaneId;
+    // 先占用标签名额并显示加载态；重复打开复用同一请求。
+    if (tabs.value.length >= 20) {
+      throw new Error("打开的标签过多,请先关闭一些(上限 20)");
+    }
+    const knownPath = useExplorerStore().getFilePath(index) ?? "";
+    const tab = reactive<EditorTab>({
+      index,
+      path: knownPath,
+      title: knownPath.split("/").pop() || `文件 ${index}`,
+      dataType: 0,
+      size: 0,
+      tags: [],
+      editable: false,
+      original: "",
+      text: "",
+      modified: false,
+      annotations: [],
+      icon: null,
+      fieldImage: null,
+      loading: true,
+      loadError: null,
+    });
+    tabs.value.push(tab);
+    script.showArchiveEditor();
+    addTabToPane(targetPaneId, index);
+    await loadTab(tab);
+  }
+
+  async function loadTab(tab: EditorTab): Promise<void> {
     try {
-      const meta: FileMeta | null = await EditorService.GetFile(index);
-      if (!meta) return;
-      // 标签上限,防误开大量文件；同一文件在多个窗格中的引用不重复计数。
-      if (tabs.value.length >= 20) {
-        throw new Error("打开的标签过多,请先关闭一些(上限 20)");
-      }
-      script.showArchiveEditor();
-      tabs.value.push({
-        index,
+      // 让 Vue 先提交加载态，再开始后端调用。
+      await nextTick();
+      if (!tabs.value.includes(tab)) return;
+      const meta: FileMeta | null = await EditorService.GetFile(tab.index);
+      // 关闭、重新打开或切换归档后，旧请求不能写入新标签。
+      if (!tabs.value.includes(tab)) return;
+      if (!meta) throw new Error("文件不存在或无法读取");
+      Object.assign(tab, {
         path: meta.path,
         title: meta.path.split("/").pop() ?? meta.path,
         dataType: meta.dataType,
@@ -190,16 +223,25 @@ export const useEditorStore = defineStore("editor", () => {
         original: meta.text,
         text: meta.text,
         modified: meta.modified,
-        annotations: (meta.annotations ?? []).filter(
-          (annotation): annotation is EditorAnnotation => !!annotation
-        ),
+        annotations: cleanEditorAnnotations(meta.annotations),
         icon: meta.icon ?? null,
         fieldImage: meta.fieldImage ?? null,
       });
-      addTabToPane(targetPaneId, index);
+    } catch (error) {
+      if (tabs.value.includes(tab)) {
+        tab.loadError = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      if (openingPaneId.value === targetPaneId) openingPaneId.value = null;
+      tab.loading = false;
     }
+  }
+
+  async function retryOpenFile(index: number): Promise<void> {
+    const tab = tabs.value.find((item) => item.index === index);
+    if (!tab || tab.loading || !tab.loadError) return;
+    tab.loading = true;
+    tab.loadError = null;
+    await loadTab(tab);
   }
 
   function closeTab(index: number, requestedPaneId: EditorPaneId = activePaneId.value): void {
@@ -452,7 +494,6 @@ export const useEditorStore = defineStore("editor", () => {
     mergePaneTabs(currentPaneId, destinationPaneId);
     layout.value = result.node;
     delete paneStates[currentPaneId];
-    if (openingPaneId.value === currentPaneId) openingPaneId.value = null;
     activePaneId.value = destinationPaneId;
   }
 
@@ -491,9 +532,7 @@ export const useEditorStore = defineStore("editor", () => {
     // 等待期间用户继续输入时保留其草稿,下一次保存再写入。
     if (current.text === text) {
       current.original = text;
-      current.annotations = annotations.filter(
-        (annotation): annotation is EditorAnnotation => !!annotation
-      );
+      current.annotations = cleanEditorAnnotations(annotations);
     }
     await useExplorerStore().refreshTreeTags();
     return true;
@@ -539,9 +578,7 @@ export const useEditorStore = defineStore("editor", () => {
     const annotations = (await EditorService.GetAnnotations(index)) ?? [];
     const current = tabs.value.find((item) => item.index === index);
     if (current) {
-      current.annotations = annotations.filter(
-        (annotation): annotation is EditorAnnotation => !!annotation
-      );
+      current.annotations = cleanEditorAnnotations(annotations);
       current.modified = true;
     }
     await useExplorerStore().refreshTreeTags();
@@ -645,14 +682,12 @@ export const useEditorStore = defineStore("editor", () => {
 
   async function refreshAnnotations() {
     await Promise.all(
-      tabs.value.map(async (tab) => {
+      tabs.value.filter((tab) => !tab.loading && !tab.loadError).map(async (tab) => {
         const text = tab.text;
         const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
         const current = tabs.value.find((item) => item.index === tab.index);
         if (!current || current.text !== text) return;
-        current.annotations = annotations.filter(
-          (annotation): annotation is EditorAnnotation => !!annotation
-        );
+        current.annotations = cleanEditorAnnotations(annotations);
       })
     );
   }
@@ -660,7 +695,7 @@ export const useEditorStore = defineStore("editor", () => {
   /** 重新读取当前 renderer 生成的文本,但保留已修改标签的脏基线。 */
   async function refreshRenderedText() {
     await Promise.all(
-      tabs.value.map(async (tab) => {
+      tabs.value.filter((tab) => !tab.loading && !tab.loadError).map(async (tab) => {
         const meta = await EditorService.GetFile(tab.index);
         const current = tabs.value.find((item) => item.index === tab.index);
         if (!current || !meta) return;
@@ -678,9 +713,7 @@ export const useEditorStore = defineStore("editor", () => {
           current.text = meta.text;
           if (!meta.modified) current.original = meta.text;
         }
-        current.annotations = (meta.annotations ?? []).filter(
-          (annotation): annotation is EditorAnnotation => !!annotation
-        );
+        current.annotations = cleanEditorAnnotations(meta.annotations);
       })
     );
   }
@@ -697,9 +730,7 @@ export const useEditorStore = defineStore("editor", () => {
         current.path = meta.path;
         current.modified = meta.modified;
         current.tags = cleanTreeTags(meta.tags);
-        current.annotations = (meta.annotations ?? []).filter(
-          (annotation): annotation is EditorAnnotation => !!annotation
-        );
+        current.annotations = cleanEditorAnnotations(meta.annotations);
         current.icon = meta.icon ?? null;
         current.fieldImage = meta.fieldImage ?? null;
         // 本地有未保存编辑时保留编辑器内容,让保存动作以用户文本为准。
@@ -780,9 +811,7 @@ export const useEditorStore = defineStore("editor", () => {
             // 本地有未保存编辑时保留编辑器内容,不被后端结果覆盖。
             if (!isDirty(tab)) tab.text = meta.text;
           }
-          tab.annotations = (meta.annotations ?? []).filter(
-            (annotation): annotation is EditorAnnotation => !!annotation
-          );
+          tab.annotations = cleanEditorAnnotations(meta.annotations);
         })
     );
     while (isSplit.value) {
@@ -793,7 +822,7 @@ export const useEditorStore = defineStore("editor", () => {
   }
 
   async function refreshOpenTabTags(): Promise<void> {
-    const currentTabs = [...tabs.value];
+    const currentTabs = tabs.value.filter((tab) => !tab.loading && !tab.loadError);
     await Promise.all(
       currentTabs.map(async (tab) => {
         const meta = await EditorService.GetFile(tab.index).catch(() => null);
@@ -802,9 +831,7 @@ export const useEditorStore = defineStore("editor", () => {
         current.tags = cleanTreeTags(meta.tags);
         current.icon = meta.icon ?? null;
         current.fieldImage = meta.fieldImage ?? null;
-        current.annotations = (meta.annotations ?? []).filter(
-          (annotation): annotation is EditorAnnotation => !!annotation
-        );
+        current.annotations = cleanEditorAnnotations(meta.annotations);
       })
     );
   }
@@ -851,11 +878,12 @@ export const useEditorStore = defineStore("editor", () => {
     activePaneId,
     draggingTab,
     isSplit,
-    opening: computed(() => openingPaneId.value !== null),
+    opening: computed(() => tabs.value.some((tab) => tab.loading)),
     openingPaneId,
     saving,
     pendingClose,
     openFile,
+    retryOpenFile,
     activatePane,
     beginTabDrag,
     endTabDrag,
@@ -889,4 +917,9 @@ export const useEditorStore = defineStore("editor", () => {
 
 function cleanTreeTags(tags: (TreeTag | null)[] | null | undefined): TreeTag[] {
   return (tags ?? []).filter((tag): tag is TreeTag => !!tag);
+}
+
+/** 标注作为不可变快照使用，避免 Vue 为大文件建立深层代理。 */
+function cleanEditorAnnotations(annotations: (EditorAnnotation | null)[] | null | undefined): EditorAnnotation[] {
+  return markRaw((annotations ?? []).filter((annotation): annotation is EditorAnnotation => !!annotation));
 }

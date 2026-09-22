@@ -21,6 +21,7 @@ import {
   StateEffect,
   StateField,
   type Range,
+  type RangeSet,
 } from "@codemirror/state";
 import {
   HighlightStyle,
@@ -40,6 +41,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
+import { indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
@@ -75,17 +77,20 @@ export interface PlaceholderEditRequest {
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
+// 记录最近一次同步文本，避免父组件回传相同值时再次序列化全文。
+let syncedDoc = props.doc;
 const readOnlyComp = new Compartment();
 const vimComp = new Compartment();
 const editorThemeComp = new Compartment();
 const images = useImageStore();
 
 interface AnnotationDisplay {
-  annotations: EditorAnnotation[];
+  annotations: RangeSet<AnnotationRange>;
   placement: AnnotationTagPlacement;
 }
 
-const setAnnotations = StateEffect.define<AnnotationDisplay>();
+const setAnnotations = StateEffect.define<EditorAnnotation[]>();
+const setAnnotationPlacement = StateEffect.define<AnnotationTagPlacement>();
 const setDiagnosticLine = StateEffect.define<number | null>();
 
 const javascriptHighlighting = syntaxHighlighting(
@@ -374,13 +379,14 @@ function annotationDecorations(
   state: EditorState,
   display: AnnotationDisplay
 ): DecorationSet {
-  const ranges = display.annotations.flatMap((annotation) => {
-    const targetStart = Math.max(0, Math.min(state.doc.length, annotation.start));
-    const targetEnd = Math.max(targetStart, Math.min(state.doc.length, annotation.end));
-    const result: Range<Decoration>[] = [];
+  const ranges: Range<Decoration>[] = [];
+  for (const cursor = display.annotations.iter(); cursor.value; cursor.next()) {
+    const annotation = cursor.value.annotation;
+    const targetStart = cursor.from;
+    const targetEnd = cursor.to;
 
     if (annotation.targetFileIndex >= 0 && targetStart < targetEnd) {
-      result.push(
+      ranges.push(
         Decoration.mark({ class: "cm-annotation-link" }).range(targetStart, targetEnd)
       );
     }
@@ -388,7 +394,7 @@ function annotationDecorations(
     if (display.placement !== "hidden" && annotation.title.trim() !== "") {
       const position =
         display.placement === "line-end" ? state.doc.lineAt(targetEnd).to : targetEnd;
-      result.push(
+      ranges.push(
         Decoration.widget({
           widget: new AnnotationWidget(
             annotation,
@@ -401,15 +407,14 @@ function annotationDecorations(
         }).range(position)
       );
     }
-    return result;
-  }).sort((a, b) => a.from - b.from);
+  }
   return Decoration.set(ranges, true);
 }
 
 const annotationDisplayField = StateField.define<AnnotationDisplay>({
-  create() {
+  create(state) {
     return {
-      annotations: props.annotations ?? [],
+      annotations: indexAnnotations(props.annotations ?? [], state.doc.length),
       placement: props.tagPlacement ?? "after-target",
     };
   },
@@ -418,15 +423,14 @@ const annotationDisplayField = StateField.define<AnnotationDisplay>({
     if (transaction.docChanged) {
       next = {
         ...next,
-        annotations: next.annotations.map((annotation) => ({
-          ...annotation,
-          start: transaction.changes.mapPos(annotation.start, 1),
-          end: transaction.changes.mapPos(annotation.end, -1),
-        })),
+        annotations: next.annotations.map(transaction.changes),
       };
     }
     for (const effect of transaction.effects) {
-      if (effect.is(setAnnotations)) next = effect.value;
+      if (effect.is(setAnnotations)) {
+        next = { ...next, annotations: indexAnnotations(effect.value, transaction.state.doc.length) };
+      }
+      if (effect.is(setAnnotationPlacement)) next = { ...next, placement: effect.value };
     }
     return next;
   },
@@ -439,8 +443,8 @@ const annotationField = StateField.define<DecorationSet>({
   update(decorations, transaction) {
     let next = decorations.map(transaction.changes);
     for (const effect of transaction.effects) {
-      if (effect.is(setAnnotations)) {
-        next = annotationDecorations(transaction.state, effect.value);
+      if (effect.is(setAnnotations) || effect.is(setAnnotationPlacement)) {
+        return annotationDecorations(transaction.state, transaction.state.field(annotationDisplayField));
       }
     }
     return next;
@@ -525,10 +529,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
         });
         if (position === null) return false;
         const display = currentView.state.field(annotationDisplayField, false);
-        const annotation = display?.annotations.find(
-          (item) =>
-            item.targetFileIndex >= 0 && item.start <= position && position < item.end
-        );
+        const annotation = display && referenceAt(display.annotations, position);
         if (!annotation) return false;
         mouseEvent.preventDefault();
         mouseEvent.stopPropagation();
@@ -552,7 +553,10 @@ function makeExtensions(themeId: ResolvedThemeId) {
     editorThemeComp.of(createEditorTheme(themeId)),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) emit("change", u.state.doc.toString());
+      if (u.docChanged) {
+        syncedDoc = u.state.doc.toString();
+        emit("change", syncedDoc);
+      }
     }),
   ];
 }
@@ -655,27 +659,24 @@ watch(
   () => props.doc,
   (doc) => {
     if (!view) return;
-    const current = view.state.doc.toString();
-    if (doc !== current) {
+    if (doc !== syncedDoc) {
+      syncedDoc = doc;
       view.dispatch({
-        changes: { from: 0, to: current.length, insert: doc },
+        changes: { from: 0, to: view.state.doc.length, insert: doc },
         effects: setDiagnosticLine.of(null),
       });
     }
   }
 );
 
+// 标注整体替换时才重建，禁止深度 watch 大数组。位置显示切换沿用已映射的范围。
 watch(
-  () => [props.annotations, props.tagPlacement] as const,
-  ([annotations, placement]) => {
-    view?.dispatch({
-      effects: setAnnotations.of({
-        annotations: annotations ?? [],
-        placement: placement ?? "after-target",
-      }),
-    });
-  },
-  { deep: true }
+  () => props.annotations,
+  (annotations) => view?.dispatch({ effects: setAnnotations.of(annotations ?? []) })
+);
+watch(
+  () => props.tagPlacement,
+  (placement) => view?.dispatch({ effects: setAnnotationPlacement.of(placement ?? "after-target") })
 );
 
 watch(

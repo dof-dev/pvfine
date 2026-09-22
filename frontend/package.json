@@ -7,7 +7,8 @@
     "dev": "vite",
     "build:dev": "vue-tsc && vite build --minify false --mode development",
     "build": "vue-tsc && vite build --mode production",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -30,6 +31,7 @@
     "@vitejs/plugin-vue": "^6.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.5",
+    "vitest": "^5.0.1",
     "vue-tsc": "^3.3.11"
   }
 }
