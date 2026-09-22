@@ -96,12 +96,40 @@ export interface AppSettings {
     "backupSourceOnSave": boolean;
     "npkDirectory": string;
     "theme": string;
+
+    /**
+     * AutosaveEnabled turns the timed workspace snapshot on. It is off by
+     * default: the snapshot rewrites a whole PVF, so the user opts in.
+     */
+    "autosaveEnabled": boolean;
+
+    /**
+     * AutosavePath is the single-slot snapshot file. Empty means the platform
+     * cache directory resolved by DefaultAutosavePath.
+     */
+    "autosavePath": string;
+    "autosaveIntervalSeconds": number;
 }
 
 /**
  * ArchiveInfo 是前端可观察的归档状态快照。
  */
 export type ArchiveInfo = pvf$0.ArchiveInfoView;
+
+/**
+ * AutosaveStatus is the UI-facing state of the backup slot.
+ */
+export interface AutosaveStatus {
+    "enabled": boolean;
+    "path": string;
+    "defaultPath": string;
+    "exists": boolean;
+    "cachedAt": number;
+    "sourcePath": string;
+    "sizeBytes": number;
+    "running": boolean;
+    "lastError": string;
+}
 
 export interface BatchApplyResult {
     "appliedFiles": number;
@@ -499,6 +527,19 @@ export interface PreviewIssue {
     "line": number;
     "section"?: string;
     "message": string;
+}
+
+/**
+ * RecoveryInfo describes a backup that can be restored on startup.
+ */
+export interface RecoveryInfo {
+    "sourcePath": string;
+    "sourceName": string;
+    "cachedAt": number;
+    "sizeBytes": number;
+    "pendingFiles": number;
+    "sourceExists": boolean;
+    "sourceChanged": boolean;
 }
 
 /**

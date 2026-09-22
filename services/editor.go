@@ -170,9 +170,15 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 		return ArchiveInfo{}, err
 	}
 	info := a.Info()
+	sourcePath := a.SourcePath()
 	s.c.mu.Unlock()
 	s.c.persistCurrentSQLiteIndexAsync()
 	s.c.persistCurrentSearchIndexCacheAsync()
+	if s.c.autosave != nil {
+		// The workspace is on disk now, so the backup slot has nothing left to
+		// protect. A cache belonging to another archive is kept.
+		s.c.autosave.DropForSource(sourcePath)
+	}
 	emitEvent("archive:saved", info)
 	return info, nil
 }
@@ -267,6 +273,7 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 		s.c.mu.Unlock()
 		return "", err
 	}
+	sourcePath := a.SourcePath()
 	if err := a.SaveAs(path); err != nil {
 		s.c.mu.Unlock()
 		return "", err
@@ -275,6 +282,9 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	s.c.mu.Unlock()
 	s.c.persistCurrentSQLiteIndexAsync()
 	s.c.persistCurrentSearchIndexCacheAsync()
+	if s.c.autosave != nil {
+		s.c.autosave.DropForSource(sourcePath)
+	}
 	emitEvent("archive:saved", info)
 	return path, nil
 }

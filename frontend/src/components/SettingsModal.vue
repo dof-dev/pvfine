@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, h, ref, watch } from "vue";
 import {
   ArrowSync24Regular,
   CheckmarkCircle24Regular,
@@ -24,6 +24,7 @@ import {
   NAlert,
   NButton,
   NIcon,
+  NInputNumber,
   NModal,
   NRadioButton,
   NRadioGroup,
@@ -31,15 +32,20 @@ import {
   NSwitch,
   NTag,
   NTooltip,
+  useDialog,
   useMessage,
 } from "naive-ui";
 import { AnnotationService, RenderingService, UpdateService } from "../../bindings/pvfine/services";
 import {
+  maxAutosaveIntervalMinutes,
+  minAutosaveIntervalMinutes,
   useSettingsStore,
   type AnnotationTagPlacement,
   type ExplorerOpenMode,
   type ThemeMode,
 } from "../stores/settings";
+import { useAutosaveStore } from "../stores/autosave";
+import { setDialogBusy } from "../dialogBusy";
 import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
 import { useImageStore } from "../stores/images";
@@ -47,9 +53,11 @@ import { useImageStore } from "../stores/images";
 type TabKey = "general" | "editor" | "npk" | "system";
 
 const settings = useSettingsStore();
+const autosave = useAutosaveStore();
 const editor = useEditorStore();
 const explorer = useExplorerStore();
 const images = useImageStore();
+const dialog = useDialog();
 const message = useMessage();
 
 const activeTab = computed<TabKey>({
@@ -63,6 +71,32 @@ const reloadingAnnotations = ref(false);
 const reloadingRendering = ref(false);
 const selectingNPK = ref(false);
 const rebuildingNPK = ref(false);
+const selectingAutosavePath = ref(false);
+
+const autosaveIntervalMinutes = computed(() =>
+  Math.max(
+    minAutosaveIntervalMinutes,
+    Math.round(settings.autosaveIntervalSeconds / 60)
+  )
+);
+const autosavePathLabel = computed(
+  () => settings.autosavePath || autosave.status?.path || autosave.status?.defaultPath || ""
+);
+const autosaveStatusLabel = computed(() => {
+  if (autosave.running) return "正在写入备份缓存…";
+  if (autosave.lastError) return `上次缓存失败：${autosave.lastError}`;
+  const status = autosave.status;
+  if (!status?.exists) return "尚未生成备份缓存";
+  const time = status.cachedAt ? new Date(status.cachedAt * 1000).toLocaleString() : "未知时间";
+  return `上次缓存：${time} · ${formatBytes(status.sizeBytes)}`;
+});
+
+watch(
+  () => settings.visible,
+  (visible) => {
+    if (visible) void autosave.refreshStatus();
+  }
+);
 
 const tabs = [
   { id: "general" as const, label: "常规与外观", icon: PaintBrush24Regular },
@@ -114,6 +148,100 @@ async function onThemeModeChange(value: ThemeMode) {
     await settings.saveThemeMode(value);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onAutosaveEnabledChange(value: boolean) {
+  try {
+    await settings.saveAutosaveEnabled(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onAutosaveIntervalChange(value: number | null) {
+  const minutes = Number(value ?? 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+  const clamped = Math.min(
+    maxAutosaveIntervalMinutes,
+    Math.max(minAutosaveIntervalMinutes, Math.round(minutes))
+  );
+  try {
+    await settings.saveAutosaveInterval(clamped * 60);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onSelectAutosavePath(): Promise<void> {
+  if (selectingAutosavePath.value) return;
+  selectingAutosavePath.value = true;
+  try {
+    const path = await autosave.chooseCachePath();
+    if (path) await settings.saveAutosavePath(path);
+  } catch (error: any) {
+    message.error(`选择缓存文件失败: ${error?.message ?? error}`);
+  } finally {
+    selectingAutosavePath.value = false;
+  }
+}
+
+async function onResetAutosavePath(): Promise<void> {
+  try {
+    await settings.saveAutosavePath("");
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+/** 手动恢复:启动提示被关掉后仍能再次恢复,恢复本身由后端校验当前工作区。 */
+async function onRestoreAutosave(): Promise<void> {
+  const instance = dialog.warning({
+    title: "恢复备份缓存",
+    content: () =>
+      h("div", { class: "recovery-prompt" }, [
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          `将重新打开原文件并重放备份里的未保存修改：${autosave.status?.sourcePath || "未知来源"}`
+        ),
+        h(
+          "div",
+          {
+            class: autosave.restoring
+              ? "recovery-prompt-line recovery-prompt-line--busy"
+              : "recovery-prompt-line",
+          },
+          autosave.restoring
+            ? "正在恢复：归档较大时需要一些时间，请勿关闭窗口。"
+            : "当前工作区存在未保存修改时会被拒绝。"
+        ),
+      ]),
+    positiveText: "恢复",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      if (autosave.restoring) return false;
+      setDialogBusy(instance, true, "恢复", "正在恢复…");
+      try {
+        await autosave.restore();
+        message.success("已恢复备份，工作区仍未保存，请确认后保存");
+        instance.destroy();
+      } catch (error: any) {
+        message.error(`恢复备份失败：${error?.message ?? error}`);
+        setDialogBusy(instance, false, "恢复");
+      }
+      return false;
+    },
+  });
+}
+
+async function onDiscardAutosave(): Promise<void> {
+  try {
+    const removed = await autosave.discard();
+    if (removed) message.success("已删除备份缓存");
+    else message.info("没有可删除的备份缓存");
+  } catch (error: any) {
+    message.error(`删除备份缓存失败: ${error?.message ?? error}`);
   }
 }
 
@@ -193,6 +321,14 @@ async function copyNPKDirectory(): Promise<void> {
   } catch {
     message.warning("复制路径失败，请手动选择复制");
   }
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 </script>
 
@@ -400,6 +536,119 @@ async function copyNPKDirectory(): Promise<void> {
                     :value="settings.backupSourceOnSave"
                     @update:value="onBackupSourceOnSaveChange"
                   />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 定时缓存 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">定时缓存</div>
+              <div class="group-subtitle">
+                按固定间隔把当前工作区（含未保存修改）另存到一份缓存 PVF，用于崩溃或进程被强制结束后的恢复
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">启用定时缓存</div>
+                  <div class="setting-item-desc">
+                    缓存不会改变工作区的“未保存”状态，也不会写入原文件；手动保存成功或退出时放弃修改后自动删除
+                  </div>
+                </div>
+                <div class="setting-item-control">
+                  <NSwitch
+                    :value="settings.autosaveEnabled"
+                    @update:value="onAutosaveEnabledChange"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存文件</div>
+                  <div class="setting-item-desc setting-item-desc--path">
+                    {{ autosavePathLabel || "系统缓存目录" }}
+                  </div>
+                  <div v-if="settings.autosavePath && autosave.status?.defaultPath" class="setting-item-desc">
+                    留空即使用系统缓存目录：{{ autosave.status.defaultPath }}
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton size="small" :loading="selectingAutosavePath" @click="onSelectAutosavePath">
+                    更改…
+                  </NButton>
+                  <NButton
+                    v-if="settings.autosavePath"
+                    size="small"
+                    quaternary
+                    @click="onResetAutosavePath"
+                  >
+                    用默认
+                  </NButton>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><ArrowSync24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存间隔</div>
+                  <div class="setting-item-desc">仅在工作区存在未保存修改时写入，间隔越短写入越频繁</div>
+                </div>
+                <div class="setting-item-control">
+                  <NInputNumber
+                    :value="autosaveIntervalMinutes"
+                    size="small"
+                    :min="minAutosaveIntervalMinutes"
+                    :max="maxAutosaveIntervalMinutes"
+                    :step="1"
+                    style="width: 130px"
+                    @update:value="onAutosaveIntervalChange"
+                  >
+                    <template #suffix>分钟</template>
+                  </NInputNumber>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><Info24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存状态</div>
+                  <div class="setting-item-desc">{{ autosaveStatusLabel }}</div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton
+                    size="small"
+                    :disabled="!autosave.status?.exists"
+                    @click="onRestoreAutosave"
+                  >
+                    恢复备份
+                  </NButton>
+                  <NButton
+                    size="small"
+                    :disabled="!autosave.status?.exists"
+                    @click="onDiscardAutosave"
+                  >
+                    删除备份
+                  </NButton>
                 </div>
               </div>
             </div>
@@ -948,6 +1197,15 @@ async function copyNPKDirectory(): Promise<void> {
 }
 .setting-item-control {
   flex: 0 0 auto;
+}
+.setting-item-control--actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setting-item-desc--path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
 }
 
 /* 主题选择网格 */

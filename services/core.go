@@ -135,6 +135,16 @@ type core struct {
 	binaryCache          map[binarySearchKey][]advancedFileMatch
 	unpackCancel         atomic.Bool
 	unpackRunning        atomic.Bool
+	// autosave mirrors unsaved edits into a backup cache. It is attached once
+	// during startup (nil in tests) so save/close handlers can drop a backup
+	// that no longer protects anything.
+	autosave *AutosaveService
+}
+
+// attachAutosave wires the backup service into the shared core. It is called
+// before the application starts serving requests.
+func (c *core) attachAutosave(service *AutosaveService) {
+	c.autosave = service
 }
 
 type editorAnnotationCache struct {

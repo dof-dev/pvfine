@@ -1633,6 +1633,15 @@ func setVersionContent(archive *pvf.Archive, index int32, content pvfversion.Con
 }
 
 func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.ContentSnapshot) error {
+	return applyContentPathsLocked(c, paths, desired, true)
+}
+
+// applyContentPathsLocked materializes desired onto the live archive. When
+// compareWorking is set, entries the version working snapshot already matches
+// are skipped (undo/checkout). Backup recovery passes false: there the backup is
+// authoritative for every recovered path, so a payload can never be dropped
+// because some other snapshot happens to agree with it.
+func applyContentPathsLocked(c *core, paths []string, desired pvfversion.ContentSnapshot, compareWorking bool) error {
 	// Undo is a live archive mutation even when the file table does not change.
 	// Advance the shared revision before touching payloads so any script
 	// preview or running transaction is rejected/cancelled consistently.
@@ -1667,8 +1676,10 @@ func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.
 			structural = true
 			continue
 		}
-		if current, ok := c.versionWorking[key]; ok && sameVersionEntry(current, content.Entry) {
-			continue
+		if compareWorking {
+			if current, ok := c.versionWorking[key]; ok && sameVersionEntry(current, content.Entry) {
+				continue
+			}
 		}
 		if err := setVersionContent(c.archive, index, content); err != nil {
 			return err

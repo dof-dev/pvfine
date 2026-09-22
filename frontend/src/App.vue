@@ -20,7 +20,9 @@ import DropRateEditorModal from "./components/DropRateEditorModal.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import CloseGuard from "./components/CloseGuard.vue";
 import EditorCloseGuard from "./components/EditorCloseGuard.vue";
+import RecoveryPrompt from "./components/RecoveryPrompt.vue";
 import { useArchiveStore } from "./stores/archive";
+import { useAutosaveStore } from "./stores/autosave";
 import { useEditorStore } from "./stores/editor";
 import { useFileSetStore } from "./stores/fileSets";
 import { useBookmarkStore } from "./stores/bookmarks";
@@ -36,6 +38,7 @@ import {
 } from "./theme";
 
 const archive = useArchiveStore();
+const autosave = useAutosaveStore();
 const editor = useEditorStore();
 const fileSets = useFileSetStore();
 const bookmarks = useBookmarkStore();
@@ -81,6 +84,9 @@ function onResizeEnd() {
 onMounted(() => {
   void (async () => {
     await settings.load();
+    // 定时缓存依赖已加载的设置(开关/间隔/缓存路径),恢复提示也必须先于任何
+    // 归档加载,否则会覆盖用户刚打开的工作区。
+    await autosave.initialize();
     await images.initialize();
   })();
   void fileSets.load();
@@ -153,6 +159,7 @@ async function onKeydown(e: KeyboardEvent) {
       <NDialogProvider>
         <CloseGuard />
         <EditorCloseGuard />
+        <RecoveryPrompt />
         <div class="app-root" data-file-drop-target :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />

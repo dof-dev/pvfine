@@ -3,6 +3,7 @@
 
 import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
+import * as AutosaveService from "./autosaveservice.js";
 import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
 import * as DropService from "./dropservice.js";
@@ -20,6 +21,7 @@ import * as VersionService from "./versionservice.js";
 export {
     AnnotationService,
     ArchiveService,
+    AutosaveService,
     BatchService,
     BookmarkService,
     DropService,
@@ -47,6 +49,7 @@ export type {
     AnnotationReloadResult,
     AppSettings,
     ArchiveInfo,
+    AutosaveStatus,
     BatchApplyResult,
     BatchDiffLine,
     BatchFilePreview,
@@ -82,6 +85,7 @@ export type {
     ListRegistrationTarget,
     PlaceholderRef,
     PreviewIssue,
+    RecoveryInfo,
     RenderingReloadResult,
     ScriptApplyResult,
     ScriptCompileResult,

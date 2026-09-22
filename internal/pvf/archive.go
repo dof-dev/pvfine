@@ -159,6 +159,29 @@ func (a *Archive) ClearMutations() {
 	}
 }
 
+// PendingEdits lists the entries that currently differ from the packed
+// baseline: replacement payloads held in the overlay and entries added since
+// the archive was parsed. Removed entries cannot be reported because their
+// paths are gone from the file table. Callers must not mutate the archive
+// while iterating; the returned slice is detached.
+func (a *Archive) PendingEdits() []FileMutation {
+	if a == nil {
+		return nil
+	}
+	result := make([]FileMutation, 0, len(a.overlay))
+	for i := range a.items {
+		index := int32(i)
+		if a.items[i].chunk < 0 {
+			result = append(result, FileMutation{Index: index, Path: a.Path(index), Kind: MutationAdded})
+			continue
+		}
+		if _, ok := a.overlay[index]; ok {
+			result = append(result, FileMutation{Index: index, Path: a.Path(index), Kind: MutationModified})
+		}
+	}
+	return result
+}
+
 func (a *Archive) recordMutation(index int32, path string, kind MutationKind) {
 	if a == nil || path == "" {
 		return
@@ -178,11 +201,23 @@ const defaultResolveCacheLimit = int64(16 << 20)
 // their per-page keys in sibling "sk.dat" / "DFO.exe" files, so the directory
 // of path is passed to the parser for sidecar lookup.
 func Open(path string) (*Archive, error) {
+	return OpenWithSidecars(path, "")
+}
+
+// OpenWithSidecars reads and parses the archive at path while resolving
+// container key sidecars from sidecarDir instead of the file's own directory.
+// Backups of Paged110 archives live outside the client folder, so their page
+// keys have to be borrowed from the directory of the file they came from.
+// An empty sidecarDir behaves like Open.
+func OpenWithSidecars(path, sidecarDir string) (*Archive, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	a, err := parse(data, filepath.Dir(path))
+	if sidecarDir == "" {
+		sidecarDir = filepath.Dir(path)
+	}
+	a, err := parse(data, sidecarDir)
 	if err != nil {
 		return nil, err
 	}

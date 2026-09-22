@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -17,6 +18,10 @@ const (
 	ThemeDark                = "dark"
 	ThemeLight               = "light"
 	ThemeSystem              = "system"
+
+	DefaultAutosaveIntervalSeconds = 300
+	minAutosaveIntervalSeconds     = 30
+	maxAutosaveIntervalSeconds     = 7200
 )
 
 type AppSettings struct {
@@ -26,17 +31,38 @@ type AppSettings struct {
 	BackupSourceOnSave     bool   `json:"backupSourceOnSave"`
 	NPKDirectory           string `json:"npkDirectory"`
 	Theme                  string `json:"theme"`
+	// AutosaveEnabled turns the timed workspace snapshot on. It is off by
+	// default: the snapshot rewrites a whole PVF, so the user opts in.
+	AutosaveEnabled bool `json:"autosaveEnabled"`
+	// AutosavePath is the single-slot snapshot file. Empty means the platform
+	// cache directory resolved by DefaultAutosavePath.
+	AutosavePath            string `json:"autosavePath"`
+	AutosaveIntervalSeconds int    `json:"autosaveIntervalSeconds"`
 }
 
 func DefaultAppSettings() AppSettings {
 	return AppSettings{
-		AnnotationTagPlacement: AnnotationTagAfterTarget,
-		ExplorerOpenMode:       ExplorerOpenSingleClick,
-		VimMode:                false,
-		BackupSourceOnSave:     true,
-		NPKDirectory:           "",
-		Theme:                  ThemeDark,
+		AnnotationTagPlacement:  AnnotationTagAfterTarget,
+		ExplorerOpenMode:        ExplorerOpenSingleClick,
+		VimMode:                 false,
+		BackupSourceOnSave:      true,
+		NPKDirectory:            "",
+		Theme:                   ThemeDark,
+		AutosaveEnabled:         false,
+		AutosavePath:            "",
+		AutosaveIntervalSeconds: DefaultAutosaveIntervalSeconds,
 	}
+}
+
+// DefaultAutosavePath is the backup location used when the user has not
+// configured one. It mirrors the search-index cache root so all derived state
+// of the application stays out of the game directory.
+func DefaultAutosavePath() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("获取用户缓存目录失败: %w", err)
+	}
+	return filepath.Join(cacheDir, "pvfine", "autosave.pvf"), nil
 }
 
 type SettingsService struct {
@@ -78,6 +104,7 @@ func (s *SettingsService) getSettingsLocked() (AppSettings, error) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return AppSettings{}, fmt.Errorf("解析设置失败: %w", err)
 	}
+	settings = normalizeSettings(settings)
 	if err := validateSettings(settings); err != nil {
 		return AppSettings{}, err
 	}
@@ -94,6 +121,7 @@ func (s *SettingsService) saveSettingsLocked(settings AppSettings) error {
 	if s.initErr != nil {
 		return s.initErr
 	}
+	settings = normalizeSettings(settings)
 	if err := validateSettings(settings); err != nil {
 		return err
 	}
@@ -148,6 +176,16 @@ func (s *SettingsService) UpdateNPKDirectory(directory string) (AppSettings, err
 	return settings, nil
 }
 
+// normalizeSettings trims typed paths and fills in the autosave interval for
+// callers that never set it (legacy settings files, partial API payloads).
+func normalizeSettings(settings AppSettings) AppSettings {
+	settings.AutosavePath = strings.TrimSpace(settings.AutosavePath)
+	if settings.AutosaveIntervalSeconds <= 0 {
+		settings.AutosaveIntervalSeconds = DefaultAutosaveIntervalSeconds
+	}
+	return settings
+}
+
 func validateSettings(settings AppSettings) error {
 	switch settings.AnnotationTagPlacement {
 	case AnnotationTagAfterTarget, AnnotationTagLineEnd, AnnotationTagHidden:
@@ -163,8 +201,18 @@ func validateSettings(settings AppSettings) error {
 	}
 	switch settings.Theme {
 	case ThemeDark, ThemeLight, ThemeSystem:
-		return nil
 	default:
 		return fmt.Errorf("无效的主题: %q", settings.Theme)
 	}
+	if settings.AutosaveIntervalSeconds < minAutosaveIntervalSeconds ||
+		settings.AutosaveIntervalSeconds > maxAutosaveIntervalSeconds {
+		return fmt.Errorf(
+			"定时缓存间隔需在 %d-%d 秒之间: %d",
+			minAutosaveIntervalSeconds, maxAutosaveIntervalSeconds, settings.AutosaveIntervalSeconds,
+		)
+	}
+	if settings.AutosavePath != "" && !strings.EqualFold(filepath.Ext(settings.AutosavePath), ".pvf") {
+		return fmt.Errorf("定时缓存路径需要以 .pvf 结尾: %q", settings.AutosavePath)
+	}
+	return nil
 }

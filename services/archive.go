@@ -59,6 +59,13 @@ func (s *ArchiveService) OpenDialog() (*ArchiveInfo, error) {
 
 // Open 加载指定路径的归档并构建目录索引。
 func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
+	return s.c.openArchive(path)
+}
+
+// openArchive installs path as the working archive: parse, derived indexes,
+// background version session and the semantic search index. It is shared by
+// the open dialog and the backup recovery so both produce identical state.
+func (c *core) openArchive(path string) (ArchiveInfo, error) {
 	startedAt := time.Now()
 	if _, err := os.Stat(path); err != nil {
 		return ArchiveInfo{}, err
@@ -67,24 +74,35 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
-	if err := s.c.setArchive(a); err != nil {
+	if err := c.setArchive(a); err != nil {
 		return ArchiveInfo{}, err
 	}
-	s.c.recordOpenDuration(time.Since(startedAt))
+	c.recordOpenDuration(time.Since(startedAt))
 	info := a.Info()
 	// Version repository discovery/recovery is deliberately detached from the
 	// normal open path. The raw PVF and its tree are usable immediately; the
 	// background task will replace the in-memory archive only when recovery is
 	// actually needed.
-	s.c.startVersionLoad(path, a)
+	c.startVersionLoad(path, a)
 	emitEvent("archive:opened", info)
-	s.c.startSearchIndex()
+	c.startSearchIndex()
 	return info, nil
 }
 
 // Close 关闭当前归档,丢弃未保存的内存修改。
 func (s *ArchiveService) Close() {
+	s.c.mu.RLock()
+	sourcePath := ""
+	if s.c.archive != nil {
+		sourcePath = s.c.archive.SourcePath()
+	}
+	s.c.mu.RUnlock()
 	s.c.closeArchive()
+	if s.c.autosave != nil {
+		// The workspace is gone; a backup of its discarded edits would only
+		// ask for a restore that no longer has a session behind it.
+		s.c.autosave.DropForSource(sourcePath)
+	}
 	emitEvent("archive:closed")
 }
 
