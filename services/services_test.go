@@ -305,6 +305,44 @@ func TestListDescendantFiles(t *testing.T) {
 	}
 }
 
+func TestListModifiedFilesWithoutVersionControl(t *testing.T) {
+	c := NewCore()
+	svc := NewArchiveService(c)
+	path := writeSearchFixture(t, "modified-files.pvf")
+	a := mustReopen(t, path)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	modifiedIndex, ok := a.Find("equipment/character/common/amulet/1008.equ")
+	if !ok {
+		t.Fatal("modified fixture file not found")
+	}
+	if err := NewEditorService(c).SetText(modifiedIndex, "[name]\n`changed`"); err != nil {
+		t.Fatal(err)
+	}
+	created, err := svc.CreateFile("misc/generated.str", pvf.TypeUnicode)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := svc.ListModifiedFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("modified files = %d, want 2: %#v", len(files), files)
+	}
+	if files[0].Path != "equipment/character/common/amulet/1008.equ" ||
+		files[0].ChangeKind != ChangeKindModified {
+		t.Fatalf("first modified file = %#v", files[0])
+	}
+	if files[1].Path != created.Path || files[1].ChangeKind != ChangeKindAdded {
+		t.Fatalf("second modified file = %#v", files[1])
+	}
+}
+
 func TestResolveFiles(t *testing.T) {
 	c := NewCore()
 	svc := NewArchiveService(c)

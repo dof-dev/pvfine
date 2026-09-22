@@ -236,6 +236,36 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 	return result, nil
 }
 
+// ListModifiedFiles lists the files currently changed in the in-memory PVF
+// overlay. It deliberately does not depend on the optional version sidecar,
+// so the version panel can show pending edits before version control is
+// initialized.
+func (s *ArchiveService) ListModifiedFiles() ([]*TreeNode, error) {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+
+	result := make([]*TreeNode, 0, s.c.archive.ModifiedCount())
+	for index := int32(0); index < s.c.archive.FileCount(); index++ {
+		if !s.c.archive.IsModified(index) {
+			continue
+		}
+		file := s.c.archive.File(index)
+		path := s.c.archive.Path(index)
+		result = append(result, &TreeNode{
+			Name:       pathBase(path),
+			Path:       path,
+			Size:       file.DataSize,
+			DataType:   file.DataType,
+			FileIndex:  index,
+			ChangeKind: archiveChangeKind(s.c.archive, index),
+		})
+	}
+	return result, nil
+}
+
 // ResolveFiles resolves archive files by their normalized paths. Missing
 // paths are omitted and duplicate input paths are returned only once.
 func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {

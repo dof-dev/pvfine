@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
+import { Events } from "@wailsio/runtime";
 import {
   NAlert,
   NButton,
@@ -29,14 +30,17 @@ import {
   ShieldCheckmark20Regular,
 } from "@vicons/fluent";
 import type {
+  TreeNode,
   VersionChange,
   VersionCommit,
   VersionFileDiff,
 } from "../../bindings/pvfine/services/models";
 import { ArchiveService } from "../../bindings/pvfine/services";
+import { useArchiveStore } from "../stores/archive";
 import { useVersionStore } from "../stores/version";
 import { useEditorStore } from "../stores/editor";
 
+const archive = useArchiveStore();
 const version = useVersionStore();
 const editor = useEditorStore();
 const message = useMessage();
@@ -58,6 +62,9 @@ const selectedFile = ref<VersionChange | null>(null);
 const activeDiff = ref<VersionFileDiff | null>(null);
 const diffLoading = ref(false);
 const diffError = ref("");
+const overlayFiles = ref<TreeNode[]>([]);
+const overlayFilesLoading = ref(false);
+const overlayFilesError = ref("");
 const collapsedGroups = ref<Record<string, boolean>>({
   add: false,
   modify: false,
@@ -70,6 +77,13 @@ let inFlightDiffPromise: Promise<void> | null = null;
 let activeCommitLoadingID = "";
 let activeCommitPromise: Promise<void> | null = null;
 let openWatchStop: (() => void) | null = null;
+let overlayFilesRequest = 0;
+
+const overlayOpenModifier = /Macintosh|Mac OS X|MacIntel/i.test(
+  `${navigator.platform} ${navigator.userAgent}`
+)
+  ? "Cmd"
+  : "Ctrl";
 
 function makeDiffKey(file: VersionChange, commitID?: string): string {
   return `${commitID ?? "working"}:${file.operation}:${file.path}:${file.beforeHash ?? ""}:${file.afterHash ?? ""}`;
@@ -328,6 +342,82 @@ const currentFileStats = computed(() => {
   };
 });
 
+function clearOverlayFiles(): void {
+  overlayFilesRequest++;
+  overlayFiles.value = [];
+  overlayFilesLoading.value = false;
+  overlayFilesError.value = "";
+}
+
+async function refreshOverlayFiles(): Promise<void> {
+  const request = ++overlayFilesRequest;
+  if (
+    !version.visible ||
+    version.enabled ||
+    version.loading ||
+    version.status.loading ||
+    !archive.open
+  ) {
+    if (request === overlayFilesRequest) clearOverlayFiles();
+    return;
+  }
+
+  overlayFilesLoading.value = true;
+  overlayFilesError.value = "";
+  try {
+    const files = (await ArchiveService.ListModifiedFiles()) ?? [];
+    if (request === overlayFilesRequest) {
+      overlayFiles.value = files.filter(
+        (file): file is TreeNode => !!file && file.fileIndex >= 0 && !!file.path
+      );
+    }
+  } catch (error: any) {
+    if (request === overlayFilesRequest) {
+      overlayFiles.value = [];
+      overlayFilesError.value = String(error?.message ?? error ?? "读取内存改动失败");
+    }
+  } finally {
+    if (request === overlayFilesRequest) overlayFilesLoading.value = false;
+  }
+}
+
+function overlayChangeLabel(file: TreeNode): string {
+  return file.changeKind === "added" ? "新增" : "修改";
+}
+
+function overlayChangeType(file: TreeNode): "success" | "warning" {
+  return file.changeKind === "added" ? "success" : "warning";
+}
+
+async function openOverlayFileInEditor(file: TreeNode): Promise<void> {
+  const nodes = (await ArchiveService.ResolveFiles([file.path])) ?? [];
+  const current = nodes.find((node) => node && node.fileIndex >= 0);
+  if (!current) {
+    message.warning(`当前工作区找不到文件: ${file.path}`);
+    return;
+  }
+  await editor.openFile(current.fileIndex);
+  version.close();
+}
+
+async function openOverlayFile(file: TreeNode, event: MouseEvent): Promise<void> {
+  if (!event.metaKey && !event.ctrlKey) return;
+  event.preventDefault();
+  try {
+    await openOverlayFileInEditor(file);
+  } catch (error: any) {
+    message.error(`打开文件失败: ${error?.message ?? error}`);
+  }
+}
+
+function openOverlayFileByKeyboard(file: TreeNode, event: KeyboardEvent): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  void openOverlayFileInEditor(file).catch((error: any) => {
+    message.error(`打开文件失败: ${error?.message ?? error}`);
+  });
+}
+
 const confirmMessage = computed(() => {
   if (!confirmAction.value) return "";
   if (confirmAction.value.type === "discard") {
@@ -404,6 +494,40 @@ watch(
     }
   }
 );
+
+watch(
+  () => [
+    version.visible,
+    version.enabled,
+    version.loading,
+    version.status.loading,
+    archive.open,
+    archive.modifiedCount,
+  ] as const,
+  ([visible, enabled, versionLoading, statusLoading, archiveOpen]) => {
+    if (!visible || enabled || versionLoading || statusLoading || !archiveOpen) {
+      clearOverlayFiles();
+      return;
+    }
+    void refreshOverlayFiles();
+  },
+  { immediate: true }
+);
+
+const stopOverlayRefreshEvents = [
+  "archive:advanced-search-stale",
+  "archive:batch-applied",
+  "archive:changed",
+  "archive:closed",
+  "archive:opened",
+  "archive:reloaded",
+  "archive:saved",
+  "archive:script-applied",
+].map((eventName) => Events.On(eventName, () => void refreshOverlayFiles()));
+
+onUnmounted(() => {
+  stopOverlayRefreshEvents.forEach((stop) => stop());
+});
 
 watch(confirmRunning, (running) => {
   if (!running && !version.status.enabled) confirmAction.value = null;
@@ -899,6 +1023,59 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
                 立即初始化版本库
               </NButton>
             </div>
+
+            <section class="overlay-changes-section" aria-live="polite">
+              <div class="overlay-changes-header">
+                <div class="overlay-changes-heading">
+                  <div class="overlay-changes-title">
+                    <NIcon size="16"><DocumentSync20Regular /></NIcon>
+                    <span>当前内存改动</span>
+                    <NTag size="tiny" :bordered="false" round>
+                      {{ overlayFiles.length }} 个文件
+                    </NTag>
+                  </div>
+                  <div class="overlay-changes-hint">
+                    已写入内存 overlay，尚未保存到 PVF；按住 {{ overlayOpenModifier }} 单击文件打开
+                  </div>
+                </div>
+              </div>
+
+              <div class="overlay-changes-list">
+                <div v-if="overlayFilesLoading" class="overlay-changes-loading">
+                  <NSpin size="small" />
+                  <span>正在读取当前改动…</span>
+                </div>
+                <NAlert v-else-if="overlayFilesError" type="error" :show-icon="false">
+                  {{ overlayFilesError }}
+                </NAlert>
+                <NEmpty
+                  v-else-if="!overlayFiles.length"
+                  description="当前没有可列出的内存文件改动"
+                  size="small"
+                />
+                <div v-else class="overlay-file-grid">
+                  <div
+                    v-for="file in overlayFiles"
+                    :key="`${file.fileIndex}:${file.path}`"
+                    class="overlay-file-item"
+                    role="link"
+                    tabindex="0"
+                    :title="file.path"
+                    @click="openOverlayFile(file, $event)"
+                    @keydown="openOverlayFileByKeyboard(file, $event)"
+                  >
+                    <NTag
+                      size="tiny"
+                      :type="overlayChangeType(file)"
+                      :bordered="false"
+                    >
+                      {{ overlayChangeLabel(file) }}
+                    </NTag>
+                    <span class="overlay-file-path">{{ file.path }}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </template>
 
@@ -1524,6 +1701,8 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
 .version-guide-wrapper {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 14px;
   padding: 8px 4px;
   overflow-y: auto;
@@ -1619,6 +1798,111 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
   margin-top: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--pvf-border-subtle);
+}
+
+.overlay-changes-section {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--pvf-border-subtle);
+}
+.overlay-changes-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.overlay-changes-heading {
+  min-width: 0;
+}
+.overlay-changes-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--pvf-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.overlay-changes-title :deep(.n-tag) {
+  margin-left: 2px;
+}
+.overlay-changes-hint {
+  margin-top: 3px;
+  color: var(--pvf-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.overlay-changes-list {
+  flex: 1;
+  min-height: 112px;
+  overflow: auto;
+  padding: 2px 4px 4px 0;
+  scrollbar-gutter: stable;
+}
+.overlay-changes-list::-webkit-scrollbar {
+  width: 8px;
+}
+.overlay-changes-list::-webkit-scrollbar-track {
+  background: var(--pvf-surface-subtle);
+  border-radius: 4px;
+}
+.overlay-changes-list::-webkit-scrollbar-thumb {
+  background: var(--pvf-border-strong);
+  border-radius: 4px;
+}
+.overlay-changes-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pvf-border-strong) var(--pvf-surface-subtle);
+}
+.overlay-changes-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 112px;
+  color: var(--pvf-text-muted);
+  font-size: 12px;
+}
+.overlay-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 6px 8px;
+  align-content: start;
+}
+.overlay-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 6px;
+  background: var(--pvf-surface-card);
+  cursor: default;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.overlay-file-item:hover {
+  border-color: var(--pvf-primary-soft);
+  background: var(--pvf-surface-hover);
+}
+.overlay-file-item:focus-visible {
+  outline: 2px solid var(--pvf-primary);
+  outline-offset: 1px;
+}
+.overlay-file-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pvf-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
 }
 
 /* 顶部状态与提交栏 */
@@ -2120,6 +2404,9 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
 
 @media (max-width: 768px) {
   .version-guide-cards {
+    grid-template-columns: 1fr;
+  }
+  .overlay-file-grid {
     grid-template-columns: 1fr;
   }
   .version-summary,

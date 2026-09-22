@@ -133,6 +133,16 @@ export function ListDescendantFiles(scopePath: string): $CancellablePromise<($mo
 }
 
 /**
+ * ListModifiedFiles lists the files currently changed in the in-memory PVF
+ * overlay. It deliberately does not depend on the optional version sidecar,
+ * so the version panel can show pending edits before version control is
+ * initialized.
+ */
+export function ListModifiedFiles(): $CancellablePromise<($models.TreeNode | null)[] | null> {
+    return $Call.ByID(3738676551);
+}
+
+/**
  * ListRegistrationOptions returns the configured lists that can point to a
  * file. Existing registrations are supplied by the search index and displayed
  * beside the editor file, so this endpoint only supplies a target list and a
