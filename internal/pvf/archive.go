@@ -34,6 +34,31 @@ type removedFileSpan struct {
 	off, size int32
 }
 
+// MutationKind identifies one effective archive entry mutation. The mutation
+// journal is intentionally small: services use it to decide which derived
+// indexes are affected after a compound operation has committed.
+type MutationKind string
+
+const (
+	MutationModified MutationKind = "modified"
+	MutationAdded    MutationKind = "added"
+	MutationRemoved  MutationKind = "removed"
+)
+
+// FileMutation is one effective file-level change. Path is captured before a
+// structural edit can renumber the remaining entries.
+type FileMutation struct {
+	Index int32
+	Path  string
+	Kind  MutationKind
+}
+
+// MutationSummary describes changes recorded after a mutation checkpoint.
+type MutationSummary struct {
+	Files      []FileMutation
+	Structural bool
+}
+
 type groupItem struct{ compSize, origSize int32 }
 
 // Archive is a parsed PVF container. It is not safe for concurrent
@@ -75,6 +100,7 @@ type Archive struct {
 	pathIndex         map[string]int32
 	structuralDirty   bool // file entries were added or removed since the last save
 	removedSpans      map[int32][]removedFileSpan
+	mutations         []FileMutation // effective changes since the last checkpoint
 
 	// scriptRenderer controls the user-facing decompiled layout. The
 	// canonical renderer is kept stable so version content hashes do not
@@ -88,6 +114,56 @@ type Archive struct {
 		mu    sync.Mutex
 		state *stringTableState
 	}
+}
+
+// MutationCheckpoint returns the current position in the archive mutation
+// journal. The journal is local to one Archive and is not part of the packed
+// file format.
+func (a *Archive) MutationCheckpoint() int {
+	if a == nil {
+		return 0
+	}
+	return len(a.mutations)
+}
+
+// MutationsSince returns effective file changes recorded after checkpoint.
+// Callers may safely retain the returned slices.
+func (a *Archive) MutationsSince(checkpoint int) MutationSummary {
+	if a == nil {
+		return MutationSummary{}
+	}
+	if checkpoint < 0 {
+		checkpoint = 0
+	}
+	if checkpoint > len(a.mutations) {
+		checkpoint = len(a.mutations)
+	}
+	result := MutationSummary{
+		Files: make([]FileMutation, len(a.mutations)-checkpoint),
+	}
+	copy(result.Files, a.mutations[checkpoint:])
+	for _, mutation := range result.Files {
+		if mutation.Kind == MutationAdded || mutation.Kind == MutationRemoved {
+			result.Structural = true
+			break
+		}
+	}
+	return result
+}
+
+// ClearMutations forgets journal entries that have already been consumed by
+// the owning service. It does not alter archive content.
+func (a *Archive) ClearMutations() {
+	if a != nil {
+		a.mutations = nil
+	}
+}
+
+func (a *Archive) recordMutation(index int32, path string, kind MutationKind) {
+	if a == nil || path == "" {
+		return
+	}
+	a.mutations = append(a.mutations, FileMutation{Index: index, Path: path, Kind: kind})
 }
 
 type chunkCacheEntry struct {

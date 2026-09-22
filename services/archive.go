@@ -352,6 +352,7 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		s.c.mu.Unlock()
 		return nil, fmt.Errorf("文件已存在: %s", path)
 	}
+	mutationCheckpoint := a.MutationCheckpoint()
 	var before pvfversion.ContentSnapshot
 	if s.c.versionRepo != nil {
 		before = make(pvfversion.ContentSnapshot)
@@ -372,6 +373,8 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 			return nil, recordErr
 		}
 	}
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
 	node := &TreeNode{
 		Name:        a.File(index).Name,
 		Path:        a.Path(index),
@@ -387,7 +390,7 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
-	s.c.startSearchIndex()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:changed", info)
 	if versioned {
 		emitVersionState(s.c, "file-created")
@@ -426,6 +429,7 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	mutationCheckpoint := a.MutationCheckpoint()
 	mutationPaths := make([]string, 0, len(fileIndexes))
 	for _, index := range fileIndexes {
 		mutationPaths = append(mutationPaths, a.Path(index))
@@ -485,23 +489,13 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 			return nil, recordErr
 		}
 	}
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
 	info := a.Info()
 	versioned := s.c.versionRepo != nil
-	forceSearchRefresh := false
-	for _, mutationPath := range mutationPaths {
-		normalizedPath := normalizeSearchPath(mutationPath)
-		if strings.HasSuffix(normalizedPath, ".str") || isNPCEntryPath(normalizedPath) || normalizedPath == npcListPath {
-			forceSearchRefresh = true
-			break
-		}
-	}
 	s.c.mu.Unlock()
 
-	if forceSearchRefresh {
-		s.c.startSearchIndexForced()
-	} else {
-		s.c.startSearchIndex()
-	}
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:changed", info)
 	if versioned {
 		emitVersionState(s.c, "files-deleted")

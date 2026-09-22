@@ -286,15 +286,16 @@ func saveSearchIndexCache(snapshot searchIndexCacheSnapshot, override string) er
 
 // persistSearchIndexCacheAsync snapshots the small canonical metadata slice
 // under the core lock and performs compression/file IO off the request path.
-// The generation check prevents an older background build from overwriting a
-// newer cache after a mutation or archive switch.
+// The generation and archive revision checks prevent an older background build
+// from overwriting a newer cache after a mutation or archive switch.
 func (c *core) persistSearchIndexCacheAsync(a *pvf.Archive, gen uint64, metadata []indexedMetadata, total, skipped int) {
 	c.mu.RLock()
 	if c.archive != a || c.indexGen != gen || c.indexStatus.State != IndexStateReady ||
-		c.indexStatus.Refreshing {
+		c.indexStatus.Refreshing || a.Modified() {
 		c.mu.RUnlock()
 		return
 	}
+	revision := c.batchRevision
 	identity, err := searchIndexCacheIdentityForArchive(a)
 	if err != nil {
 		c.mu.RUnlock()
@@ -311,6 +312,13 @@ func (c *core) persistSearchIndexCacheAsync(a *pvf.Archive, gen uint64, metadata
 	c.mu.RUnlock()
 
 	go func() {
+		c.mu.RLock()
+		valid := c.archive == a && c.indexGen == gen && c.batchRevision == revision &&
+			c.indexStatus.State == IndexStateReady && !c.indexStatus.Refreshing && !a.Modified()
+		c.mu.RUnlock()
+		if !valid {
+			return
+		}
 		_ = saveSearchIndexCache(snapshot, override)
 	}()
 }

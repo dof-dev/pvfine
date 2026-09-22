@@ -231,6 +231,7 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 			return BatchApplyResult{}, err
 		}
 	}
+	mutationCheckpoint := plan.archive.MutationCheckpoint()
 	if err := plan.archive.CommitBatch(plan.staged, selected); err != nil {
 		s.c.mu.Unlock()
 		return BatchApplyResult{}, err
@@ -254,13 +255,12 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	if s.c.editorText == nil {
 		s.c.editorText = make(map[int32]string)
 	}
-	forceSearchRefresh := false
 	for _, fileIndex := range ordered {
 		row := rowsByIndex[fileIndex]
 		s.c.editorText[fileIndex] = row.afterText
-		_, force := s.c.queueSearchIndexMutationLocked(fileIndex)
-		forceSearchRefresh = forceSearchRefresh || force
 	}
+	mutationSummary := plan.archive.MutationsSince(mutationCheckpoint)
+	plan.archive.ClearMutations()
 	s.c.batchRevision++
 	s.c.batchPlan = nil
 	s.c.invalidateScriptLocked()
@@ -281,13 +281,9 @@ func (s *BatchService) Apply(planID string, fileIndexes []int32) (BatchApplyResu
 	if versioned {
 		emitVersionState(s.c, "batch-applied")
 	}
-	// One rebuild updates all affected names/tags and avoids emitting one index
-	// invalidation per file.
-	if forceSearchRefresh {
-		s.c.startSearchIndexForced()
-	} else {
-		s.c.startSearchIndex()
-	}
+	// One background update classifies all affected files together and avoids
+	// emitting one semantic-index invalidation per file.
+	s.c.scheduleArchiveMutations(plan.archive, mutationSummary)
 	return BatchApplyResult{
 		AppliedFiles:  int32(len(ordered)),
 		FileIndexes:   ordered,

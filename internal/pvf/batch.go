@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -812,10 +813,18 @@ func (a *Archive) commitBatch(stage *Archive, selected map[int32]struct{}) error
 		return fmt.Errorf("批处理暂存状态为空")
 	}
 	nextOverlay := cloneBytesMap(a.overlay)
+	changed := make([]int32, 0, len(selected))
 	for index := range selected {
 		payload, ok := stage.overlay[index]
 		if !ok {
 			return fmt.Errorf("批处理文件 %d 缺少暂存 payload", index)
+		}
+		previous, err := a.RawBytes(index)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(previous, payload) {
+			changed = append(changed, index)
 		}
 		nextOverlay[index] = append([]byte(nil), payload...)
 	}
@@ -831,6 +840,9 @@ func (a *Archive) commitBatch(stage *Archive, selected map[int32]struct{}) error
 	a.resolveCacheBytes = 0
 	a.overlay = nextOverlay
 	a.cacheMu.Unlock()
+	for _, index := range changed {
+		a.recordMutation(index, a.Path(index), MutationModified)
+	}
 	return nil
 }
 

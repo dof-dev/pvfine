@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"strconv"
@@ -40,9 +41,17 @@ func (a *Archive) SetRawBytes(i int32, b []byte) error {
 	if i < 0 || i >= int32(len(a.items)) {
 		return ErrBadIndex
 	}
+	previous, err := a.RawBytes(i)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(previous, b) {
+		return nil
+	}
 	cp := make([]byte, len(b))
 	copy(cp, b)
 	a.overlay[i] = cp
+	a.recordMutation(i, a.Path(i), MutationModified)
 	return nil
 }
 
@@ -56,7 +65,11 @@ func (a *Archive) SetDataType(i int32, dataType int32) error {
 	if dataType != TypeScript && dataType != TypeUnicode {
 		return ErrBadDataType
 	}
+	if a.items[i].typ == dataType {
+		return nil
+	}
 	a.items[i].typ = dataType
+	a.recordMutation(i, a.Path(i), MutationModified)
 	return nil
 }
 
@@ -124,19 +137,16 @@ func (a *Archive) SetText(i int32, text string) error {
 	case TypeUnicode:
 		if a.payloadIsPainted(i) {
 			if encoded, err := EncodeKoreanMojibake(text); err == nil {
-				a.overlay[i] = encoded
-				return nil
+				return a.SetRawBytes(i, encoded)
 			}
 		}
-		a.overlay[i] = utf16le(text)
-		return nil
+		return a.SetRawBytes(i, utf16le(text))
 	case TypeScript:
 		raw, err := a.encodeScript(text)
 		if err != nil {
 			return err
 		}
-		a.overlay[i] = raw
-		return nil
+		return a.SetRawBytes(i, raw)
 	default:
 		return ErrBadIndex
 	}
@@ -164,6 +174,7 @@ func (a *Archive) AddFile(relPath string, data []byte, dataType int32) int32 {
 	i := int32(len(a.items) - 1)
 	a.pathIndex[normalized] = i
 	a.structuralDirty = true
+	a.recordMutation(i, normalized, MutationAdded)
 	if data != nil {
 		cp := make([]byte, len(data))
 		copy(cp, data)
@@ -199,7 +210,9 @@ func (a *Archive) RemoveFiles(indexes []int32) ([]string, error) {
 	for oldIndex, item := range a.items {
 		index := int32(oldIndex)
 		if _, ok := removed[index]; ok {
-			paths = append(paths, a.Path(index))
+			path := a.Path(index)
+			paths = append(paths, path)
+			a.recordMutation(index, path, MutationRemoved)
 			if item.chunk >= 0 && item.chunk < int32(len(a.groups)) && item.size > 0 {
 				nextRemovedSpans[item.chunk] = append(
 					nextRemovedSpans[item.chunk],

@@ -87,17 +87,24 @@ type core struct {
 	// derived search records after a path/list delta. It intentionally keeps
 	// only list-backed records; ordinary file records are derived from
 	// sortedPaths and are therefore not duplicated here.
-	searchMetadata          []indexedMetadata
-	searchSpecFingerprint   string
-	treeTagsByFile          map[int32][]TreeTag
-	visualsByFile           map[int32]fileVisuals
-	indexStatus             IndexStatus
-	indexStartedAt          time.Time
-	indexCancel             context.CancelFunc
-	indexDirty              map[int32]struct{}
-	indexGen                uint64
-	searchIndexDeltaPending bool
-	searchIndexListPending  map[int32]struct{}
+	searchMetadata        []indexedMetadata
+	searchSpecFingerprint string
+	treeTagsByFile        map[int32][]TreeTag
+	visualsByFile         map[int32]fileVisuals
+	indexStatus           IndexStatus
+	indexStartedAt        time.Time
+	indexCancel           context.CancelFunc
+	// indexRefreshPending coalesces mutations that arrive while a semantic
+	// build is already running. The active build is allowed to publish its
+	// candidate, then one follow-up build consumes the accumulated dirty state.
+	// Keeping this separate from indexGen avoids cancelling a useful build and
+	// avoids losing a mutation in the cancel/publish race.
+	indexRefreshPending      bool
+	indexRefreshPendingForce bool
+	indexDirty               map[int32]struct{}
+	indexGen                 uint64
+	searchIndexDeltaPending  bool
+	searchIndexListPending   map[int32]struct{}
 	// searchIndexCachePath is only set by tests. Production cache files are
 	// resolved from os.UserCacheDir by search_index_cache.go.
 	searchIndexCachePath string
@@ -173,6 +180,9 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	if c.renderingErr != nil {
 		return c.renderingErr
 	}
+	// Archives constructed in tests/import pipelines may have mutations from
+	// their preparation phase. They are the clean baseline once installed.
+	a.ClearMutations()
 	if a.FileCount() >= largeArchiveIndexThreshold {
 		index, _, err := openSQLiteArchiveIndex(a)
 		if err != nil {
@@ -208,6 +218,8 @@ func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
@@ -250,25 +262,23 @@ func (c *core) recordOpenDuration(duration time.Duration) {
 // replaceArchiveLocked installs a newly materialized archive while retaining
 // the current version repository session. The caller must hold c.mu.
 func (c *core) replaceArchiveLocked(a *pvf.Archive) error {
-	if c.diskIndex != nil || a.FileCount() >= largeArchiveIndexThreshold {
-		if c.diskIndex != nil {
-			c.diskIndex.close()
-			c.diskIndex = nil
-		}
-		index, _, err := openSQLiteArchiveIndex(a)
-		if err != nil {
-			return err
-		}
-		c.diskIndex = index
-		c.installDiskArchiveIndexesLocked(a)
-		return nil
-	}
-	children, paths, err := buildIndex(a)
+	oldArchive := c.archive
+	revision := c.batchRevision
+	c.batchRevision++
+	c.mu.Unlock()
+	prepared, err := prepareArchiveDerivedIndexes(a)
+	c.mu.Lock()
 	if err != nil {
+		closePreparedArchiveIndexes(prepared)
 		return err
 	}
-	c.installArchiveIndexesPreservingSearchLocked(a, children, paths)
-	return nil
+	if c.archive != oldArchive || c.batchRevision != revision+1 {
+		closePreparedArchiveIndexes(prepared)
+		// The replacement was materialized from the previous working snapshot;
+		// never install it over a concurrent mutation.
+		return ErrBatchPlanStale
+	}
+	return c.installPreparedArchiveIndexesLocked(a, prepared, true)
 }
 
 // replaceArchivePayloadLocked installs an archive whose path and data-type
@@ -283,6 +293,8 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	c.invalidateAdvancedSearchLocked()
 	preserveSearch := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
 	c.indexGen++
@@ -295,13 +307,13 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 		if err := c.diskIndex.refreshFileMetadata(a, changedIndexes); err != nil {
 			return err
 		}
-		c.diskIndex.ready = false
-		c.diskIndex.dirty = true
 	} else {
 		refreshArchiveIndexMetadataLocked(c, changedIndexes)
 	}
 	if preserveSearch {
-		c.searchIndexDeltaPending = true
+		// Keep the old semantic snapshot until the mutation classifier proves
+		// that a registered record actually changed.
+		c.searchIndexDeltaPending = false
 		c.searchIndexListPending = nil
 	} else {
 		c.searchRecords = nil
@@ -315,10 +327,7 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 		c.indexStatus = IndexStatus{State: IndexStateIdle}
 	}
 	c.indexStartedAt = time.Time{}
-	c.indexDirty = make(map[int32]struct{}, len(changedIndexes))
-	for index := range changedIndexes {
-		c.indexDirty[index] = struct{}{}
-	}
+	c.indexDirty = make(map[int32]struct{})
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
@@ -332,24 +341,78 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 // rebuildArchiveIndexesLocked refreshes every derived view after the archive's
 // file table changes. The caller must hold c.mu and must pass c.archive.
 func (c *core) rebuildArchiveIndexesLocked(a *pvf.Archive) error {
-	if c.diskIndex != nil || a.FileCount() >= largeArchiveIndexThreshold {
-		if c.diskIndex != nil {
-			c.diskIndex.close()
-			c.diskIndex = nil
+	for {
+		if c.archive != a {
+			return ErrNoArchive
 		}
-		index, _, err := openSQLiteArchiveIndex(a)
+		// A read lock protects the live archive from writers while still
+		// allowing resource-tree readers to run alongside the expensive build.
+		revision := c.batchRevision
+		c.batchRevision++
+		c.mu.Unlock()
+		c.mu.RLock()
+		prepared, err := prepareArchiveDerivedIndexes(a)
+		c.mu.RUnlock()
+		c.mu.Lock()
 		if err != nil {
+			closePreparedArchiveIndexes(prepared)
 			return err
 		}
-		c.diskIndex = index
-		c.installDiskArchiveIndexesLocked(a)
-		return nil
+		if c.archive != a || c.batchRevision != revision+1 {
+			closePreparedArchiveIndexes(prepared)
+			continue
+		}
+		return c.installPreparedArchiveIndexesLocked(a, prepared, true)
+	}
+}
+
+type preparedArchiveIndexes struct {
+	children map[string][]*TreeNode
+	paths    []pathEntry
+	disk     *sqliteArchiveIndex
+}
+
+func prepareArchiveDerivedIndexes(a *pvf.Archive) (*preparedArchiveIndexes, error) {
+	if a == nil {
+		return nil, ErrNoArchive
+	}
+	if a.FileCount() >= largeArchiveIndexThreshold {
+		index, _, err := openSQLiteArchiveIndex(a)
+		if err != nil {
+			return nil, err
+		}
+		return &preparedArchiveIndexes{disk: index}, nil
 	}
 	children, paths, err := buildIndex(a)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.installArchiveIndexesPreservingSearchLocked(a, children, paths)
+	return &preparedArchiveIndexes{children: children, paths: paths}, nil
+}
+
+func closePreparedArchiveIndexes(prepared *preparedArchiveIndexes) {
+	if prepared != nil && prepared.disk != nil {
+		prepared.disk.close()
+	}
+}
+
+func (c *core) installPreparedArchiveIndexesLocked(a *pvf.Archive, prepared *preparedArchiveIndexes, preserveSearch bool) error {
+	if prepared == nil {
+		return ErrNoArchive
+	}
+	if prepared.disk != nil {
+		if c.diskIndex != nil && c.diskIndex != prepared.disk {
+			c.diskIndex.close()
+		}
+		c.diskIndex = prepared.disk
+		c.installDiskArchiveIndexesLocked(a)
+		return nil
+	}
+	if c.diskIndex != nil {
+		c.diskIndex.close()
+		c.diskIndex = nil
+	}
+	c.installArchiveIndexesLockedWithSearch(a, prepared.children, prepared.paths, preserveSearch)
 	return nil
 }
 
@@ -383,6 +446,8 @@ func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children ma
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
@@ -472,6 +537,8 @@ func (c *core) closeArchive() {
 	c.indexStatus = IndexStatus{State: IndexStateIdle}
 	c.indexStartedAt = time.Time{}
 	c.indexDirty = nil
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = nil
 	c.unpackCancel.Store(false)

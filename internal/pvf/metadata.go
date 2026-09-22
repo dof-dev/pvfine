@@ -31,13 +31,22 @@ type ScriptImageReference struct {
 	Index int32  `json:"index"`
 }
 
+// StringTableReference identifies one placeholder used by a script metadata
+// field. Services use it to invalidate only registered records whose display
+// metadata actually depends on a changed localization file.
+type StringTableReference struct {
+	Index int    `json:"index"`
+	Key   string `json:"key"`
+}
+
 // ScriptMetadata is the small metadata projection shared by name/search and
 // image rendering. It intentionally does not decompile the full script.
 type ScriptMetadata struct {
-	Name       string                `json:"name,omitempty"`
-	HasName    bool                  `json:"-"`
-	Icon       *ScriptImageReference `json:"icon,omitempty"`
-	FieldImage *ScriptImageReference `json:"fieldImage,omitempty"`
+	Name                  string                 `json:"name,omitempty"`
+	HasName               bool                   `json:"-"`
+	Icon                  *ScriptImageReference  `json:"icon,omitempty"`
+	FieldImage            *ScriptImageReference  `json:"fieldImage,omitempty"`
+	StringTableReferences []StringTableReference `json:"-"`
 
 	// NameFallback reports that the name's `<table::key>` placeholder was
 	// answered by a language overlay because the archive's own localization has
@@ -513,9 +522,45 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 		}
 	}
 	if metadata.HasName {
+		metadata.StringTableReferences = stringTableReferences(metadata.Name)
 		metadata.Name, metadata.NameFallback = a.resolvePlaceholders(metadata.Name, "")
 	}
+	if metadata.Icon != nil {
+		metadata.StringTableReferences = append(metadata.StringTableReferences, stringTableReferences(metadata.Icon.Path)...)
+	}
+	if metadata.FieldImage != nil {
+		metadata.StringTableReferences = append(metadata.StringTableReferences, stringTableReferences(metadata.FieldImage.Path)...)
+	}
 	return metadata, nil
+}
+
+func stringTableReferences(text string) []StringTableReference {
+	if !strings.Contains(text, "<") || !strings.Contains(text, "::") {
+		return nil
+	}
+	result := make([]StringTableReference, 0, 1)
+	seen := make(map[string]struct{})
+	for offset := 0; offset < len(text); {
+		start := strings.IndexByte(text[offset:], '<')
+		if start < 0 {
+			break
+		}
+		start += offset
+		end := strings.IndexByte(text[start:], '>')
+		if end < 0 {
+			break
+		}
+		end += start
+		if index, key, ok := parsePlaceholder(text[start : end+1]); ok {
+			identity := fmt.Sprintf("%d\x00%s", index, key)
+			if _, exists := seen[identity]; !exists {
+				seen[identity] = struct{}{}
+				result = append(result, StringTableReference{Index: index, Key: key})
+			}
+		}
+		offset = end + 1
+	}
+	return result
 }
 
 // ScriptName extracts the first direct string value from the [name] section

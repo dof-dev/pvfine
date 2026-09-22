@@ -1008,11 +1008,19 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 }
 
 func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
+	values, err := i.indexedNameValues(fileIndex)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(values, " / "), nil
+}
+
+func (i *sqliteArchiveIndex) indexedNameValues(fileIndex int32) ([]string, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	rows, err := i.db.Query(`SELECT name FROM records WHERE file_index=? AND category<>? AND name<>'' ORDER BY id`, fileIndex, SearchCategoryFile)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
 	seen := make(map[string]struct{})
@@ -1020,7 +1028,7 @@ func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
 	for rows.Next() {
 		var value string
 		if err := rows.Scan(&value); err != nil {
-			return "", err
+			return nil, err
 		}
 		if _, ok := seen[value]; ok {
 			continue
@@ -1028,7 +1036,34 @@ func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
 		seen[value] = struct{}{}
 		values = append(values, value)
 	}
-	return strings.Join(values, " / "), rows.Err()
+	return values, rows.Err()
+}
+
+func (i *sqliteArchiveIndex) indexedFileIndexes() ([]int32, error) {
+	i.dbMu.RLock()
+	defer i.dbMu.RUnlock()
+	rows, err := i.db.Query(`SELECT DISTINCT file_index FROM records WHERE category<>? ORDER BY file_index`, SearchCategoryFile)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]int32, 0)
+	for rows.Next() {
+		var index int32
+		if err := rows.Scan(&index); err != nil {
+			return nil, err
+		}
+		result = append(result, index)
+	}
+	return result, rows.Err()
+}
+
+func (i *sqliteArchiveIndex) hasSemanticFile(fileIndex int32) bool {
+	i.dbMu.RLock()
+	defer i.dbMu.RUnlock()
+	var exists int
+	err := i.db.QueryRow(`SELECT 1 FROM records WHERE file_index=? AND category<>? LIMIT 1`, fileIndex, SearchCategoryFile).Scan(&exists)
+	return err == nil && exists == 1
 }
 
 func (i *sqliteArchiveIndex) eachFileByPath(fn func(index int32, path string, size, dataType int32) bool) error {
