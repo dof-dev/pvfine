@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NButton, NIcon, NSpin } from "naive-ui";
+import { Events } from "@wailsio/runtime";
 import { Money24Filled } from "@vicons/fluent";
 import { PreviewService } from "../../../bindings/pvfine/services";
 import type {
@@ -170,8 +171,14 @@ watch(
   },
 );
 
+// 字段适用版本或归档状态改变时，文本相同也需要重新计算预览。
+const offAnnotationsReloaded = Events.On("annotations:reloaded", scheduleParse);
+const offArchiveReloaded = Events.On("archive:reloaded", scheduleParse);
+
 onMounted(() => window.addEventListener("keydown", onWindowKeydown));
 onBeforeUnmount(() => {
+  offAnnotationsReloaded();
+  offArchiveReloaded();
   parseRequest++;
   clearParseTimer();
   window.removeEventListener("keydown", onWindowKeydown);

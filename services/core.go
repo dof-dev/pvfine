@@ -227,6 +227,7 @@ func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
 	c.invalidateScriptLocked()
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
+	c.annotationEngine = c.annotationEngine.ForVersion(a.ClientVersion())
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}
@@ -303,6 +304,11 @@ func (c *core) replaceArchivePayloadLocked(a *pvf.Archive, changedIndexes map[in
 	c.invalidateScriptLocked()
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
+	previousAnnotations := c.annotationEngine
+	c.annotationEngine = c.annotationEngine.ForVersion(a.ClientVersion())
+	if c.annotationEngine != previousAnnotations {
+		c.pathAnnotations = buildPathAnnotations(c.annotationEngine, c.dirChildren)
+	}
 	if c.diskIndex != nil {
 		if err := c.diskIndex.refreshFileMetadata(a, changedIndexes); err != nil {
 			return err
@@ -462,6 +468,7 @@ func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children ma
 	sort.Strings(directories)
 	c.bindRenderingEngineLocked(a)
 	c.archive = a
+	c.annotationEngine = c.annotationEngine.ForVersion(a.ClientVersion())
 	c.annotationRelations = make(map[string]map[string]*relationTarget)
 	c.editorText = make(map[int32]string)
 	c.editorAnnotation = editorAnnotationCache{}

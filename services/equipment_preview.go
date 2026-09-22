@@ -61,7 +61,7 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 		if err != nil {
 			return nil, err
 		}
-		return buildEquipmentPreview("preview.equ", text, engine, nil), nil
+		return buildEquipmentPreview("preview.equ", text, engine.ForVersion(""), nil), nil
 	}
 
 	s.c.mu.Lock()
@@ -71,7 +71,7 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 		if err != nil {
 			return nil, err
 		}
-		return buildEquipmentPreview("preview.equ", text, engine, nil), nil
+		return buildEquipmentPreview("preview.equ", text, engine.ForVersion(""), nil), nil
 	}
 	if err := validateAnnotationIndex(s.c.archive, fileIndex); err != nil {
 		return nil, err

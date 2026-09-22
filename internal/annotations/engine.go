@@ -11,6 +11,9 @@ import (
 )
 
 type Engine struct {
+	source   *Document
+	version  string
+	scoped   bool
 	document Document
 	rules    []compiledRule
 }
@@ -51,6 +54,11 @@ func Compile(document Document) (*Engine, error) {
 	if err := Validate(document); err != nil {
 		return nil, err
 	}
+	return compileValidated(document), nil
+}
+
+// compileValidated only receives validated documents with valid field references.
+func compileValidated(document Document) *Engine {
 	rules := make([]compiledRule, 0, len(document.Rules)+len(document.Fields))
 	appendRule := func(rule Rule) {
 		extensions := make(map[string]struct{}, len(rule.Match.Extensions))
@@ -61,10 +69,7 @@ func Compile(document Document) (*Engine, error) {
 	}
 	resolvedRules := make([]Rule, 0, len(document.Rules))
 	for _, originalRule := range document.Rules {
-		rule, err := resolveFieldRule(originalRule, document.Fields)
-		if err != nil {
-			return nil, err
-		}
+		rule, _ := resolveFieldRule(originalRule, document.Fields)
 		resolvedRules = append(resolvedRules, rule)
 		appendRule(rule)
 	}
@@ -90,7 +95,7 @@ func Compile(document Document) (*Engine, error) {
 			appendRule(fieldRule)
 		}
 	}
-	return &Engine{document: document, rules: rules}, nil
+	return &Engine{document: document, rules: rules}
 }
 
 func annotationRuleCoversField(rule, field Rule) bool {
@@ -142,7 +147,12 @@ func sameIntPtr(left, right *int) bool {
 	return left == nil || *left == *right
 }
 
-func (e *Engine) Document() Document { return e.document }
+func (e *Engine) Document() Document {
+	if e.source != nil {
+		return *e.source
+	}
+	return e.document
+}
 
 func (e *Engine) Annotate(filePath string, view pvf.ScriptView, resolver Resolver) []Result {
 	return e.annotate(filePath, view, func(relation, id, _ string) (Reference, bool) {

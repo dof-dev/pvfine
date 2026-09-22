@@ -967,6 +967,9 @@
   ],
   "rules": [
     {
+      "pvfVersions": [
+        "90US"
+      ],
       "id": "booster装备关联",
       "match": {
         "extensions": [
@@ -1351,7 +1354,8 @@
       "target": {
         "kind": "token",
         "section": "item list",
-        "index": 0
+        "index": 0,
+        "recordTokens": 1
       },
       "annotation": {
         "title": "ID",

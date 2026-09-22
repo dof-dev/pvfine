@@ -120,6 +120,20 @@ func MarshalLists(lists ListDocument) ([]byte, error) {
 func Validate(document Document) error {
 	normalizeImageTargets(&document)
 	problems := make([]string, 0)
+	validateVersions := func(prefix string, versions []string) {
+		for _, version := range versions {
+			if !ValidPVFVersion(version) {
+				problems = append(problems, fmt.Sprintf("%s.pvfVersions 包含无效版本 %q，只允许 90US、90CN、110US", prefix, version))
+			}
+		}
+	}
+	for i, rule := range document.Rules {
+		validateVersions(fmt.Sprintf("rules[%d]", i), rule.PVFVersions)
+	}
+	for i, field := range document.Fields {
+		validateVersions(fmt.Sprintf("fields[%d]", i), field.PVFVersions)
+	}
+
 	if document.Version != 1 {
 		problems = append(problems, fmt.Sprintf("version 必须为 1，当前为 %d", document.Version))
 	}

@@ -545,3 +545,197 @@ func findEditorAnnotation(annotations []EditorAnnotation, title string) *EditorA
 	}
 	return nil
 }
+
+func TestAnnotationVersionLifecycle(t *testing.T) {
+	document := annotationrules.Document{Version: 1, Rules: []annotationrules.Rule{
+		{ID: "path", PVFVersions: []string{"90US"}, Match: annotationrules.MatchSpec{Glob: "equipment/**"}, Target: annotationrules.TargetSpec{Kind: "path"}, Annotation: annotationrules.AnnotationSpec{Title: "path", Type: "text"}},
+		{ID: "name", PVFVersions: []string{"90US"}, Target: annotationrules.TargetSpec{Kind: "section", Section: "name"}, Annotation: annotationrules.AnnotationSpec{Title: "name", Type: "text"}},
+	}}
+	engine, err := annotationrules.Compile(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &core{annotationEngine: engine}
+	a := pvf.New()
+	index := mustAddText(t, a, "equipment/a.equ", "[name]\n`example`", pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	check := func(want int) {
+		t.Helper()
+		result, err := NewEditorService(c).GetFile(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Annotations) != want {
+			t.Fatalf("editor annotations = %#v", result.Annotations)
+		}
+		nodes, err := NewArchiveService(c).ListChildren("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		node := findTreeNode(nodes, "equipment")
+		if node == nil || len(node.Annotations) != want {
+			t.Fatalf("path annotations = %#v", node)
+		}
+	}
+	check(1)
+	// A zero-value archive has no recognized format; switching back must restore
+	// source rules rather than re-filter an already reduced document.
+	if err := c.setArchive(&pvf.Archive{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.annotationEngine.AnnotatePath("equipment/a.equ", false); len(got) != 0 {
+		t.Fatalf("unknown version: %#v", got)
+	}
+	if c.editorAnnotation.valid {
+		t.Fatal("archive switch retained editor cache")
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	check(1)
+	rulesPath := filepath.Join(t.TempDir(), "annotations.json")
+	service := newAnnotationService(c, rulesPath)
+	for _, version := range []string{"110US", "90US"} {
+		for i := range document.Rules {
+			document.Rules[i].PVFVersions = []string{version}
+		}
+		data, err := annotationrules.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rulesPath, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		result, err := service.ReloadRules()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.RuleCount != 2 {
+			t.Fatalf("reload must count full source: %#v", result)
+		}
+		if c.editorAnnotation.valid {
+			t.Fatal("reload retained editor cache")
+		}
+		want := 0
+		if version == "90US" {
+			want = 1
+		}
+		check(want)
+	}
+	c.mu.Lock()
+	err = c.replaceArchivePayloadLocked(a.CloneForBatch(), map[int32]struct{}{index: {}})
+	c.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(1)
+}
+
+func TestAnnotationVersionPreviewReload(t *testing.T) {
+	index := 0
+	document := annotationrules.Document{Version: 1, Fields: []annotationrules.FieldDefinition{{
+		ID: "name", PVFVersions: []string{"90US"}, Target: annotationrules.TargetSpec{Kind: "token", Section: "name", Index: &index},
+		Annotation: annotationrules.AnnotationSpec{Title: "name", Type: "text"}, Preview: &annotationrules.PreviewSpec{Provider: "equ", Role: "name", Group: "header", Format: "text"},
+	}}}
+	engine, err := annotationrules.Compile(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &core{annotationEngine: engine}
+	a := pvf.New()
+	fileIndex := mustAddText(t, a, "equipment/a.equ", "[name]\n`example`", pvf.TypeScript)
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	preview := NewPreviewService(c)
+	check := func(want string) {
+		t.Helper()
+		result, err := preview.ParseEQU(fileIndex, "[name]\n`example`")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Name != want {
+			t.Fatalf("name = %q, want %q", result.Name, want)
+		}
+	}
+	check("example")
+	rulesPath := filepath.Join(t.TempDir(), "annotations.json")
+	service := newAnnotationService(c, rulesPath)
+	for _, version := range []string{"110US", "90US"} {
+		document.Fields[0].PVFVersions = []string{version}
+		data, err := annotationrules.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rulesPath, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.ReloadRules(); err != nil {
+			t.Fatal(err)
+		}
+		want := ""
+		if version == "90US" {
+			want = "example"
+		}
+		check(want)
+	}
+}
+
+func TestAnnotationVersionDiskReload(t *testing.T) {
+	document := annotationrules.Document{Version: 1, Rules: []annotationrules.Rule{{
+		ID: "path", PVFVersions: []string{"90US"}, Match: annotationrules.MatchSpec{Glob: "equipment/**"}, Target: annotationrules.TargetSpec{Kind: "path"}, Annotation: annotationrules.AnnotationSpec{Title: "equipment", Type: "text"},
+	}}}
+	engine, err := annotationrules.Compile(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	mustAddText(t, a, "equipment/a.equ", "[name]\n`example`", pvf.TypeScript)
+	disk, _, err := openSQLiteArchiveIndex(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &core{annotationEngine: engine.ForVersion("110US"), diskIndex: disk}
+	c.mu.Lock()
+	c.installDiskArchiveIndexesLocked(a)
+	c.mu.Unlock()
+	t.Cleanup(c.closeArchive)
+	check := func(want int) {
+		t.Helper()
+		if c.pathAnnotations != nil {
+			t.Fatal("disk archive must retain lazy path annotations")
+		}
+		nodes, err := NewArchiveService(c).ListChildren("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		node := findTreeNode(nodes, "equipment")
+		if node == nil || len(node.Annotations) != want {
+			t.Fatalf("path annotations = %#v", node)
+		}
+	}
+	check(1)
+	rulesPath := filepath.Join(t.TempDir(), "annotations.json")
+	for _, version := range []string{"110US", "90US"} {
+		document.Rules[0].PVFVersions = []string{version}
+		data, err := annotationrules.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rulesPath, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newAnnotationService(c, rulesPath).ReloadRules(); err != nil {
+			t.Fatal(err)
+		}
+		want := 0
+		if version == "90US" {
+			want = 1
+		}
+		check(want)
+	}
+}

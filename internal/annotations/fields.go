@@ -36,6 +36,7 @@ func resolveFieldRule(rule Rule, fields []FieldDefinition) (Rule, error) {
 		}
 		resolved := Rule{
 			ID:          rule.ID,
+			PVFVersions: rule.PVFVersions,
 			Description: rule.Description,
 			Field:       rule.Field,
 			Match:       field.Match,

@@ -135,6 +135,10 @@
             <input id="previewPath" value="equipment/example.equ" />
           </div>
           <div class="field">
+            <label for="previewVersion">PVF 版本</label>
+            <select id="previewVersion"><option value="90US">90US</option><option value="90CN">90CN</option><option value="110US">110US</option><option value="">未知版本</option></select>
+          </div>
+          <div class="field">
             <label for="previewText">反编译文本</label>
             <textarea id="previewText">[rarity]
 3
@@ -342,11 +346,30 @@
           <div id="referenceFields" class="${annotation.type === "reference" ? "" : "hidden"}">
             ${field("关联类型", select("annotation-relation", annotation.relation || "", [["","请选择"], ...relationEntries().map(([name]) => [name, name])]))}
           </div>
-        </div>`;
+        </div>
+        ${versionFields(rule)}`;
       bindRuleForm(rule);
     }
 
+    function versionFields(definition) {
+      return `<div class="section"><div class="section-title">适用 PVF 版本</div>
+        ${field("版本（可多选）", ["90US", "90CN", "110US"].map((version) => `<label class="checkbox-control" for="pvf-version-${version}"><input id="pvf-version-${version}" type="checkbox" ${(definition.pvfVersions || []).includes(version) ? "checked" : ""} />${version}</label>`).join(""), "未选择表示全版本适用；引用共享字段时，两处版本限制须同时满足")}
+      </div>`;
+    }
+
+    function bindVersions(definition) {
+      const versions = ["90US", "90CN", "110US"];
+      for (const version of versions) {
+        bindChecked(`pvf-version-${version}`, () => {
+          const selected = versions.filter((value) => $(`pvf-version-${value}`).checked);
+          if (selected.length) definition.pvfVersions = selected;
+          else delete definition.pvfVersions;
+        });
+      }
+    }
+
     function bindRuleForm(rule) {
+      bindVersions(rule);
       const referencedField = rule.field ? fields().find((item) => item.id === rule.field) : null;
       rule.match ||= structuredClone(referencedField?.match || {});
       rule.target ||= structuredClone(referencedField?.target || { kind: "section", section: "name" });
@@ -483,7 +506,8 @@
             </div>
             ${field("显示标签", input("field-preview-label", preview?.label || ""), "可选；为空时使用标注标题")}
           </div>
-        </div>`;
+        </div>
+        ${versionFields(fieldDefinition)}`;
       bindFieldForm(fieldDefinition);
     }
 
@@ -493,6 +517,7 @@
     }
 
     function bindFieldForm(fieldDefinition) {
+      bindVersions(fieldDefinition);
       const target = () => fieldDefinition.target;
       const annotation = () => fieldDefinition.annotation;
       bind("field-id", "input", (value) => fieldDefinition.id = value);
@@ -743,7 +768,7 @@
         const text = $("previewText").value;
         const result = await api("/api/preview", {
           method: "POST",
-          body: JSON.stringify({ path, text, document: state.document }),
+          body: JSON.stringify({ path, text, pvfVersion: $("previewVersion").value, document: state.document }),
         });
         renderPathPreview(result.pathAnnotations || []);
         renderPreview(text, result.annotations || []);
@@ -847,6 +872,7 @@
     $("importFile").onchange = () => { const file = $("importFile").files[0]; if (file) importRules(file); };
     $("exportButton").onclick = exportRules;
     $("previewButton").onclick = refreshPreview;
+    $("previewVersion").onchange = refreshPreview;
     $("previewPath").oninput = () => {
       clearTimeout(state.previewTimer);
       state.previewTimer = setTimeout(refreshPreview, 250);

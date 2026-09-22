@@ -94,3 +94,78 @@ func TestPreviewAPIUsesSubmittedRulesAndIncludesPathAnnotations(t *testing.T) {
 		t.Fatalf("path annotations = %#v", result.PathAnnotations)
 	}
 }
+
+func TestVersionedRulesSaveAndPreview(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "annotations.json")
+	if err := os.WriteFile(rulesPath, []byte(`{"version":1,"rules":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := &editorServer{rulesPath: rulesPath, runtimePath: filepath.Join(dir, "runtime.json"), token: "test-token"}
+	document := json.RawMessage(`{"version":1,"fields":[{"id":"name","pvfVersions":["90US","90CN"],"target":{"kind":"section","section":"name"},"annotation":{"title":"name","type":"text"}}],"rules":[{"id":"path","pvfVersions":["90US","110US"],"target":{"kind":"path"},"annotation":{"title":"path","type":"text"}}]}`)
+	call := func(method, path string, body []byte) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, path, bytes.NewReader(body))
+		request.Header.Set("X-Annotation-Editor-Token", "test-token")
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, request)
+		return response
+	}
+	if response := call(http.MethodPut, "/api/rules", document); response.Code != http.StatusOK {
+		t.Fatalf("save: %s", response.Body.String())
+	}
+	response := call(http.MethodGet, "/api/rules", nil)
+	var saved struct {
+		Fields []struct {
+			PVFVersions []string `json:"pvfVersions"`
+		} `json:"fields"`
+		Rules []struct {
+			PVFVersions []string `json:"pvfVersions"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Fields) != 1 || len(saved.Fields[0].PVFVersions) != 2 || len(saved.Rules) != 1 || len(saved.Rules[0].PVFVersions) != 2 {
+		t.Fatalf("versions lost: %s", response.Body.String())
+	}
+	for _, submitted := range []bool{false, true} {
+		for _, tc := range []struct {
+			version            string
+			annotations, paths int
+		}{{"90US", 1, 1}, {"90CN", 1, 0}, {"110US", 0, 1}, {"", 0, 0}} {
+			payload := map[string]any{"path": "a.equ", "text": "[name]\n`example`"}
+			if tc.version != "" {
+				payload["pvfVersion"] = tc.version
+			}
+			if submitted {
+				payload["document"] = document
+			}
+			body, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := call(http.MethodPost, "/api/preview", body)
+			if response.Code != http.StatusOK {
+				t.Fatalf("preview: %s", response.Body.String())
+			}
+			var result struct {
+				Annotations     []any `json:"annotations"`
+				PathAnnotations []any `json:"pathAnnotations"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Annotations) != tc.annotations || len(result.PathAnnotations) != tc.paths {
+				t.Fatalf("%s submitted=%v: %s", tc.version, submitted, response.Body.String())
+			}
+		}
+	}
+	if response := call(http.MethodPost, "/api/preview", []byte(`{"pvfVersion":"invalid"}`)); response.Code != http.StatusBadRequest {
+		t.Fatal("invalid preview version accepted")
+	}
+	invalid := bytes.ReplaceAll(document, []byte("90US"), []byte("invalid"))
+	if response := call(http.MethodPut, "/api/rules", invalid); response.Code != http.StatusBadRequest {
+		t.Fatal("invalid config version accepted")
+	}
+}

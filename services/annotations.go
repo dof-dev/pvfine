@@ -53,6 +53,11 @@ type relationTarget struct {
 }
 
 func buildPathAnnotations(engine *annotationrules.Engine, children map[string][]*TreeNode) map[string][]TreeAnnotation {
+	// Disk-backed archives resolve annotations lazily. Preserve the nil cache
+	// sentinel on reload instead of installing an empty, authoritative cache.
+	if children == nil {
+		return nil
+	}
 	result := make(map[string][]TreeAnnotation)
 	if engine == nil {
 		return result

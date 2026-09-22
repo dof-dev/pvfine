@@ -42,6 +42,7 @@ func (s *AnnotationService) ReloadRules() (AnnotationReloadResult, error) {
 
 	s.c.mu.Lock()
 	oldSpecsFingerprint := searchIndexSpecFingerprint(s.c.searchableListSpecsLocked())
+	engine = engine.ForVersion(s.c.archive.ClientVersion())
 	s.c.annotationEngine = engine
 	s.c.annotationErr = nil
 	s.c.annotationRelations = make(map[string]map[string]*relationTarget)

@@ -29,6 +29,7 @@ type RelationSpec struct {
 }
 
 type Rule struct {
+	PVFVersions []string       `json:"pvfVersions,omitempty"`
 	ID          string         `json:"id"`
 	Description string         `json:"description,omitempty"`
 	Field       string         `json:"field,omitempty"`
@@ -42,11 +43,12 @@ type Rule struct {
 // and structured previews. A field may optionally expose a PreviewSpec; fields
 // without it are still useful to annotations and remain out of previews.
 type FieldDefinition struct {
-	ID         string         `json:"id"`
-	Match      MatchSpec      `json:"match"`
-	Target     TargetSpec     `json:"target"`
-	Annotation AnnotationSpec `json:"annotation"`
-	Preview    *PreviewSpec   `json:"preview,omitempty"`
+	PVFVersions []string       `json:"pvfVersions,omitempty"`
+	ID          string         `json:"id"`
+	Match       MatchSpec      `json:"match"`
+	Target      TargetSpec     `json:"target"`
+	Annotation  AnnotationSpec `json:"annotation"`
+	Preview     *PreviewSpec   `json:"preview,omitempty"`
 }
 
 // PreviewSpec describes how a shared field participates in a preview. The
