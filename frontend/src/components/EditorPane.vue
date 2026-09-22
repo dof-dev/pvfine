@@ -798,7 +798,6 @@ function onDrop(event: DragEvent): void {
                   @click="onBookmarkActive"
                 >
                   <template #icon><NIcon><BookmarkAdd24Regular /></NIcon></template>
-                  {{ activeBookmarked ? "已在书签" : "加入书签" }}
                 </NButton>
               </template>
               {{ activeBookmarked ? "当前文件已在当前书签簿" : "加入当前书签簿" }}
@@ -814,7 +813,6 @@ function onDrop(event: DragEvent): void {
                   @click="onRevealActiveFile"
                 >
                   <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
-                  在资源管理器中选中
                 </NButton>
               </template>
               定位当前文件
@@ -830,7 +828,6 @@ function onDrop(event: DragEvent): void {
                   @click="editor.split('columns', paneId)"
                 >
                   <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
-                  左右分屏
                 </NButton>
               </template>
               左右分屏 (Cmd/Ctrl+\)
@@ -846,7 +843,6 @@ function onDrop(event: DragEvent): void {
                   @click="editor.split('rows', paneId)"
                 >
                   <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
-                  上下分屏
                 </NButton>
               </template>
               上下分屏 (Cmd/Ctrl+Shift+\)
@@ -887,7 +883,7 @@ function onDrop(event: DragEvent): void {
             </NTooltip>
             <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
               <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
-                :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">文本</NButton>
+                :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">DSL</NButton>
               <NButton size="tiny" :type="isGUI(tab.index) ? 'primary' : 'default'"
                 :disabled="tab.loading || !!tab.loadError" :aria-pressed="isGUI(tab.index)"
                 @click="guiModes.set(tab.index, 'gui')">GUI</NButton>
@@ -936,6 +932,7 @@ function onDrop(event: DragEvent): void {
             :key="`${gui.epoch}:${tab.index}`"
             :file="previewFile(tab)"
             :active="isGUI(tab.index) && activeTab?.index === tab.index"
+            @close="guiModes.set(tab.index, 'text')"
           />
         </div>
       </NTabPane>

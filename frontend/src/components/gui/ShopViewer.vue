@@ -7,15 +7,25 @@ import type { GUIFile } from "../../gui/types";
 import { useFileGUIStore } from "../../stores/fileGUI";
 
 const props = defineProps<{ file: GUIFile; active: boolean }>();
+const emit = defineEmits<{ (e: "close"): void }>();
+
 const gui = useFileGUIStore();
 const session = createShopSession(FileGUIService.ReadShop);
 const { document, loading, error, tabIndex, categoryID } = session;
+
 const items = computed(() => document.value?.tabs?.[tabIndex.value]?.groups
   ?.filter((group) => !!group)
   .filter((group) => !document.value?.categoryType || group.categoryId === categoryID.value)
   .flatMap((group) => group.items ?? []) ?? []);
+
+const currentCategoryName = computed(() => {
+  if (!document.value?.categories?.length) return "全部";
+  return document.value.categories.find((c) => c.id === categoryID.value)?.name ?? "全部";
+});
+
 const number = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 function reload() { return session.load(props.file, String(gui.epoch)); }
+
 watch(
   () => [props.active, props.file.index, props.file.path, props.file.text, gui.epoch, gui.revision] as const,
   () => { if (props.active) void reload(); else session.invalidate(); },
@@ -27,65 +37,128 @@ onBeforeUnmount(() => session.invalidate(true));
 <template>
   <section class="shop-view" :aria-busy="loading" aria-label="商店商品">
     <header class="shop-title">
+      <div class="shop-title-placeholder" aria-hidden="true" />
       <h2>{{ document?.name ?? "商店" }}</h2>
-      <span>只读展示</span>
+      <button
+        type="button"
+        class="shop-close-btn"
+        title="关闭商店界面"
+        aria-label="关闭"
+        @click="emit('close')"
+      >
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+          <path d="M1 1L7 7M7 1L1 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      </button>
     </header>
-    <div class="shop-status" role="status" aria-live="polite">
-      <template v-if="loading">{{ document ? "正在更新…" : "正在加载商店…" }}</template>
-      <template v-else-if="!error && document">{{ items.length }} 件商品</template>
-    </div>
+
     <div v-if="error" class="shop-error" role="alert">
       <span>{{ document ? "更新失败，以下为上次加载的内容。" : "商店加载失败。" }}{{ error }}</span>
-      <button @click="reload">重试</button>
+      <button type="button" @click="reload">重试</button>
     </div>
+
     <div v-if="!document && loading" class="shop-skeleton" aria-hidden="true">
-      <div class="skeleton-tabs skeleton-pulse" />
+      <div class="skeleton-navigation">
+        <div class="skeleton-tabs skeleton-pulse" />
+        <div class="skeleton-category skeleton-pulse" />
+      </div>
       <div class="shop-grid">
         <div v-for="i in 10" :key="i" class="shop-card skeleton-card">
           <div class="skeleton-icon skeleton-pulse" />
-          <div class="skeleton-name skeleton-pulse" />
-          <div class="skeleton-price skeleton-pulse" />
+          <div class="shop-card-main">
+            <div class="skeleton-name skeleton-pulse" />
+            <div class="skeleton-price skeleton-pulse" />
+          </div>
         </div>
       </div>
     </div>
+
     <div v-else-if="document" class="shop-content">
       <div class="shop-navigation">
         <div class="shop-tabs" role="tablist" aria-label="商品分页">
-          <button v-for="(tab, i) in document.tabs" :key="tab.sourceStart" role="tab"
-            :aria-selected="tabIndex === i" :disabled="loading" :class="{ selected: tabIndex === i }"
-            @click="tabIndex = i">{{ tab.name }}</button>
+          <button
+            v-for="(tab, i) in document.tabs"
+            :key="tab.sourceStart"
+            type="button"
+            role="tab"
+            :aria-selected="tabIndex === i"
+            :disabled="loading"
+            class="shop-tab-btn"
+            :class="{ selected: tabIndex === i }"
+            @click="tabIndex = i"
+          >
+            {{ tab.name }}
+          </button>
         </div>
-        <label v-if="document.categoryType" class="shop-category">
-          <span class="sr-only">{{ document.categoryType === 'basic job' ? '职业' : '大分类' }}</span>
-          <select v-model="categoryID" :disabled="loading" aria-label="大分类">
-            <option v-for="category in document.categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+
+        <div v-if="document.categoryType" class="shop-category-box">
+          <span class="shop-category-label">{{ currentCategoryName }}</span>
+          <span class="shop-category-arrow" aria-hidden="true">
+            <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+              <path d="M1 1.5L4 4.5L7 1.5" stroke="#eed28b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <select
+            v-model="categoryID"
+            :disabled="loading"
+            class="shop-category-select"
+            :aria-label="document.categoryType === 'basic job' ? '职业分类' : '商品分类'"
+          >
+            <option v-for="category in document.categories" :key="category.id" :value="category.id">
+              {{ category.name }}
+            </option>
           </select>
-        </label>
+        </div>
       </div>
+
       <div class="shop-products" role="tabpanel" :aria-label="document.tabs?.[tabIndex]?.name">
         <div v-if="items.length" class="shop-grid">
           <article v-for="entry in items" :key="entry.sourceStart" class="shop-card">
-            <div class="shop-icon"><ImageThumbnail :reference="entry.item.icon" :size="32" show-fallback animated /></div>
-            <div class="shop-item-name" :title="`${entry.item.name}\nID: ${entry.item.id}`">{{ entry.item.name }}</div>
-            <div class="shop-costs">
-              <span v-if="!entry.item.costs?.length" class="shop-no-price">未配置价格</span>
-              <span v-for="(cost, i) in entry.item.costs" :key="i" class="shop-cost"
-                :title="cost.kind === 'gold' ? '金币' : `${cost.name} (ID: ${cost.itemId})`">
-                {{ number(cost.quantity) }}
-                <svg v-if="cost.kind === 'gold'" class="gold-icon" width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="金币">
-                  <ellipse cx="6" cy="11" rx="5" ry="3" fill="#a16c22" stroke="#f2d36d" />
-                  <ellipse cx="6" cy="9" rx="5" ry="2.5" fill="#e4b846" stroke="#ffe29a" />
-                  <ellipse cx="10" cy="5" rx="4.5" ry="2.5" fill="#efc85a" stroke="#ffe29a" />
-                  <path d="M6 5v3c0 3 8 3 8 0V5" fill="none" stroke="#d69d34" />
-                </svg>
-                <ImageThumbnail v-else :reference="cost.icon" :size="16" show-fallback animated />
-                <span class="sr-only">{{ cost.name }}</span>
-              </span>
+            <div class="shop-icon">
+              <ImageThumbnail :reference="entry.item.icon" :size="32" show-fallback animated />
+            </div>
+            <div class="shop-card-main">
+              <div class="shop-item-name" :title="`${entry.item.name}\nID: ${entry.item.id}`">
+                {{ entry.item.name }}
+              </div>
+              <div class="shop-costs">
+                <span v-if="!entry.item.costs?.length" class="shop-cost-box shop-no-price">未配置价格</span>
+                <span
+                  v-for="(cost, i) in entry.item.costs"
+                  :key="i"
+                  class="shop-cost-box"
+                  :title="cost.kind === 'gold' ? '金币' : `${cost.name} (ID: ${cost.itemId})`"
+                >
+                  <span class="shop-cost-amount">{{ number(cost.quantity) }}</span>
+                  <svg v-if="cost.kind === 'gold'" class="gold-icon" width="14" height="14" viewBox="0 0 14 14" role="img" aria-label="金币">
+                    <ellipse cx="6" cy="9.5" rx="4.8" ry="2.6" fill="#84500d" stroke="#a46d1b" stroke-width="0.5" />
+                    <ellipse cx="6" cy="8.2" rx="4.8" ry="2.5" fill="#dfa421" stroke="#f6ce56" stroke-width="0.5" />
+                    <ellipse cx="8.5" cy="5.2" rx="4.5" ry="2.4" fill="#84500d" stroke="#a46d1b" stroke-width="0.5" />
+                    <ellipse cx="8.5" cy="4.2" rx="4.5" ry="2.3" fill="#f4c840" stroke="#ffeb86" stroke-width="0.5" />
+                    <ellipse cx="8.5" cy="4.2" rx="3" ry="1.4" fill="none" stroke="#fff4a8" stroke-width="0.5" stroke-opacity="0.8" />
+                  </svg>
+                  <ImageThumbnail v-else :reference="cost.icon" :size="14" show-fallback animated />
+                  <span class="sr-only">{{ cost.name }}</span>
+                </span>
+              </div>
             </div>
           </article>
         </div>
         <div v-else class="shop-empty">当前分页和分类下没有商品</div>
       </div>
+
+      <footer class="shop-footer">
+        <div class="shop-actions">
+          <button type="button" class="shop-action-btn" disabled title="只读展示模式">一键出售(A)</button>
+          <button type="button" class="shop-action-btn" disabled title="只读展示模式">出售</button>
+          <button type="button" class="shop-action-btn" disabled title="只读展示模式">购买</button>
+        </div>
+        <div v-if="!error && document" class="shop-footer-meta" :title="`当前显示 ${items.length} 件商品`">
+          <span class="shop-meta-dot" />
+          <span>{{ items.length }} 件商品</span>
+        </div>
+      </footer>
+
       <details v-if="document.issues?.length" class="shop-issues">
         <summary>{{ document.issues.length }} 条数据提示</summary>
         <ul><li v-for="(issue, i) in document.issues" :key="i">{{ issue.message }}</li></ul>
@@ -95,41 +168,529 @@ onBeforeUnmount(() => session.invalidate(true));
 </template>
 
 <style scoped>
-.shop-view { --shop-gold: #c9ad6d; color: #eee6d5; min-width: 380px; width: 100%; max-width: 680px; min-height: 100%; margin: 0 auto; background: #29251f; border: 1px solid #796443; box-sizing: border-box; font-size: 13px; }
-.shop-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 38px; padding: 0 14px; background: linear-gradient(#284769, #13263d); border-bottom: 1px solid #8d774c; }
-.shop-title h2 { margin: 0; color: #e7cb83; font-size: 15px; font-weight: 600; }
-.shop-title > span { font-size: 11px; color: #b2bcca; white-space: nowrap; }
-.shop-status { height: 25px; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; color: #beae90; font-size: 11px; }
-.shop-content, .shop-skeleton { padding: 0 10px 12px; }
-.shop-content { animation: shop-reveal 150ms ease-out; }
-.shop-navigation { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; padding-bottom: 9px; }
-.shop-tabs { display: flex; flex: 1; flex-wrap: wrap; gap: 3px; }
-.shop-view button, .shop-view select { font: inherit; color: #cfc3a7; background: #211e19; border: 1px solid #736040; border-radius: 2px; padding: 4px 8px; cursor: pointer; }
-.shop-tabs button.selected { color: #fff0c3; background: #665338; border-color: #c5a565; box-shadow: inset 0 1px #d0b57555; }
-.shop-view button:disabled, .shop-view select:disabled { opacity: .55; cursor: wait; }
-.shop-view button:focus-visible, .shop-view select:focus-visible, .shop-view summary:focus-visible { outline: 2px solid #83c9e6; outline-offset: 2px; }
-.shop-category select { max-width: 160px; }
-.shop-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-.shop-card { display: grid; grid-template-columns: 36px minmax(0, 1fr); grid-template-rows: minmax(36px, auto) auto; gap: 4px 7px; padding: 7px; min-height: 72px; box-sizing: border-box; border: 1px solid #665537; border-radius: 2px; background: linear-gradient(120deg, #38332a, #24221d); box-shadow: inset 0 0 0 1px #171611; }
-.shop-icon { width: 34px; height: 34px; border: 1px solid #87734c; background: #141412; display: flex; align-items: center; justify-content: center; }
-.shop-item-name { color: #9bdbea; line-height: 1.4; overflow-wrap: anywhere; }
-.shop-costs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px 9px; min-height: 18px; }
-.shop-cost { display: inline-flex; align-items: center; gap: 4px; color: #f4f0e3; font-size: 12px; font-variant-numeric: tabular-nums; }
-.gold-icon { flex: none; }
-.shop-no-price { color: #b6aa93; font-size: 11px; }
-.shop-empty { padding: 40px 12px; text-align: center; color: #beae90; }
-.shop-error { margin: 0 10px 10px; padding: 10px; background: #462c27; color: #ffd1b3; display: flex; align-items: center; gap: 10px; }
-.shop-error span { flex: 1; overflow-wrap: anywhere; }
-.shop-issues { color: #d6b877; margin-top: 12px; font-size: 12px; }
-.shop-issues summary { cursor: pointer; }
-.shop-issues ul { padding-left: 20px; line-height: 1.6; }
-.skeleton-tabs { width: 65%; height: 26px; margin-bottom: 10px; }
-.skeleton-icon { width: 34px; height: 34px; }
-.skeleton-name { height: 12px; margin-top: 5px; width: 90%; }
-.skeleton-price { grid-column: 2; justify-self: end; height: 12px; width: 70%; }
-.skeleton-pulse { background: #514938; border-radius: 2px; animation: shop-pulse 1.3s ease-in-out infinite alternate; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
-@keyframes shop-pulse { to { opacity: .35; } }
-@keyframes shop-reveal { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .skeleton-pulse, .shop-content { animation: none; } }
+.shop-view {
+  color: #eee6d5;
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  min-height: 320px;
+  margin: 0 auto;
+  background: transparent;
+  border: 1px solid #14243b;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), inset 0 0 0 1px #1d3350;
+  border-radius: 2px;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-family: "Microsoft YaHei", "PingFang SC", "SimSun", sans-serif;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.shop-title {
+  flex: 0 0 28px;
+  display: grid;
+  grid-template-columns: 20px 1fr 20px;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  background: linear-gradient(180deg, #183c6d 0%, #11284a 52%, #0a1b33 100%);
+  border-bottom: 1px solid #060e18;
+  box-shadow: inset 0 1px 0 rgba(77, 147, 230, 0.35);
+  border-radius: 2px 2px 0 0;
+  box-sizing: border-box;
+}
+
+.shop-title h2 {
+  margin: 0;
+  color: #eed28b;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+  text-shadow: 0 1px 2px #000, 0 0 2px #000, 1px 0 0 #000, -1px 0 0 #000;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shop-title-placeholder {
+  width: 16px;
+  height: 16px;
+}
+
+.shop-close-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #1d3e69 0%, #0d1e34 100%);
+  border: 1px solid #28548e;
+  border-radius: 2px;
+  color: #9cbde6;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition: all 0.15s ease;
+}
+
+.shop-close-btn:hover {
+  background: #255088;
+  border-color: #3b74bf;
+  color: #ffffff;
+}
+
+.shop-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: shop-reveal 150ms ease-out;
+}
+
+.shop-navigation {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  box-sizing: border-box;
+}
+
+.shop-tabs {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.shop-tab-btn {
+  font-family: inherit;
+  font-size: 12px;
+  color: #8c7f6e;
+  background: #171412;
+  border: 1px solid #4a3e2e;
+  border-radius: 2px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.shop-tab-btn:hover:not(:disabled) {
+  color: #c9b593;
+  border-color: #6e5c44;
+  background: #231e19;
+}
+
+.shop-tab-btn.selected {
+  color: #ffe090;
+  font-weight: bold;
+  background: linear-gradient(180deg, #3d311c 0%, #201a11 100%);
+  border-color: #cfab5f;
+  box-shadow: inset 0 1px 0 #eed08c, inset 0 0 4px rgba(238, 208, 140, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.shop-tab-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.shop-tab-btn:focus-visible,
+.shop-close-btn:focus-visible,
+.shop-category-select:focus-visible,
+.shop-issues summary:focus-visible {
+  outline: 2px solid #83c9e6;
+  outline-offset: 1px;
+}
+
+.shop-category-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  min-width: 82px;
+  background: #080a0c;
+  border: 1px solid #544430;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+  box-sizing: border-box;
+}
+
+.shop-category-label {
+  color: #dfca92;
+  font-size: 12px;
+  padding: 0 7px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.shop-category-arrow {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(180deg, #184175 0%, #0d2342 100%);
+  border-left: 1px solid #234c82;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.shop-category-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.shop-category-select option {
+  background: #181d24;
+  color: #eed28b;
+}
+
+.shop-products {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.shop-products::-webkit-scrollbar {
+  width: 6px;
+}
+.shop-products::-webkit-scrollbar-track {
+  background: #080b0f;
+  border-left: 1px solid #1c2635;
+}
+.shop-products::-webkit-scrollbar-thumb {
+  background: #2a3d52;
+  border-radius: 1px;
+}
+.shop-products::-webkit-scrollbar-thumb:hover {
+  background: #3b5573;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 6px;
+  align-content: start;
+}
+
+.shop-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-height: 56px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  border: 1px solid #282f37;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #171c21 0%, #101317 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.shop-card:hover {
+  border-color: #445160;
+  background: linear-gradient(180deg, #1d2228 0%, #14171b 100%);
+}
+
+.shop-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid #363e48;
+  background: #080a0c;
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.shop-card-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  height: 100%;
+  padding: 1px 0;
+}
+
+.shop-item-name {
+  color: #7ed8ec;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-shadow: 0 1px 2px #000, 0 0 2px #000;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.shop-costs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.shop-cost-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 18px;
+  padding: 0 5px;
+  background: #06080a;
+  border: 1px solid #20252b;
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.85);
+  box-sizing: border-box;
+}
+
+.shop-cost-amount {
+  color: #ffffff;
+  font-size: 11px;
+  font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 1px #000;
+}
+
+.gold-icon {
+  flex: none;
+}
+
+.shop-no-price {
+  color: #8c7f6e;
+  font-size: 11px;
+}
+
+.shop-footer {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px 10px;
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.shop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.shop-action-btn {
+  font-family: inherit;
+  font-size: 12px;
+  color: #63bbf3;
+  background: linear-gradient(180deg, #183a66 0%, #102542 50%, #0a172a 100%);
+  border: 1px solid #255188;
+  border-radius: 2px;
+  padding: 3px 14px;
+  height: 24px;
+  box-shadow: inset 0 1px 0 #3a6fae, inset 0 -1px 0 #050c17, 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 2px #000;
+  cursor: default;
+  opacity: 0.85;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.shop-footer-meta {
+  position: absolute;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7b889b;
+  font-size: 11px;
+}
+
+.shop-meta-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3986c7;
+}
+
+.shop-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 12px;
+  text-align: center;
+  color: #8c7f6e;
+  font-size: 12px;
+}
+
+.shop-error {
+  flex: 0 0 auto;
+  margin: 8px 10px;
+  padding: 8px 12px;
+  background: rgba(120, 30, 20, 0.7);
+  border: 1px solid #9e3d30;
+  border-radius: 2px;
+  color: #ffd8d0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.shop-error span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.shop-error button {
+  font: inherit;
+  background: #3a1c18;
+  border: 1px solid #c25244;
+  color: #fff;
+  border-radius: 2px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.shop-issues {
+  flex: 0 0 auto;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 4px 10px 8px;
+  padding: 6px 10px;
+  background: rgba(15, 20, 26, 0.85);
+  border: 1px solid #3d4957;
+  border-radius: 2px;
+  color: #e5cd90;
+  font-size: 11px;
+}
+
+.shop-issues summary {
+  cursor: pointer;
+}
+
+.shop-issues ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+  color: #b0c0d0;
+}
+
+/* Skeleton styles */
+.shop-skeleton {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 10px 10px;
+}
+
+.skeleton-navigation {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.skeleton-tabs {
+  width: 150px;
+  height: 24px;
+}
+
+.skeleton-category {
+  width: 82px;
+  height: 22px;
+}
+
+.shop-skeleton .shop-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skeleton-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.skeleton-name {
+  height: 12px;
+  margin-top: 2px;
+  width: 85%;
+}
+
+.skeleton-price {
+  height: 16px;
+  width: 65%;
+  align-self: flex-end;
+}
+
+.skeleton-pulse {
+  background: #1e242d;
+  border-radius: 2px;
+  animation: shop-pulse 1.3s ease-in-out infinite alternate;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@keyframes shop-pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@keyframes shop-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-pulse,
+  .shop-content {
+    animation: none;
+  }
+}
 </style>
