@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,6 +186,25 @@ func TestAnnotationServicesAndCacheInvalidation(t *testing.T) {
 	}
 	if reference = findEditorAnnotation(updated, "新名称"); reference == nil || !strings.Contains(reference.Content, "新名称") {
 		t.Fatalf("updated reference = %#v", reference)
+	}
+
+	// A rarity-only edit must invalidate the cached source annotation, including
+	// ordinary rarity 0 and removal of the rarity section.
+	for _, value := range []int32{0, 4, 6, pvf.RarityUnknown} {
+		text := "[name]\n`新名称`"
+		if value != pvf.RarityUnknown {
+			text += fmt.Sprintf("\n[rarity]\n%d", value)
+		}
+		if err := editorService.SetText(targetIndex, text); err != nil {
+			t.Fatal(err)
+		}
+		updated, err = editorService.GetAnnotations(sourceIndex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reference = findEditorAnnotation(updated, "新名称"); reference == nil || reference.Rarity != value {
+			t.Fatalf("reference rarity = %#v, want %d", reference, value)
+		}
 	}
 
 	unicodeMeta, err := editorService.GetFile(unicodeIndex)

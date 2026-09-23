@@ -274,3 +274,31 @@ func TestSQLiteIndexCarriesRarity(t *testing.T) {
 		}
 	}
 }
+
+func TestEditorItemAnnotationsCarryRarity(t *testing.T) {
+	c, _ := openRarityFixture(t, "rarity-annotations.pvf")
+	editor := NewEditorService(c)
+	for _, sample := range []struct {
+		path string
+		name string
+		want int32
+	}{
+		{"equipment/equipment.lst", "史诗项链", 4},
+		{"equipment/equipment.lst", "普通项链", 0},
+		{"equipment/equipment.lst", "无稀有度项链", pvf.RarityUnknown},
+		{"stackable/stackable.lst", "稀有回复药", 2},
+	} {
+		index, ok := c.archive.Find(sample.path)
+		if !ok {
+			t.Fatalf("missing fixture list: %s", sample.path)
+		}
+		annotations, err := editor.GetAnnotations(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		annotation := findEditorAnnotation(annotations, sample.name)
+		if annotation == nil || annotation.Rarity != sample.want {
+			t.Fatalf("%s annotation = %#v, want rarity %d", sample.name, annotation, sample.want)
+		}
+	}
+}

@@ -301,6 +301,7 @@ export interface EditorAnnotation {
     "image"?: ImageReference | null;
     "inlineImage"?: boolean;
     "placeholder"?: PlaceholderRef | null;
+    "rarity": number;
 }
 
 /**

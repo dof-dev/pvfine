@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { rarityColor } from "../rarity";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   EditorView,
@@ -130,6 +131,7 @@ class AnnotationWidget extends WidgetType {
       other.annotation.title === this.annotation.title &&
       other.annotation.content === this.annotation.content &&
       other.annotation.type === this.annotation.type &&
+      other.annotation.rarity === this.annotation.rarity &&
       other.annotation.targetFileIndex === this.annotation.targetFileIndex &&
       other.annotation.image?.path === this.annotation.image?.path &&
       other.annotation.image?.index === this.annotation.image?.index &&
@@ -145,7 +147,11 @@ class AnnotationWidget extends WidgetType {
     tag.className = inlineImage
       ? "cm-annotation-inline-image"
       : `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
-    if (!inlineImage) tag.textContent = this.annotation.title;
+    if (!inlineImage) {
+      tag.textContent = this.annotation.title;
+      const color = rarityColor(this.annotation.rarity);
+      if (color) tag.style.color = color;
+    }
     const hints = [
       this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开来源字符串表" : "",
       placeholder ? "单击修改译文" : "",

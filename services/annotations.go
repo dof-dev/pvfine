@@ -20,6 +20,7 @@ type EditorAnnotation struct {
 	Image           *ImageReference `json:"image,omitempty"`
 	InlineImage     bool            `json:"inlineImage,omitempty"`
 	Placeholder     *PlaceholderRef `json:"placeholder,omitempty"`
+	Rarity          int32           `json:"rarity"`
 }
 
 // PlaceholderRef identifies the string-table entry a placeholder annotation
@@ -145,6 +146,17 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
 	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations)
+	for i := range annotations {
+		annotation := &annotations[i]
+		annotation.Rarity = pvf.RarityUnknown
+		if annotation.TargetFileIndex < 0 {
+			continue
+		}
+		switch strings.ToLower(path.Ext(c.archive.Path(annotation.TargetFileIndex))) {
+		case ".equ", ".stk":
+			annotation.Rarity = c.fileVisualsLocked(annotation.TargetFileIndex).rarity
+		}
+	}
 	c.editorAnnotation = editorAnnotationCache{
 		valid:       true,
 		fileIndex:   index,
