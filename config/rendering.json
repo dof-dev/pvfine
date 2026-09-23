@@ -109,6 +109,18 @@
       "format": {
         "tokensPerLine": 7
       }
+    },
+    {
+      "id": "section.equipment part set",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "equipment part set"
+      },
+      "format": {
+        "tokensPerLine": 4,
+        "offset": 3
+      }
     }
   ]
 }

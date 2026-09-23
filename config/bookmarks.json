@@ -133,6 +133,10 @@
         {
           "path": "worldmap/worldmap.lst",
           "name": "副本接口"
+        },
+        {
+          "path": "etc/equipmentpartset.etc",
+          "name": "套装"
         }
       ]
     },
@@ -167,6 +171,12 @@
           "name": "红气息"
         }
       ]
+    }
+  ],
+  "entries": [
+    {
+      "path": "equipment/character/common/belt/larmor/100220443.equ",
+      "name": "100220443.equ"
     }
   ]
 }

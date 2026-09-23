@@ -315,3 +315,89 @@ func TestPreviewServiceParseEQUResolvesContextualSkillName(t *testing.T) {
 		t.Fatalf("skill levelups = %#v, issues=%#v", result.SkillLevelups, result.Issues)
 	}
 }
+
+func TestPreviewServiceParseEQUSetPreview(t *testing.T) {
+	a := pvf.New()
+	list := "[equipment part set]\n99 `missing.etc` `其它套装` `其它部位` 0 0 0\n[/equipment part set]\n" +
+		"[equipment part set]\n42 `sets/effect.etc` `格拉西亚` `上衣` 1 2 3 `下装` 4 5 6\n[/equipment part set]"
+	if _, err := a.AddFileText(equipmentPartSetListPath, list, pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	effects := "[piece set ability]\n3\n[parameter basic explain]\n`力量 +50\\n智力 +50%%`\n[/parameter basic explain]\n" +
+		"[parameter detail explain]\n`力量 +50 (详细)`\n[/parameter detail explain]\n[/piece set ability]\n" +
+		"[piece set ability]\n5\n[parameter basic explain]\n`光属性强化 +12`\n[/parameter basic explain]\n[/piece set ability]"
+	if _, err := a.AddFileText("equipment/sets/effect.etc", effects, pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	// The same relative path under etc/ must not be used for set effects.
+	if _, err := a.AddFileText("etc/sets/effect.etc", "[piece set ability]\n3", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	equipment, err := a.AddFileText("equipment/test.equ", "[name]\n`测试装备`\n[part set index]\n42", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	service := NewPreviewService(c)
+	result, err := service.ParseEQU(equipment, "[name]\n`测试装备`\n[part set index]\n42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.PartSet == nil || result.PartSet.Name != "格拉西亚" || len(result.PartSet.Parts) != 2 || result.PartSet.Parts[1] != "下装" {
+		t.Fatalf("set = %#v, issues = %#v", result.PartSet, result.Issues)
+	}
+	if len(result.PartSet.Abilities) != 2 || result.PartSet.Abilities[0].Pieces != 3 ||
+		result.PartSet.Abilities[1].Pieces != 5 ||
+		result.PartSet.Abilities[0].BaseExplain != "力量 +50\n智力 +50%" ||
+		result.PartSet.Abilities[0].DetailExplain != "力量 +50 (详细)" {
+		t.Fatalf("abilities = %#v", result.PartSet.Abilities)
+	}
+	if len(result.Issues) != 0 {
+		t.Fatalf("issues = %#v", result.Issues)
+	}
+	for _, test := range []struct {
+		name string
+		text string
+		warn bool
+	}{
+		{"no set", "[name]\n`测试装备`", false},
+		{"unmatched set", "[name]\n`测试装备`\n[part set index]\n43", true},
+		{"missing effect file", "[name]\n`测试装备`\n[part set index]\n99", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := service.ParseEQU(equipment, test.text)
+			if err != nil || got.PartSet != nil || len(got.Issues) > 0 != test.warn {
+				t.Fatalf("partSet = %#v, issues = %#v, err = %v", got.PartSet, got.Issues, err)
+			}
+		})
+	}
+}
+
+func TestPreviewServiceParseEQUSetPreviewRejectsIncompleteEffect(t *testing.T) {
+	a := pvf.New()
+	if _, err := a.AddFileText(equipmentPartSetListPath,
+		"[equipment part set]\n42 `effect.etc` `测试套装` `部位` 1 2 3\n[/equipment part set]", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AddFileText("equipment/effect.etc",
+		"[piece set ability]\n3\n[parameter detail explain]\n`只有详细说明`\n[/parameter detail explain]\n[/piece set ability]", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	equipment, err := a.AddFileText("equipment/test.equ", "[part set index]\n42", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	got, err := NewPreviewService(c).ParseEQU(equipment, "[part set index]\n42")
+	if err != nil || got.PartSet != nil || len(got.Issues) == 0 || got.Issues[0].Severity != "warning" {
+		t.Fatalf("partSet = %#v, issues = %#v, err = %v", got.PartSet, got.Issues, err)
+	}
+}

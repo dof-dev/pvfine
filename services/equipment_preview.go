@@ -25,31 +25,46 @@ type EquipmentSkillLevelup struct {
 	Level int32  `json:"level"`
 }
 
+// EquipmentSetAbility is one bonus unlocked by wearing a number of set pieces.
+type EquipmentSetAbility struct {
+	Pieces        int32  `json:"pieces"`
+	BaseExplain   string `json:"baseExplain"`
+	DetailExplain string `json:"detailExplain"`
+}
+
+// EquipmentSetPreviewDocument is the set tooltip associated with an equipment.
+type EquipmentSetPreviewDocument struct {
+	Name      string                `json:"name"`
+	Parts     []string              `json:"parts"`
+	Abilities []EquipmentSetAbility `json:"abilities"`
+}
+
 // EquipmentPreviewDocument is the game-style data model rendered by the
 // frontend. Optional sections are represented by empty strings/slices.
 type EquipmentPreviewDocument struct {
-	Icon             *ImageReference             `json:"icon"`
-	Name             string                      `json:"name"`
-	Name2            string                      `json:"name2"`
-	Rarity           int32                       `json:"rarity"`
-	RarityLabel      string                      `json:"rarityLabel"`
-	QualityText      string                      `json:"qualityText"`
-	EquipmentType    string                      `json:"equipmentType"`
-	ItemGroupName    string                      `json:"itemGroupName"`
-	AttachType       string                      `json:"attachType"`
-	MinimumLevelText string                      `json:"minimumLevelText"`
-	UsableJobs       []string                    `json:"usableJobs"`
-	BaseAttributes   []EquipmentPreviewAttribute `json:"baseAttributes"`
-	FourDimensions   []EquipmentPreviewAttribute `json:"fourDimensions"`
-	OtherAttributes  []EquipmentPreviewAttribute `json:"otherAttributes"`
-	SkillLevelups    []EquipmentSkillLevelup     `json:"skillLevelups"`
-	BaseExplain      string                      `json:"baseExplain"`
-	DetailExplain    string                      `json:"detailExplain"`
-	FlavorText       string                      `json:"flavorText"`
-	DurabilityText   string                      `json:"durabilityText"`
-	WeightText       string                      `json:"weightText"`
-	PriceText        string                      `json:"priceText"`
-	Issues           []PreviewIssue              `json:"issues"`
+	Icon             *ImageReference              `json:"icon"`
+	Name             string                       `json:"name"`
+	Name2            string                       `json:"name2"`
+	Rarity           int32                        `json:"rarity"`
+	RarityLabel      string                       `json:"rarityLabel"`
+	QualityText      string                       `json:"qualityText"`
+	EquipmentType    string                       `json:"equipmentType"`
+	ItemGroupName    string                       `json:"itemGroupName"`
+	AttachType       string                       `json:"attachType"`
+	MinimumLevelText string                       `json:"minimumLevelText"`
+	UsableJobs       []string                     `json:"usableJobs"`
+	BaseAttributes   []EquipmentPreviewAttribute  `json:"baseAttributes"`
+	FourDimensions   []EquipmentPreviewAttribute  `json:"fourDimensions"`
+	OtherAttributes  []EquipmentPreviewAttribute  `json:"otherAttributes"`
+	SkillLevelups    []EquipmentSkillLevelup      `json:"skillLevelups"`
+	BaseExplain      string                       `json:"baseExplain"`
+	DetailExplain    string                       `json:"detailExplain"`
+	FlavorText       string                       `json:"flavorText"`
+	DurabilityText   string                       `json:"durabilityText"`
+	WeightText       string                       `json:"weightText"`
+	PriceText        string                       `json:"priceText"`
+	PartSet          *EquipmentSetPreviewDocument `json:"partSet,omitempty"`
+	Issues           []PreviewIssue               `json:"issues"`
 }
 
 // ParseEQU parses the current editor text. Archive state is only used for the
@@ -89,6 +104,7 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 	// Newer clients store `<table::key>` placeholders instead of display text.
 	doc.Name = resolvePreviewText(s.c.archive, doc.Name)
 	doc.Name2 = resolvePreviewText(s.c.archive, doc.Name2)
+	doc.PartSet = s.readEquipmentSetPreviewLocked(text, &doc.Issues)
 	return doc, nil
 }
 

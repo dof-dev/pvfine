@@ -72,6 +72,8 @@ export type {
     EditorAnnotation,
     EquipmentPreviewAttribute,
     EquipmentPreviewDocument,
+    EquipmentSetAbility,
+    EquipmentSetPreviewDocument,
     EquipmentSkillLevelup,
     FileMeta,
     FileRegistration,

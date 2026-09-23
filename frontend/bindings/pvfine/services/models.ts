@@ -339,7 +339,26 @@ export interface EquipmentPreviewDocument {
     "durabilityText": string;
     "weightText": string;
     "priceText": string;
+    "partSet"?: EquipmentSetPreviewDocument | null;
     "issues": PreviewIssue[] | null;
+}
+
+/**
+ * EquipmentSetAbility is one bonus unlocked by wearing a number of set pieces.
+ */
+export interface EquipmentSetAbility {
+    "pieces": number;
+    "baseExplain": string;
+    "detailExplain": string;
+}
+
+/**
+ * EquipmentSetPreviewDocument is the set tooltip associated with an equipment.
+ */
+export interface EquipmentSetPreviewDocument {
+    "name": string;
+    "parts": string[] | null;
+    "abilities": EquipmentSetAbility[] | null;
 }
 
 /**
