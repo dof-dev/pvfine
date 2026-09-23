@@ -18,12 +18,13 @@ import {
   useMessage,
 } from "naive-ui";
 import {
+  ArrowMoveInward20Regular,
   BookmarkAdd24Regular,
   Dismiss16Regular,
   DocumentAdd24Regular,
-  DocumentSearch24Regular,
   Eye24Regular,
   EyeOff24Regular,
+  PanelRight24Regular,
   Save24Regular,
   SplitHorizontal24Regular,
   SplitVertical24Regular,
@@ -812,7 +813,7 @@ function onDrop(event: DragEvent): void {
                   :disabled="!canRevealActiveFile"
                   @click="onRevealActiveFile"
                 >
-                  <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
+                  <template #icon><NIcon><ArrowMoveInward20Regular /></NIcon></template>
                 </NButton>
               </template>
               定位当前文件
@@ -854,13 +855,12 @@ function onDrop(event: DragEvent): void {
                   quaternary
                   size="tiny"
                   :type="isPreviewOpen(tab.index) ? 'primary' : 'default'"
-                  aria-label="切换文件预览"
+                  :aria-label="isPreviewOpen(tab.index) ? '收起文件预览' : '打开文件预览'"
                   @click="togglePreview(tab.index)"
                 >
                   <template #icon>
-                    <NIcon><EyeOff24Regular v-if="isPreviewOpen(tab.index)" /><Eye24Regular v-else /></NIcon>
+                    <NIcon><PanelRight24Regular /></NIcon>
                   </template>
-                  预览
                 </NButton>
               </template>
               {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
