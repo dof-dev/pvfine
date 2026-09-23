@@ -26,6 +26,8 @@ import {
 } from "@codemirror/state";
 import {
   HighlightStyle,
+  foldGutter,
+  foldKeymap,
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
@@ -44,6 +46,7 @@ import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
 import { indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
+import { pvfSectionFolding } from "../pvfSectionFolding";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
 import { useImageStore } from "../stores/images";
@@ -523,6 +526,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
+      ...(!isJavaScript ? foldKeymap : []),
       { key: "Tab", run: insertTab, shift: indentLess },
     ]),
     EditorView.domEventHandlers({
@@ -549,6 +553,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
     diagnosticLineField,
     indentUnit.of("\t"),
     isJavaScript ? javascript() : pvfLanguage.extension,
+    ...(!isJavaScript ? [foldGutter(), ...pvfSectionFolding] : []),
     isJavaScript
       ? [
           tooltips({ parent: document.body, position: "fixed" }),
