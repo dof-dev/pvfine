@@ -734,23 +734,6 @@ function onDrop(event: DragEvent): void {
         </template>
 
         <div class="editor-info-bar" role="toolbar" aria-label="当前文件操作">
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NButton
-                quaternary
-                size="tiny"
-                class="editor-save-button"
-                :type="activeTabDirty ? 'primary' : 'default'"
-                :loading="editor.saving"
-                aria-label="保存"
-                @click="editor.saveActiveTab(paneId)"
-              >
-                <template #icon><NIcon><Save24Regular /></NIcon></template>
-              </NButton>
-            </template>
-            {{ activeTabDirty ? "保存当前文件 (Cmd+S)" : "当前文件没有待保存的修改" }}
-          </NTooltip>
-
           <div class="editor-file-tags" aria-label="当前文件关联信息">
             <NTag
               v-for="tag in fileTags"
@@ -771,6 +754,36 @@ function onDrop(event: DragEvent): void {
           </div>
 
           <div class="editor-pane-actions" role="group" aria-label="编辑器操作">
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  class="editor-save-button"
+                  :type="activeTabDirty ? 'primary' : 'default'"
+                  :loading="editor.saving"
+                  aria-label="保存"
+                  @click="editor.saveActiveTab(paneId)"
+                >
+                  <template #icon><NIcon><Save24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              {{ activeTabDirty ? "保存当前文件 (Cmd+S)" : "当前文件没有待保存的修改" }}
+            </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :loading="revealingFile"
+                  :disabled="!canRevealActiveFile"
+                  @click="onRevealActiveFile"
+                >
+                  <template #icon><NIcon><ArrowMoveInward20Regular /></NIcon></template>
+                </NButton>
+              </template>
+              定位当前文件
+            </NTooltip>
             <NTooltip v-if="activeTab?.index === tab.index && !activeHasID" trigger="hover">
               <template #trigger>
                 <NButton
@@ -802,21 +815,6 @@ function onDrop(event: DragEvent): void {
                 </NButton>
               </template>
               {{ activeBookmarked ? "当前文件已在当前书签簿" : "加入当前书签簿" }}
-            </NTooltip>
-
-            <NTooltip trigger="hover">
-              <template #trigger>
-                <NButton
-                  quaternary
-                  size="tiny"
-                  :loading="revealingFile"
-                  :disabled="!canRevealActiveFile"
-                  @click="onRevealActiveFile"
-                >
-                  <template #icon><NIcon><ArrowMoveInward20Regular /></NIcon></template>
-                </NButton>
-              </template>
-              定位当前文件
             </NTooltip>
 
             <NTooltip trigger="hover">
