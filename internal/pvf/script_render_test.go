@@ -69,6 +69,56 @@ func TestScriptRenderingSupportsLeadingTokenOffset(t *testing.T) {
 	}
 }
 
+func TestScriptRenderingSupportsLegacyUnpairedSection(t *testing.T) {
+	a := New()
+	encoded, err := a.encodeScript("[basis of rarity dicision]\n99 1 2 3 4 5 6 7 8\n[next]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "etc.basis-of-rarity-dicision",
+    "match": {},
+    "target": {"kind": "section", "section": "basis of rarity dicision"},
+    "format": {"tokensPerLine": 7, "offset": 1}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	want := "[basis of rarity dicision]\n\t99\n\t1\t2\t3\t4\t5\t6\t7\n\t8\n\n[next]\n"
+	if got := a.decodeScriptForPath(encoded, "etc/itemdropinfo_monster_hell.etc"); got != want {
+		t.Fatalf("unpaired section rendering = %q, want %q", got, want)
+	}
+}
+
+func TestScriptRenderingUsesTokenValueForLegacyUnpairedSection(t *testing.T) {
+	a := New()
+	encoded, err := a.encodeScript("[basis of rarity dicision]\n3 100 200 300 400 500\n[next]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "etc.basis-of-rarity-dicision-dynamic",
+    "match": {},
+    "target": {"kind": "section", "section": "basis of rarity dicision"},
+    "format": {"offset": 1, "tokensPerLine": 1, "tokensPerLineIndex": 0}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	want := "[basis of rarity dicision]\n\t3\n\t100\t200\t300\n\t400\t500\n\n[next]\n"
+	if got := a.decodeScriptForPath(encoded, "etc/itemdropinfo_monster_hell.etc"); got != want {
+		t.Fatalf("dynamic unpaired section rendering = %q, want %q", got, want)
+	}
+}
+
 func TestScriptRenderingUsesTokenValueForTokensPerLine(t *testing.T) {
 	a := New()
 	encoded, err := a.encodeScript("[records]\n2 100 200 300 400 500\n[/records]")
@@ -94,6 +144,39 @@ func TestScriptRenderingUsesTokenValueForTokensPerLine(t *testing.T) {
 	want := "[records]\n\t2\n\t100\t200\n\t300\t400\n\t500\n[/records]\n"
 	if got := a.decodeScriptForPath(encoded, "item.equ"); got != want {
 		t.Fatalf("dynamic tokensPerLine rendering = %q, want %q", got, want)
+	}
+}
+
+func TestScriptRenderingStandaloneValuesResetGrouping(t *testing.T) {
+	a := New()
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "world.drop",
+    "target": {"kind": "section", "section": "world drop"},
+    "format": {"tokensPerLine": 2, "standaloneValues": [-1]}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	for _, tt := range []struct {
+		name, input, want string
+	}{
+		{"partial row", "[world drop]\n100 200 300 -1 400 500 -1 600 700\n[next]", "[world drop]\n\t100\t200\n\t300\n\t-1\n\t400\t500\n\t-1\n\t600\t700\n\n[next]\n"},
+		{"leading and consecutive", "[world drop]\n-1 -1 1 2 -1 3\n[next]", "[world drop]\n\t-1\n\t-1\n\t1\t2\n\t-1\n\t3\n\n[next]\n"},
+		{"no sentinel", "[world drop]\n1 2 3\n[next]", "[world drop]\n\t1\t2\n\t3\n\n[next]\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := a.encodeScript(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := a.decodeScriptForPath(encoded, "item.equ"); got != tt.want {
+				t.Fatalf("rendering = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

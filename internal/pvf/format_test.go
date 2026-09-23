@@ -337,3 +337,25 @@ func assertSavedHashMatchesFiles(t *testing.T, a *Archive) {
 		}
 	}
 }
+
+func TestClientVersion(t *testing.T) {
+	for _, tc := range []struct {
+		profile formatProfile
+		want    string
+	}{
+		{standardProfile, "90US"}, {alternateProfile, "90CN"}, {paged110Profile, "110US"}, {recoveredProfile, ""}, {formatProfile{id: "future"}, ""},
+	} {
+		a := New()
+		a.format = tc.profile
+		if got := a.ClientVersion(); got != tc.want {
+			t.Fatalf("%s: got %q, want %q", tc.profile.id, got, tc.want)
+		}
+		if got := a.CloneForBatch().ClientVersion(); got != tc.want {
+			t.Fatalf("clone version = %q", got)
+		}
+	}
+	var absent *Archive
+	if absent.ClientVersion() != "" {
+		t.Fatal("nil archive must have unknown version")
+	}
+}

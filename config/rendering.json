@@ -17,6 +17,18 @@
       }
     },
     {
+      "id": "section.world-drop",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "world drop"
+      },
+      "format": {
+        "tokensPerLine": 2,
+        "standaloneValues": [-1]
+      }
+    },
+    {
       "id": "section.skill-data-up",
       "match": {},
       "target": {
@@ -83,6 +95,43 @@
       },
       "format": {
         "tokensPerLine": 2
+      }
+    },
+    {
+      "id": "section.basis of rarity dicision.hell",
+      "match": {
+        "glob": "etc/itemdropinfo_monster_hell.etc"
+      },
+      "target": {
+        "kind": "section",
+        "section": "basis of rarity dicision"
+      },
+      "format": {
+        "tokensPerLine": 7,
+        "offset": 1
+      }
+    },
+    {
+      "id": "section.basis of rarity dicision",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "basis of rarity dicision"
+      },
+      "format": {
+        "tokensPerLine": 7
+      }
+    },
+    {
+      "id": "section.equipment part set",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "equipment part set"
+      },
+      "format": {
+        "tokensPerLine": 4,
+        "offset": 3
       }
     }
   ]

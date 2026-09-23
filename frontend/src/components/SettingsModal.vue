@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, h, ref, watch } from "vue";
 import {
   ArrowSync24Regular,
   CheckmarkCircle24Regular,
@@ -11,6 +11,7 @@ import {
   DocumentSync24Regular,
   FolderOpen24Regular,
   Image24Regular,
+  Keyboard24Regular,
   Info24Regular,
   PaintBrush24Regular,
   Settings24Regular,
@@ -24,6 +25,7 @@ import {
   NAlert,
   NButton,
   NIcon,
+  NInputNumber,
   NModal,
   NRadioButton,
   NRadioGroup,
@@ -31,25 +33,39 @@ import {
   NSwitch,
   NTag,
   NTooltip,
+  useDialog,
   useMessage,
 } from "naive-ui";
-import { AnnotationService, RenderingService, UpdateService } from "../../bindings/pvfine/services";
 import {
+  AnnotationService,
+  CacheService,
+  RenderingService,
+  UpdateService,
+} from "../../bindings/pvfine/services";
+import type { CacheUsage } from "../../bindings/pvfine/services/models";
+import {
+  maxAutosaveIntervalMinutes,
+  minAutosaveIntervalMinutes,
   useSettingsStore,
   type AnnotationTagPlacement,
   type ExplorerOpenMode,
   type ThemeMode,
 } from "../stores/settings";
+import { useAutosaveStore } from "../stores/autosave";
+import { setDialogBusy } from "../dialogBusy";
 import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
 import { useImageStore } from "../stores/images";
+import ShortcutSettings from "./ShortcutSettings.vue";
 
-type TabKey = "general" | "editor" | "npk" | "system";
+type TabKey = "general" | "editor" | "npk" | "system" | "shortcuts";
 
 const settings = useSettingsStore();
+const autosave = useAutosaveStore();
 const editor = useEditorStore();
 const explorer = useExplorerStore();
 const images = useImageStore();
+const dialog = useDialog();
 const message = useMessage();
 
 const activeTab = computed<TabKey>({
@@ -63,12 +79,56 @@ const reloadingAnnotations = ref(false);
 const reloadingRendering = ref(false);
 const selectingNPK = ref(false);
 const rebuildingNPK = ref(false);
+const selectingAutosavePath = ref(false);
+const cacheUsage = ref<CacheUsage | null>(null);
+const cacheUsageLoading = ref(false);
+const clearingCache = ref(false);
+
+const autosaveIntervalMinutes = computed(() =>
+  Math.max(
+    minAutosaveIntervalMinutes,
+    Math.round(settings.autosaveIntervalSeconds / 60)
+  )
+);
+const autosavePathLabel = computed(
+  () => settings.autosavePath || autosave.status?.path || autosave.status?.defaultPath || ""
+);
+const autosaveStatusLabel = computed(() => {
+  if (autosave.running) return "正在写入备份缓存…";
+  if (autosave.lastError) return `上次缓存失败：${autosave.lastError}`;
+  const status = autosave.status;
+  if (!status?.exists) return "尚未生成备份缓存";
+  const time = status.cachedAt ? new Date(status.cachedAt * 1000).toLocaleString() : "未知时间";
+  return `上次缓存：${time} · ${formatBytes(status.sizeBytes)}`;
+});
+
+const cacheUsageSummary = computed(() => {
+  if (cacheUsageLoading.value) return "正在统计缓存占用…";
+  const usage = cacheUsage.value;
+  if (!usage) return "尚未统计";
+  const parts = [`共 ${formatBytes(usage.totalBytes)}，${usage.files} 个文件`];
+  if (usage.inUseBytes > 0) {
+    parts.push(`其中 ${formatBytes(usage.inUseBytes)} 正在被当前归档使用`);
+  }
+  return parts.join("；");
+});
+
+// 打开设置界面时统计一次缓存占用,避免常驻轮询。
+watch(
+  () => settings.visible,
+  (visible) => {
+    if (!visible) return;
+    void autosave.refreshStatus();
+    void refreshCacheUsage();
+  }
+);
 
 const tabs = [
   { id: "general" as const, label: "常规与外观", icon: PaintBrush24Regular },
   { id: "editor" as const, label: "代码编辑器", icon: Code24Regular },
   { id: "npk" as const, label: "NPK 资源库", icon: Image24Regular },
   { id: "system" as const, label: "系统维护", icon: Wrench24Regular },
+  { id: "shortcuts" as const, label: "快捷键", icon: Keyboard24Regular },
 ];
 
 const npkProgressPercent = computed(() => {
@@ -115,6 +175,174 @@ async function onThemeModeChange(value: ThemeMode) {
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
+}
+
+async function onAutosaveEnabledChange(value: boolean) {
+  try {
+    await settings.saveAutosaveEnabled(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onAutosaveIntervalChange(value: number | null) {
+  const minutes = Number(value ?? 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) return;
+  const clamped = Math.min(
+    maxAutosaveIntervalMinutes,
+    Math.max(minAutosaveIntervalMinutes, Math.round(minutes))
+  );
+  try {
+    await settings.saveAutosaveInterval(clamped * 60);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onSelectAutosavePath(): Promise<void> {
+  if (selectingAutosavePath.value) return;
+  selectingAutosavePath.value = true;
+  try {
+    const path = await autosave.chooseCachePath();
+    if (path) await settings.saveAutosavePath(path);
+  } catch (error: any) {
+    message.error(`选择缓存文件失败: ${error?.message ?? error}`);
+  } finally {
+    selectingAutosavePath.value = false;
+  }
+}
+
+async function onResetAutosavePath(): Promise<void> {
+  try {
+    await settings.saveAutosavePath("");
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+/** 手动恢复:启动提示被关掉后仍能再次恢复,恢复本身由后端校验当前工作区。 */
+async function onRestoreAutosave(): Promise<void> {
+  const instance = dialog.warning({
+    title: "恢复备份缓存",
+    content: () =>
+      h("div", { class: "recovery-prompt" }, [
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          `将重新打开原文件并重放备份里的未保存修改：${autosave.status?.sourcePath || "未知来源"}`
+        ),
+        h(
+          "div",
+          {
+            class: autosave.restoring
+              ? "recovery-prompt-line recovery-prompt-line--busy"
+              : "recovery-prompt-line",
+          },
+          autosave.restoring
+            ? "正在恢复：归档较大时需要一些时间，请勿关闭窗口。"
+            : "当前工作区存在未保存修改时会被拒绝。"
+        ),
+      ]),
+    positiveText: "恢复",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      if (autosave.restoring) return false;
+      setDialogBusy(instance, true, "恢复", "正在恢复…");
+      try {
+        await autosave.restore();
+        message.success("已恢复备份，工作区仍未保存，请确认后保存");
+        instance.destroy();
+      } catch (error: any) {
+        message.error(`恢复备份失败：${error?.message ?? error}`);
+        setDialogBusy(instance, false, "恢复");
+      }
+      return false;
+    },
+  });
+}
+
+async function onDiscardAutosave(): Promise<void> {
+  try {
+    const removed = await autosave.discard();
+    if (removed) message.success("已删除备份缓存");
+    else message.info("没有可删除的备份缓存");
+  } catch (error: any) {
+    message.error(`删除备份缓存失败: ${error?.message ?? error}`);
+  }
+}
+
+/** 统计应用缓存占用(搜索索引、归档索引、高级搜索索引、图标索引与定时缓存)。 */
+async function refreshCacheUsage(): Promise<void> {
+  if (cacheUsageLoading.value) return;
+  cacheUsageLoading.value = true;
+  try {
+    cacheUsage.value = await CacheService.Usage();
+  } catch (error: any) {
+    message.error(`统计缓存占用失败：${error?.message ?? error}`);
+  } finally {
+    cacheUsageLoading.value = false;
+  }
+}
+
+async function onClearCache(): Promise<void> {
+  const instance = dialog.warning({
+    title: "清理缓存",
+    content: () =>
+      h("div", { class: "recovery-prompt" }, [
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          `将删除搜索索引、归档索引、高级搜索索引与图标索引等可重建的缓存（当前 ${formatBytes(
+            cacheUsage.value?.totalBytes ?? 0
+          )}）。`
+        ),
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          "设置、书签、文件集等配置数据不在缓存目录内，不会被删除。"
+        ),
+        h(
+          "div",
+          { class: "recovery-prompt-line" },
+          "当前归档正在使用的索引无法立即删除，关闭归档或重启后会自动回收。"
+        ),
+        autosave.status?.exists
+          ? h(
+              "div",
+              { class: "recovery-prompt-line" },
+              "注意：定时缓存里未保存的工作区备份会被一并删除，之后不再有崩溃恢复副本。"
+            )
+          : null,
+        clearingCache.value
+          ? h(
+              "div",
+              { class: "recovery-prompt-line recovery-prompt-line--busy" },
+              "正在清理缓存…"
+            )
+          : null,
+      ]),
+    positiveText: "清理",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      if (clearingCache.value) return false;
+      clearingCache.value = true;
+      setDialogBusy(instance, true, "清理", "正在清理…");
+      try {
+        const result = await CacheService.Clear();
+        cacheUsage.value = result.usage;
+        message.success(`已清理 ${formatBytes(result.freedBytes)}`);
+        // 定时缓存可能被清理,同步刷新设置页里的缓存状态。
+        void autosave.refreshStatus();
+        instance.destroy();
+      } catch (error: any) {
+        message.error(`清理缓存失败：${error?.message ?? error}`);
+        setDialogBusy(instance, false, "清理");
+      } finally {
+        clearingCache.value = false;
+      }
+      return false;
+    },
+  });
 }
 
 async function onReloadAnnotations() {
@@ -194,6 +422,14 @@ async function copyNPKDirectory(): Promise<void> {
     message.warning("复制路径失败，请手动选择复制");
   }
 }
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
 </script>
 
 <template>
@@ -204,7 +440,7 @@ async function copyNPKDirectory(): Promise<void> {
     :mask-closable="!settings.saving"
     :close-on-esc="!settings.saving"
     class="settings-modal"
-    :style="{ width: 'min(680px, calc(100vw - 32px))' }"
+    :style="{ width: 'min(760px, calc(100vw - 32px))' }"
   >
     <template #header>
       <div class="settings-modal-header">
@@ -400,6 +636,119 @@ async function copyNPKDirectory(): Promise<void> {
                     :value="settings.backupSourceOnSave"
                     @update:value="onBackupSourceOnSaveChange"
                   />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 定时缓存 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">定时缓存</div>
+              <div class="group-subtitle">
+                按固定间隔把当前工作区（含未保存修改）另存到一份缓存 PVF，用于崩溃或进程被强制结束后的恢复
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">启用定时缓存</div>
+                  <div class="setting-item-desc">
+                    缓存不会改变工作区的“未保存”状态，也不会写入原文件；手动保存成功或退出时放弃修改后自动删除
+                  </div>
+                </div>
+                <div class="setting-item-control">
+                  <NSwitch
+                    :value="settings.autosaveEnabled"
+                    @update:value="onAutosaveEnabledChange"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存文件</div>
+                  <div class="setting-item-desc setting-item-desc--path">
+                    {{ autosavePathLabel || "系统缓存目录" }}
+                  </div>
+                  <div v-if="settings.autosavePath && autosave.status?.defaultPath" class="setting-item-desc">
+                    留空即使用系统缓存目录：{{ autosave.status.defaultPath }}
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton size="small" :loading="selectingAutosavePath" @click="onSelectAutosavePath">
+                    更改…
+                  </NButton>
+                  <NButton
+                    v-if="settings.autosavePath"
+                    size="small"
+                    quaternary
+                    @click="onResetAutosavePath"
+                  >
+                    用默认
+                  </NButton>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><ArrowSync24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存间隔</div>
+                  <div class="setting-item-desc">仅在工作区存在未保存修改时写入，间隔越短写入越频繁</div>
+                </div>
+                <div class="setting-item-control">
+                  <NInputNumber
+                    :value="autosaveIntervalMinutes"
+                    size="small"
+                    :min="minAutosaveIntervalMinutes"
+                    :max="maxAutosaveIntervalMinutes"
+                    :step="1"
+                    style="width: 130px"
+                    @update:value="onAutosaveIntervalChange"
+                  >
+                    <template #suffix>分钟</template>
+                  </NInputNumber>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><Info24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存状态</div>
+                  <div class="setting-item-desc">{{ autosaveStatusLabel }}</div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton
+                    size="small"
+                    :disabled="!autosave.status?.exists"
+                    @click="onRestoreAutosave"
+                  >
+                    恢复备份
+                  </NButton>
+                  <NButton
+                    size="small"
+                    :disabled="!autosave.status?.exists"
+                    @click="onDiscardAutosave"
+                  >
+                    删除备份
+                  </NButton>
                 </div>
               </div>
             </div>
@@ -749,6 +1098,51 @@ async function copyNPKDirectory(): Promise<void> {
             </div>
           </section>
 
+          <!-- 存储与缓存 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">存储与缓存</div>
+              <div class="group-subtitle">
+                统计搜索索引、归档索引与应用备份等缓存文件的磁盘占用，可一键清理
+              </div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">缓存占用</div>
+                  <div class="setting-item-desc">{{ cacheUsageSummary }}</div>
+                  <div v-if="cacheUsage?.path" class="setting-item-desc setting-item-desc--path">
+                    {{ cacheUsage.path }}
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NButton
+                    size="small"
+                    secondary
+                    :loading="cacheUsageLoading"
+                    aria-label="重新统计缓存占用"
+                    @click="refreshCacheUsage"
+                  >
+                    重新统计
+                  </NButton>
+                  <NButton
+                    size="small"
+                    :disabled="!cacheUsage || cacheUsage.totalBytes === 0"
+                    :loading="clearingCache"
+                    aria-label="清理缓存"
+                    @click="onClearCache"
+                  >
+                    清理缓存
+                  </NButton>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- 关于应用信息 -->
           <div class="about-card">
             <div class="about-logo-row">
@@ -765,6 +1159,9 @@ async function copyNPKDirectory(): Promise<void> {
               <span class="about-pill">Naive UI</span>
             </div>
           </div>
+        </div>
+        <div v-show="activeTab === 'shortcuts'" class="settings-tab-panel">
+          <ShortcutSettings />
         </div>
       </div>
     </NSpin>
@@ -948,6 +1345,15 @@ async function copyNPKDirectory(): Promise<void> {
 }
 .setting-item-control {
   flex: 0 0 auto;
+}
+.setting-item-control--actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setting-item-desc--path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
 }
 
 /* 主题选择网格 */

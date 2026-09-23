@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NButton, NIcon, NSpin } from "naive-ui";
+import { Events } from "@wailsio/runtime";
 import { Money24Filled } from "@vicons/fluent";
 import { PreviewService } from "../../../bindings/pvfine/services";
 import type {
@@ -11,6 +12,7 @@ import type {
   PreviewIssue,
 } from "../../../bindings/pvfine/services/models";
 import { useImageStore } from "../../stores/images";
+import { RARITY_COLORS, rarityColor } from "../../rarity";
 import type { PreviewFile } from "../../previews/types";
 
 const props = defineProps<{
@@ -24,18 +26,18 @@ const parserIssues = ref<PreviewIssue[]>([]);
 const parserLoading = ref(false);
 const iconData = ref<ImageData | null>(null);
 const detailMode = ref(false);
+const setMode = ref(false);
+const setDetailMode = ref(false);
 
 let parseTimer: number | undefined;
 let parseRequest = 0;
 
-const rarityClass = computed(() => {
-  const rarity = document.value?.rarity ?? 0;
-  return ["normal", "magic", "rare", "artifact", "epic", "brave", "legendary"][rarity] ?? "unknown";
-});
+const rarityNameColor = computed(() => rarityColor(document.value?.rarity) ?? RARITY_COLORS.normal);
 const explanation = computed(() => {
   if (detailMode.value && document.value?.detailExplain) return document.value.detailExplain;
   return document.value?.baseExplain ?? "";
 });
+const setHasDetail = computed(() => document.value?.partSet?.abilities?.some((ability) => !!ability.detailExplain) ?? false);
 const usableJobs = computed(() => document.value?.usableJobs ?? []);
 const baseAttributes = computed(() => document.value?.baseAttributes ?? []);
 const fourDimensions = computed(() => document.value?.fourDimensions ?? []);
@@ -86,6 +88,8 @@ function clearForPathChange(): void {
   parserIssues.value = [];
   iconData.value = null;
   detailMode.value = false;
+  setMode.value = false;
+  setDetailMode.value = false;
 }
 
 async function loadIcon(next: EquipmentPreviewDocument, request: number): Promise<void> {
@@ -104,6 +108,7 @@ async function parseText(text: string, request: number): Promise<void> {
     const hasErrors = parserIssues.value.some((issue) => issue.severity === "error");
     if (!hasErrors || !document.value) {
       document.value = result;
+      if (!result.partSet) setMode.value = false;
       await loadIcon(result, request);
     }
   } catch (error: any) {
@@ -130,9 +135,19 @@ function scheduleParse(): void {
 }
 
 function onWindowKeydown(event: KeyboardEvent): void {
-  if (!props.active || event.key !== "F4" || !document.value?.detailExplain) return;
-  event.preventDefault();
-  detailMode.value = !detailMode.value;
+  if (!props.active) return;
+  if (event.key === "F8" && document.value?.partSet) {
+    event.preventDefault();
+    setMode.value = !setMode.value;
+  } else if (event.key === "F4") {
+    if (setMode.value && setHasDetail.value) {
+      event.preventDefault();
+      setDetailMode.value = !setDetailMode.value;
+    } else if (!setMode.value && document.value?.detailExplain) {
+      event.preventDefault();
+      detailMode.value = !detailMode.value;
+    }
+  }
 }
 
 function attributeClass(attribute: EquipmentPreviewAttribute): string {
@@ -170,8 +185,18 @@ watch(
   },
 );
 
+// 字段适用版本或归档状态改变时，文本相同也需要重新计算预览。
+const offAnnotationsReloaded = Events.On("annotations:reloaded", scheduleParse);
+const offArchiveReloaded = Events.On("archive:reloaded", () => {
+  setMode.value = false;
+  setDetailMode.value = false;
+  scheduleParse();
+});
+
 onMounted(() => window.addEventListener("keydown", onWindowKeydown));
 onBeforeUnmount(() => {
+  offAnnotationsReloaded();
+  offArchiveReloaded();
   parseRequest++;
   clearParseTimer();
   window.removeEventListener("keydown", onWindowKeydown);
@@ -180,13 +205,31 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="equ-preview">
-    <div v-if="document" class="equ-tooltip">
+    <div v-if="document && setMode && document.partSet" class="equ-tooltip equ-set-tooltip">
+      <div class="equ-set-name">{{ document.partSet.name }}</div>
+      <div class="equ-set-parts">
+        <div v-for="(part, index) in document.partSet.parts" :key="`${part}:${index}`">{{ part }}</div>
+      </div>
+      <div v-for="(ability, index) in document.partSet.abilities" :key="`${ability.pieces}:${index}`" class="equ-set-ability">
+        <div class="equ-set-ability-title">[{{ ability.pieces }}]套装效果</div>
+        <div class="equ-set-ability-explain">{{ setDetailMode && ability.detailExplain ? ability.detailExplain : ability.baseExplain }}</div>
+      </div>
+      <div v-if="setHasDetail" class="equ-detail-toggle">
+        <NButton quaternary size="tiny" class="equ-f4-button" @click="setDetailMode = !setDetailMode">
+          {{ setDetailMode ? "返回基础说明(F4)" : "查看详细说明(F4)" }}
+        </NButton>
+      </div>
+      <div class="equ-detail-toggle">
+        <NButton quaternary size="tiny" class="equ-f4-button" @click="setMode = false">返回装备(F8)</NButton>
+      </div>
+    </div>
+    <div v-else-if="document" class="equ-tooltip">
       <div class="equ-header">
         <div v-if="iconData?.dataUrl" class="equ-icon-wrap">
           <img class="equ-icon" :src="iconData.dataUrl" alt="装备图标" />
         </div>
         <div class="equ-title-block">
-          <div class="equ-name" :class="`equ-name--${rarityClass}`">
+          <div class="equ-name" :style="{ color: rarityNameColor }">
             {{ document.name || "未命名装备" }}
           </div>
           <div v-if="document.name2" class="equ-name2">{{ document.name2 }}</div>
@@ -198,7 +241,7 @@ onBeforeUnmount(() => {
           <span v-if="document.qualityText" class="equ-quality">
             <span class="equ-quality-label">{{ qualityParts.label }}</span><span v-if="qualityParts.detail" class="equ-quality-detail">{{ qualityParts.detail }}</span>
           </span>
-          <span v-if="document.rarityLabel" class="equ-rarity" :class="`equ-rarity--${rarityClass}`">{{ document.rarityLabel }}</span>
+          <span v-if="document.rarityLabel" class="equ-rarity" :style="{ color: rarityNameColor }">{{ document.rarityLabel }}</span>
         </div>
         <div
           v-if="baseAttributes.length || document.equipmentType || document.itemGroupName || document.attachType"
@@ -247,6 +290,9 @@ onBeforeUnmount(() => {
         <NButton quaternary size="tiny" class="equ-f4-button" @click="detailMode = !detailMode">
           {{ detailMode ? "返回基础说明(F4)" : "查看详细说明(F4)" }}
         </NButton>
+      </div>
+      <div v-if="document.partSet" class="equ-detail-toggle">
+        <NButton quaternary size="tiny" class="equ-f4-button" @click="setMode = true">查看套装(F8)</NButton>
       </div>
 
       <div v-if="document.durabilityText" class="equ-durability">耐久度 {{ document.durabilityText }}</div>
@@ -323,22 +369,6 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.equ-name--normal,
-.equ-rarity--normal { color: #fff; }
-.equ-name--magic,
-.equ-rarity--magic { color: #5e9dff; }
-.equ-name--rare,
-.equ-rarity--rare { color: #b46cff; }
-.equ-name--artifact,
-.equ-rarity--artifact { color: #dc57b7; }
-.equ-name--epic,
-.equ-rarity--epic { color: #ffd438; }
-.equ-name--brave,
-.equ-rarity--brave { color: #ff4a4a; }
-.equ-name--legendary,
-.equ-rarity--legendary { color: #ff7903; }
-.equ-name--unknown,
-.equ-rarity--unknown { color: #fff; }
 .equ-name2 {
   margin-top: 1px;
   color: #aaa;
@@ -429,6 +459,29 @@ onBeforeUnmount(() => {
 .equ-f4-button {
   color: #caff4a;
   font-size: 11px;
+}
+.equ-set-name {
+  color: #b8e967;
+  font-weight: 700;
+}
+.equ-set-parts {
+  margin-top: 9px;
+  color: #c8c8c8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.equ-set-ability {
+  margin-top: 10px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.equ-set-ability-title {
+  color: #c8c8c8;
+}
+.equ-set-ability-explain {
+  color: #ddd;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .equ-flavor {
   color: #bdbdbd;

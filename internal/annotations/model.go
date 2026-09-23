@@ -29,6 +29,7 @@ type RelationSpec struct {
 }
 
 type Rule struct {
+	PVFVersions []string       `json:"pvfVersions,omitempty"`
 	ID          string         `json:"id"`
 	Description string         `json:"description,omitempty"`
 	Field       string         `json:"field,omitempty"`
@@ -42,11 +43,12 @@ type Rule struct {
 // and structured previews. A field may optionally expose a PreviewSpec; fields
 // without it are still useful to annotations and remain out of previews.
 type FieldDefinition struct {
-	ID         string         `json:"id"`
-	Match      MatchSpec      `json:"match"`
-	Target     TargetSpec     `json:"target"`
-	Annotation AnnotationSpec `json:"annotation"`
-	Preview    *PreviewSpec   `json:"preview,omitempty"`
+	PVFVersions []string       `json:"pvfVersions,omitempty"`
+	ID          string         `json:"id"`
+	Match       MatchSpec      `json:"match"`
+	Target      TargetSpec     `json:"target"`
+	Annotation  AnnotationSpec `json:"annotation"`
+	Preview     *PreviewSpec   `json:"preview,omitempty"`
 }
 
 // PreviewSpec describes how a shared field participates in a preview. The
@@ -106,6 +108,10 @@ type TargetSpec struct {
 	// section header is kept outside the repeated token groups.
 	Offset       int `json:"offset,omitempty"`
 	RecordTokens int `json:"recordTokens,omitempty"`
+	// GroupOffset skips this many tokens at the start of every delimiter-separated group.
+	GroupOffset int `json:"groupOffset,omitempty"`
+	// StandaloneValues are integer delimiters, excluded from repeated records.
+	StandaloneValues []int32 `json:"standaloneValues,omitempty"`
 	// TokensPerLineIndex is a zero-based direct token index whose positive
 	// integer value overrides RecordTokens for that section. RecordTokens is
 	// retained as the fallback when the token is missing or invalid.
@@ -129,6 +135,7 @@ type AnnotationSpec struct {
 	Type        string            `json:"type"`
 	Values      map[string]string `json:"values,omitempty"`
 	Relation    string            `json:"relation,omitempty"`
+	PathRoot    string            `json:"pathRoot,omitempty"`
 	InlineImage bool              `json:"inlineImage,omitempty"`
 }
 

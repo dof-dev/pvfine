@@ -42,4 +42,7 @@ type FormatSpec struct {
 	// TokensPerLineIndex is a zero-based direct token index inside a section;
 	// its positive integer value overrides TokensPerLine for that section.
 	TokensPerLineIndex *int `json:"tokensPerLineIndex,omitempty"`
+	// StandaloneValues are integer tokens rendered on their own line. Each
+	// occurrence resets the tokens-per-line counter for subsequent values.
+	StandaloneValues []int32 `json:"standaloneValues,omitempty"`
 }

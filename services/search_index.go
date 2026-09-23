@@ -56,6 +56,7 @@ type SearchHit struct {
 	Size            int32                       `json:"size"`
 	DataType        int32                       `json:"dataType"`
 	FileIndex       int32                       `json:"fileIndex"`
+	Rarity          int32                       `json:"rarity"`
 	ChangeKind      string                      `json:"changeKind,omitempty"`
 	Annotations     []TreeAnnotation            `json:"annotations,omitempty"`
 	PathAnnotations map[string][]TreeAnnotation `json:"pathAnnotations,omitempty"`
@@ -68,6 +69,9 @@ type TreeTag struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Category string `json:"category"`
+	// Rarity is the target file's [rarity] value, or pvf.RarityUnknown when the
+	// file declares none. The explorer colors the tag with it.
+	Rarity int32 `json:"rarity"`
 }
 
 type searchRecord struct {
@@ -86,6 +90,7 @@ type indexedMetadata struct {
 	fileIndex  int32
 	size       int32
 	dataType   int32
+	rarity     int32
 	icon       *ImageReference
 	fieldImage *ImageReference
 }
@@ -93,6 +98,20 @@ type indexedMetadata struct {
 type fileVisuals struct {
 	icon       *ImageReference
 	fieldImage *ImageReference
+	// rarity is the file's [rarity] value, or pvf.RarityUnknown when the file
+	// declares none. Empty visuals must carry RarityUnknown, never 0.
+	rarity int32
+}
+
+// visualsFromMetadata projects a script's display metadata onto the per-file
+// visual snapshot shared by the explorer, the search results and the stale
+// checks of the mutation classifier.
+func visualsFromMetadata(metadata pvf.ScriptMetadata) fileVisuals {
+	return fileVisuals{
+		icon:       imageReferenceFromPVF(metadata.Icon),
+		fieldImage: imageReferenceFromPVF(metadata.FieldImage),
+		rarity:     metadata.RarityValue(),
+	}
 }
 
 type searchableListSpec struct {
@@ -162,8 +181,8 @@ func relationSearchCategory(name string) string {
 	}
 }
 
-// startSearchIndex starts a new metadata indexing generation for the current
-// archive. The path/tree index is already available when this runs.
+// startSearchIndex starts or queues a metadata indexing generation for the
+// current archive. The path/tree index is already available when this runs.
 func (c *core) startSearchIndex() {
 	c.startSearchIndexWithOptions(false)
 }
@@ -189,8 +208,20 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 	}
 	log.Printf("[pvfine:index] index request: force=%t files=%d disk=%t ready=%t dirty=%t", force, c.archive.FileCount(), c.diskIndex != nil, c.indexStatus.State == IndexStateReady, dirty)
 	if c.indexCancel != nil {
-		c.indexCancel()
+		// Do not cancel an in-flight build for ordinary archive mutations.
+		// The mutation classifier has already accumulated the newest dirty
+		// files/list relations; let this candidate finish and run one follow-up
+		// build from that accumulated state. Cancelling here can race with the
+		// publisher and lose the later mutation.
+		c.indexRefreshPending = true
+		c.indexRefreshPendingForce = c.indexRefreshPendingForce || force
+		c.mu.Unlock()
+		return
 	}
+	// A completion path clears these before asking for the queued build. Clear
+	// them here as well so an external/manual request consumes any stale queue.
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	c.indexGen++
 	gen := c.indexGen
 	a := c.archive
@@ -292,30 +323,56 @@ func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Ar
 		log.Printf("[pvfine:index] semantic build failed: generation=%d elapsed=%s error=%v", gen, time.Since(startedAt).Round(time.Millisecond), err)
 		c.mu.Lock()
 		if c.indexIsCurrentLocked(a, gen) {
+			pendingRefresh := c.indexRefreshPending
+			pendingForce := c.indexRefreshPendingForce
 			c.indexStatus = IndexStatus{State: IndexStateError, Stage: "error", Error: err.Error(), OpenDurationMs: c.indexStatus.OpenDurationMs, BuildDurationMs: elapsedMilliseconds(startedAt)}
 			c.indexCancel = nil
+			c.indexRefreshPending = false
+			c.indexRefreshPendingForce = false
 			status := c.indexStatus
 			c.mu.Unlock()
+			if pendingRefresh {
+				// The failed candidate is obsolete because a newer mutation is
+				// already queued. Retry the queued build directly so observers do
+				// not mistake the transient failure for the final index state.
+				c.startSearchIndexWithOptions(pendingForce)
+				return
+			}
 			emitEvent("archive:index-error", status)
 			return
 		}
 		c.mu.Unlock()
 		return
 	}
+	pendingRefresh := false
+	pendingForce := false
 	c.mu.Lock()
 	if !c.indexIsCurrentLocked(a, gen) || c.diskIndex != index || ctx.Err() != nil {
 		c.mu.Unlock()
 		log.Printf("[pvfine:index] semantic build discarded: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
 		return
 	}
+	pendingRefresh = c.indexRefreshPending
+	pendingForce = c.indexRefreshPendingForce
 	index.ready = true
-	index.dirty = false
-	c.indexStatus = IndexStatus{State: IndexStateReady, Stage: "ready-sqlite", Done: total, Total: total, Skipped: skipped, OpenDurationMs: c.indexStatus.OpenDurationMs, BuildDurationMs: elapsedMilliseconds(startedAt)}
+	if !pendingRefresh {
+		index.dirty = false
+	}
+	stage := "ready-sqlite"
+	if pendingRefresh {
+		stage = "refreshing"
+	}
+	c.indexStatus = IndexStatus{State: IndexStateReady, Stage: stage, Done: total, Total: total, Skipped: skipped, Refreshing: pendingRefresh, OpenDurationMs: c.indexStatus.OpenDurationMs, BuildDurationMs: elapsedMilliseconds(startedAt)}
 	c.indexCancel = nil
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	status := c.indexStatus
 	c.mu.Unlock()
 	log.Printf("[pvfine:index] semantic build finished: generation=%d records=%d skipped=%d elapsed=%s", gen, total, skipped, time.Since(startedAt).Round(time.Millisecond))
 	emitEvent("archive:index-ready", status)
+	if pendingRefresh {
+		c.startSearchIndexWithOptions(pendingForce)
+	}
 }
 
 func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time, force, cacheEligible bool) {
@@ -345,6 +402,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 				visuals[value.fileIndex] = fileVisuals{
 					icon:       cloneImageReference(value.icon),
 					fieldImage: cloneImageReference(value.fieldImage),
+					rarity:     value.rarity,
 				}
 			}
 			records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
@@ -445,6 +503,7 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 		ref.name = scriptMetadata.Name
 		ref.icon = imageReferenceFromPVF(scriptMetadata.Icon)
 		ref.fieldImage = imageReferenceFromPVF(scriptMetadata.FieldImage)
+		ref.rarity = scriptMetadata.RarityValue()
 		ref.fileIndex = fileIndex
 		ref.path = canonicalPath
 		ref.size = f.DataSize
@@ -458,32 +517,12 @@ func (c *core) buildSearchIndex(ctx context.Context, gen uint64, a *pvf.Archive,
 	treeTagsByFile := buildTreeTags(records, recordsByFile)
 	visualsByFile := make(map[int32]fileVisuals, len(metadataByIndex))
 	for fileIndex, scriptMetadata := range metadataByIndex {
-		visualsByFile[fileIndex] = fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visualsByFile[fileIndex] = visualsFromMetadata(scriptMetadata)
 	}
 
 	if !c.publishSearchCandidate(a, gen, ctx, startedAt, records, recordsByFile, metadata, treeTagsByFile, visualsByFile, len(refs), skipped, searchIndexSpecFingerprint(specs), cacheEligible, false) {
 		return
 	}
-}
-
-// startSearchIndexForList schedules a local semantic refresh for one archive
-// list. If there is no ready snapshot yet, startSearchIndex naturally falls
-// back to the initial full build.
-func (c *core) startSearchIndexForList(listIndex int32) {
-	c.mu.Lock()
-	if c.archive == nil {
-		c.mu.Unlock()
-		return
-	}
-	if c.searchIndexListPending == nil {
-		c.searchIndexListPending = make(map[int32]struct{})
-	}
-	c.searchIndexListPending[listIndex] = struct{}{}
-	c.mu.Unlock()
-	c.startSearchIndex()
 }
 
 func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Archive, startedAt time.Time, listIndexes []int32) {
@@ -601,6 +640,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 					fileIndex:  targetIndex,
 					size:       file.DataSize,
 					dataType:   file.DataType,
+					rarity:     scriptMetadata.RarityValue(),
 					icon:       imageReferenceFromPVF(scriptMetadata.Icon),
 					fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
 				})
@@ -637,10 +677,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 		if err != nil {
 			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		visuals := fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visuals := visualsFromMetadata(scriptMetadata)
 		for index := range metadata {
 			if metadata[index].fileIndex != dirtyIndex && metadata[index].path != canonicalPath {
 				continue
@@ -650,6 +687,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 			metadata[index].size = file.DataSize
 			metadata[index].dataType = file.DataType
 			metadata[index].name = scriptMetadata.Name
+			metadata[index].rarity = visuals.rarity
 			metadata[index].icon = cloneImageReference(visuals.icon)
 			metadata[index].fieldImage = cloneImageReference(visuals.fieldImage)
 		}
@@ -669,6 +707,7 @@ func (c *core) buildSearchIndexDelta(ctx context.Context, gen uint64, a *pvf.Arc
 		visuals[value.fileIndex] = fileVisuals{
 			icon:       cloneImageReference(value.icon),
 			fieldImage: cloneImageReference(value.fieldImage),
+			rarity:     value.rarity,
 		}
 	}
 	records, recordsByFile := buildSearchRecords(paths, metadata, byFile)
@@ -710,32 +749,43 @@ func (c *core) publishSearchCandidate(
 	cacheEligible bool,
 	cacheHit bool,
 ) bool {
-	c.mu.Lock()
+	// Reconcile payloads before taking the publish lock. Parsing script
+	// metadata can touch decompression and string-table caches; doing that
+	// while holding core.mu used to make the resource tree wait for the whole
+	// reconciliation pass.
+	c.mu.RLock()
 	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
-		c.mu.Unlock()
+		c.mu.RUnlock()
 		return false
 	}
-
-	// A payload edit may land while the candidate is being built. Refreshing
-	// those files here is cheap and prevents the first published snapshot from
-	// exposing the text that existed when the background scan started.
+	dirtyIndexes := make([]int32, 0, len(c.indexDirty))
 	for fileIndex := range c.indexDirty {
+		dirtyIndexes = append(dirtyIndexes, fileIndex)
+	}
+	c.mu.RUnlock()
+	for _, fileIndex := range dirtyIndexes {
+		c.mu.RLock()
+		if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil || fileIndex < 0 || fileIndex >= a.FileCount() {
+			c.mu.RUnlock()
+			return false
+		}
 		scriptMetadata, err := readIndexedMetadataFromArchive(a, fileIndex, a.Path(fileIndex), nil)
+		fileSize := a.File(fileIndex).DataSize
+		fileType := a.File(fileIndex).DataType
+		c.mu.RUnlock()
 		if err != nil {
 			scriptMetadata = pvf.ScriptMetadata{}
 		}
-		visuals := fileVisuals{
-			icon:       imageReferenceFromPVF(scriptMetadata.Icon),
-			fieldImage: imageReferenceFromPVF(scriptMetadata.FieldImage),
-		}
+		visuals := visualsFromMetadata(scriptMetadata)
 		visualsByFile[fileIndex] = visuals
 		for metadataIndex := range metadata {
 			if metadata[metadataIndex].fileIndex != fileIndex {
 				continue
 			}
 			metadata[metadataIndex].name = scriptMetadata.Name
-			metadata[metadataIndex].size = a.File(fileIndex).DataSize
-			metadata[metadataIndex].dataType = a.File(fileIndex).DataType
+			metadata[metadataIndex].size = fileSize
+			metadata[metadataIndex].dataType = fileType
+			metadata[metadataIndex].rarity = visuals.rarity
 			metadata[metadataIndex].icon = cloneImageReference(visuals.icon)
 			metadata[metadataIndex].fieldImage = cloneImageReference(visuals.fieldImage)
 		}
@@ -744,16 +794,23 @@ func (c *core) publishSearchCandidate(
 				continue
 			}
 			record := &records[recordIndex]
-			record.hit.Size = a.File(fileIndex).DataSize
-			record.hit.DataType = a.File(fileIndex).DataType
+			record.hit.Size = fileSize
+			record.hit.DataType = fileType
 			if record.hit.Category == SearchCategoryFile {
 				continue
 			}
 			record.hit.Name = scriptMetadata.Name
 			record.lowerName = strings.ToLower(scriptMetadata.Name)
+			record.hit.Rarity = visuals.rarity
 			record.hit.Icon = cloneImageReference(visuals.icon)
 			record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
 		}
+	}
+
+	c.mu.Lock()
+	if !c.indexIsCurrentLocked(a, gen) || ctx.Err() != nil {
+		c.mu.Unlock()
+		return false
 	}
 
 	c.searchRecords = records
@@ -762,6 +819,8 @@ func (c *core) publishSearchCandidate(
 	c.searchSpecFingerprint = specsFingerprint
 	c.treeTagsByFile = treeTagsByFile
 	c.visualsByFile = visualsByFile
+	pendingRefresh := c.indexRefreshPending
+	pendingForce := c.indexRefreshPendingForce
 	openDurationMs := c.indexStatus.OpenDurationMs
 	c.indexStatus = IndexStatus{
 		State:           IndexStateReady,
@@ -772,17 +831,30 @@ func (c *core) publishSearchCandidate(
 		CacheHit:        cacheHit,
 		OpenDurationMs:  openDurationMs,
 		BuildDurationMs: elapsedMilliseconds(startedAt),
+		Refreshing:      pendingRefresh,
 	}
 	if cacheHit {
 		c.indexStatus.Stage = "ready-cache"
 	}
-	c.indexDirty = make(map[int32]struct{})
+	if pendingRefresh {
+		// Mutations that arrived after this build captured its dirty set belong
+		// to the queued build. Keeping the map here is intentionally conservative
+		// and may rebuild one already reconciled file, but can never drop the
+		// newest content.
+		c.indexStatus.Stage = "refreshing"
+	} else {
+		c.indexDirty = make(map[int32]struct{})
+	}
 	c.indexCancel = nil
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	status := c.indexStatus
 	c.mu.Unlock()
 
 	emitEvent("archive:index-ready", status)
-	if cacheEligible && !cacheHit {
+	if pendingRefresh {
+		c.startSearchIndexWithOptions(pendingForce)
+	} else if cacheEligible && !cacheHit {
 		c.persistSearchIndexCacheAsync(a, gen, metadata, total, skipped)
 	}
 	return true
@@ -797,6 +869,8 @@ func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, 
 		c.mu.Unlock()
 		return
 	}
+	pendingRefresh := c.indexRefreshPending
+	pendingForce := c.indexRefreshPendingForce
 	if c.indexStatus.State == IndexStateReady && c.searchRecords != nil {
 		c.indexStatus.Refreshing = false
 		c.indexStatus.Stage = "refresh-error"
@@ -812,8 +886,16 @@ func (c *core) failSearchIndex(a *pvf.Archive, gen uint64, ctx context.Context, 
 		}
 	}
 	c.indexCancel = nil
+	c.indexRefreshPending = false
+	c.indexRefreshPendingForce = false
 	status := c.indexStatus
 	c.mu.Unlock()
+	if pendingRefresh {
+		// See the SQLite path above: a queued newer mutation should be retried
+		// without exposing the failed intermediate candidate as final state.
+		c.startSearchIndexWithOptions(pendingForce)
+		return
+	}
 	emitEvent("archive:index-error", status)
 }
 
@@ -835,6 +917,8 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 		return false, "", err
 	}
 	path := c.archive.Path(index)
+	a := c.archive
+	mutationCheckpoint := a.MutationCheckpoint()
 	var before pvfversion.ContentSnapshot
 	if c.versionRepo != nil {
 		var err error
@@ -847,6 +931,12 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	if err := c.archive.SetText(index, text); err != nil {
 		c.mu.Unlock()
 		return false, "", err
+	}
+	summary := a.MutationsSince(mutationCheckpoint)
+	if len(summary.Files) == 0 {
+		a.ClearMutations()
+		c.mu.Unlock()
+		return false, "", nil
 	}
 	if c.versionRepo != nil {
 		after, err := pvfversion.ContentSnapshotFromArchive(c.archive, []string{path})
@@ -871,83 +961,23 @@ func (c *core) setText(index int32, text string) (bool, string, error) {
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
 	if c.diskIndex != nil {
-		if err := c.diskIndex.refreshFileMetadata(c.archive, map[int32]struct{}{index: {}}); err != nil {
+		if err := c.diskIndex.refreshFileMetadata(a, map[int32]struct{}{index: {}}); err != nil {
+			a.ClearMutations()
 			c.mu.Unlock()
 			return false, "", err
 		}
-		c.diskIndex.ready = false
-		c.diskIndex.dirty = true
-		c.mu.Unlock()
-		c.startSearchIndexForced()
-		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
-		if versioned {
-			emitVersionState(c, "edited")
-		}
-		return false, "", nil
+	} else {
+		refreshArchiveIndexMetadataLocked(c, map[int32]struct{}{index: {}})
 	}
 	delete(c.visualsByFile, index)
-	ready := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
-	if !ready {
-		c.queueSearchIndexMutationLocked(index)
-		c.mu.Unlock()
-		emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
-		if versioned {
-			emitVersionState(c, "edited")
-		}
-		return false, "", nil
-	}
-	listIndex, fullRefresh := c.queueSearchIndexMutationLocked(index)
+	a.ClearMutations()
 	c.mu.Unlock()
-	if fullRefresh {
-		c.startSearchIndexForced()
-	} else if listIndex >= 0 {
-		c.startSearchIndexForList(listIndex)
-	} else {
-		c.startSearchIndex()
-	}
+	c.scheduleArchiveMutations(a, summary)
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if versioned {
 		emitVersionState(c, "edited")
 	}
 	return false, "", nil
-}
-
-// searchMutationClassLocked classifies a payload edit without reading the
-// file. List edits can be refreshed locally; shared string/NPC dependencies
-// conservatively use a forced full candidate build.
-func (c *core) searchMutationClassLocked(index int32) (listIndex int32, full bool) {
-	listIndex = -1
-	if c.archive == nil || index < 0 || index >= c.archive.FileCount() {
-		return listIndex, true
-	}
-	filePath := c.archive.Path(index)
-	lowerPath := strings.ToLower(strings.Trim(strings.ReplaceAll(filePath, "\\", "/"), "/"))
-	if strings.HasSuffix(lowerPath, ".str") || isNPCEntryPath(filePath) || lowerPath == npcListPath {
-		return listIndex, true
-	}
-	for _, spec := range c.searchableListSpecsLocked() {
-		candidate, ok := c.archive.FindList(spec.listPath)
-		if ok && candidate == index {
-			return candidate, false
-		}
-	}
-	return listIndex, false
-}
-
-func (c *core) queueSearchIndexMutationLocked(index int32) (listIndex int32, full bool) {
-	if c.indexDirty == nil {
-		c.indexDirty = make(map[int32]struct{})
-	}
-	c.indexDirty[index] = struct{}{}
-	listIndex, full = c.searchMutationClassLocked(index)
-	if listIndex >= 0 {
-		if c.searchIndexListPending == nil {
-			c.searchIndexListPending = make(map[int32]struct{})
-		}
-		c.searchIndexListPending[listIndex] = struct{}{}
-	}
-	c.searchIndexDeltaPending = true
-	return listIndex, full
 }
 
 // setPlaceholderText rewrites the string-table text behind one `<table::key>`
@@ -971,6 +1001,8 @@ func (c *core) setPlaceholderText(index int32, tableIndex int32, key, text strin
 		c.mu.Unlock()
 		return err
 	}
+	a := c.archive
+	mutationCheckpoint := a.MutationCheckpoint()
 	tableFileIndex, ok := c.archive.StringTableEntryIndex(int(tableIndex), key)
 	if !ok {
 		c.mu.Unlock()
@@ -989,6 +1021,12 @@ func (c *core) setPlaceholderText(index int32, tableIndex int32, key, text strin
 	if err := c.archive.SetStringTableEntryAt(tableFileIndex, key, text); err != nil {
 		c.mu.Unlock()
 		return err
+	}
+	summary := a.MutationsSince(mutationCheckpoint)
+	if len(summary.Files) == 0 {
+		a.ClearMutations()
+		c.mu.Unlock()
+		return nil
 	}
 	if c.versionRepo != nil {
 		after, err := pvfversion.ContentSnapshotFromArchive(c.archive, []string{tablePath})
@@ -1009,16 +1047,12 @@ func (c *core) setPlaceholderText(index int32, tableIndex int32, key, text strin
 	c.editorAnnotation = editorAnnotationCache{}
 	c.invalidateAdvancedSearchLocked()
 	delete(c.visualsByFile, index)
-	ready := c.indexStatus.State == IndexStateReady && c.searchRecords != nil
-	if c.indexDirty == nil {
-		c.indexDirty = make(map[int32]struct{})
+	if c.diskIndex == nil {
+		refreshArchiveIndexMetadataLocked(c, map[int32]struct{}{tableFileIndex: {}})
 	}
-	c.indexDirty[index] = struct{}{}
-	c.indexDirty[tableFileIndex] = struct{}{}
+	a.ClearMutations()
 	c.mu.Unlock()
-	if ready {
-		c.startSearchIndexForced()
-	}
+	c.scheduleArchiveMutations(a, summary)
 	emitEvent("archive:advanced-search-stale", map[string]any{"fileIndex": index})
 	if versioned {
 		emitVersionState(c, "edited")
@@ -1037,7 +1071,7 @@ func (c *core) refreshIndexedRecordsLocked(index int32, previousVisuals fileVisu
 		metadata = pvf.ScriptMetadata{}
 	}
 	name := metadata.Name
-	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	visuals := visualsFromMetadata(metadata)
 	c.visualsByFile[index] = visuals
 	updated := false
 	for _, recordIndex := range recordIndexes {
@@ -1052,6 +1086,7 @@ func (c *core) refreshIndexedRecordsLocked(index int32, previousVisuals fileVisu
 		record.hit.Icon = cloneImageReference(visuals.icon)
 		record.hit.FieldImage = cloneImageReference(visuals.fieldImage)
 		if record.hit.Category != SearchCategoryFile {
+			record.hit.Rarity = visuals.rarity
 			updated = true
 		}
 	}
@@ -1278,18 +1313,26 @@ func (c *core) fileVisualsLocked(index int32) fileVisuals {
 		c.visualsByFile = make(map[int32]fileVisuals)
 	}
 	if visuals, ok := c.visualsByFile[index]; ok {
-		return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
+		return fileVisuals{
+			icon:       cloneImageReference(visuals.icon),
+			fieldImage: cloneImageReference(visuals.fieldImage),
+			rarity:     visuals.rarity,
+		}
 	}
 	if c.archive == nil || index < 0 || index >= c.archive.FileCount() || c.archive.File(index).DataType != pvf.TypeScript {
-		return fileVisuals{}
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
 	metadata, err := c.archive.ScriptMetadata(index)
 	if err != nil {
-		return fileVisuals{}
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
-	visuals := fileVisuals{icon: imageReferenceFromPVF(metadata.Icon), fieldImage: imageReferenceFromPVF(metadata.FieldImage)}
+	visuals := visualsFromMetadata(metadata)
 	c.visualsByFile[index] = visuals
-	return fileVisuals{icon: cloneImageReference(visuals.icon), fieldImage: cloneImageReference(visuals.fieldImage)}
+	return fileVisuals{
+		icon:       cloneImageReference(visuals.icon),
+		fieldImage: cloneImageReference(visuals.fieldImage),
+		rarity:     visuals.rarity,
+	}
 }
 
 func buildNPCNameIndexFromArchive(a *pvf.Archive) map[string]string {
@@ -1409,6 +1452,7 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 				Size:       p.size,
 				DataType:   p.typ,
 				FileIndex:  p.idx,
+				Rarity:     pvf.RarityUnknown,
 				ChangeKind: p.changeKind,
 			})
 			continue
@@ -1423,6 +1467,7 @@ func buildSearchRecords(paths []pathEntry, metadata []indexedMetadata, metadataB
 				Size:       entry.size,
 				DataType:   entry.dataType,
 				FileIndex:  entry.fileIndex,
+				Rarity:     entry.rarity,
 				ChangeKind: p.changeKind,
 				Icon:       cloneImageReference(entry.icon),
 				FieldImage: cloneImageReference(entry.fieldImage),
@@ -1469,6 +1514,7 @@ func treeTagsForRecords(records []searchRecord, recordIndexes []int) []TreeTag {
 			ID:       hit.ID,
 			Name:     hit.Name,
 			Category: hit.Category,
+			Rarity:   hit.Rarity,
 		})
 	}
 	return tags

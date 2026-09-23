@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, h, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
@@ -13,12 +13,15 @@ import {
   DocumentText24Regular,
   DocumentSync24Regular,
   Dismiss24Regular,
+  Drop24Regular,
   Key24Regular,
   Settings24Regular,
+  Toolbox24Regular,
 } from "@vicons/fluent";
 import {
   NBadge,
   NButton,
+  NDropdown,
   NIcon,
   NTooltip,
   NProgress,
@@ -33,7 +36,9 @@ import { useSettingsStore } from "../stores/settings";
 import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
+import { useDropRateStore } from "../stores/dropRate";
 import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
+import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -43,9 +48,15 @@ const settings = useSettingsStore();
 const importer = useImportStore();
 const version = useVersionStore();
 const script = useScriptStore();
+const dropRate = useDropRateStore();
 const message = useMessage();
 const dialog = useDialog();
 const hashRegistrationVisible = ref(false);
+
+function shortcutHint(command: ShortcutCommandId): string {
+  const binding = effectiveBinding(command, settings.shortcutOverrides);
+  return binding ? ` (${formatBinding(binding)})` : "";
+}
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
@@ -92,6 +103,14 @@ const versionTooltip = computed(() => {
   }
   return "管理工作区版本、提交和历史";
 });
+const toolOptions = computed(() => [
+  {
+    label: "基础掉率",
+    key: "drop-rate",
+    disabled: !dropRate.supported,
+    icon: () => h(NIcon, null, { default: () => h(Drop24Regular) }),
+  },
+]);
 watch(
   () => archive.unpackMessage,
   (msg) => {
@@ -218,6 +237,14 @@ function onCancelUnpack() {
   archive.cancelUnpack();
 }
 
+async function onToolSelect(key: string): Promise<void> {
+  if (key !== "drop-rate") return;
+  const opened = await dropRate.open();
+  if (!opened) {
+    message.error(dropRate.error || "无法打开基础掉率编辑器");
+  }
+}
+
 function isCancel(e: any): boolean {
   return String(e?.message ?? e).includes("cancel");
 }
@@ -233,7 +260,7 @@ function isCancel(e: any): boolean {
             打开
           </NButton>
         </template>
-        打开 PVF 归档 (Cmd+O)
+        打开 PVF 归档{{ shortcutHint("archive.open") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -267,7 +294,7 @@ function isCancel(e: any): boolean {
             </NButton>
           </NBadge>
         </template>
-        {{ versionTooltip }}
+        {{ versionTooltip }}{{ shortcutHint("version.open") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -287,7 +314,7 @@ function isCancel(e: any): boolean {
             另存为
           </NButton>
         </template>
-        另存为新 PVF (Cmd+Shift+S)
+        另存为新 PVF{{ shortcutHint("archive.saveAs") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -355,7 +382,7 @@ function isCancel(e: any): boolean {
             高级搜索
           </NButton>
         </template>
-        在当前归档中搜索二进制或字符串池
+        在当前归档中搜索二进制或字符串池{{ shortcutHint("search.advanced") }}
       </NTooltip>
     </div>
 
@@ -401,6 +428,22 @@ function isCancel(e: any): boolean {
       </NTooltip>
     </div>
 
+    <div class="tb-sep" />
+
+    <div class="tb-group" role="group" aria-label="工具">
+      <NTooltip trigger="hover" :disabled="dropRate.supported">
+        <template #trigger>
+          <NDropdown :options="toolOptions" @select="onToolSelect">
+            <NButton quaternary>
+              <template #icon><NIcon><Toolbox24Regular /></NIcon></template>
+              工具
+            </NButton>
+          </NDropdown>
+        </template>
+        {{ archive.open ? "仅支持 90US/90CN 归档" : "需先打开 PVF 归档" }}
+      </NTooltip>
+    </div>
+
     <div class="tb-spacer" />
 
     <NTooltip trigger="hover">
@@ -409,7 +452,7 @@ function isCancel(e: any): boolean {
           <template #icon><NIcon><Settings24Regular /></NIcon></template>
         </NButton>
       </template>
-      设置
+      设置{{ shortcutHint("settings.open") }}
     </NTooltip>
     <IndexHashRegistrationModal
       :show="hashRegistrationVisible"

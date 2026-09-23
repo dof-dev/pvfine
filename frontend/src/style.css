@@ -37,6 +37,26 @@ textarea,
   user-select: text;
 }
 
+/* 定时缓存恢复弹窗：h() 渲染的内容挂在对话框提供者下，样式放在全局作用域。 */
+.recovery-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recovery-prompt-line {
+  line-height: 1.6;
+}
+
+/* 恢复进行中的提示：与上方信息区分开，并说明耗时原因。 */
+.recovery-prompt-line--busy {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--pvf-surface-inset);
+  color: var(--pvf-text-secondary);
+}
+
 /* 全局滚动条 */
 ::-webkit-scrollbar {
   width: 10px;

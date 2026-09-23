@@ -3,11 +3,85 @@ package services
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	_ "modernc.org/sqlite"
 	"pvfine/internal/pvf"
 )
+
+func TestSQLiteWildcardSearchBeyondCandidateBatch(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := buildSQLiteFileIndex(db, pvf.New(), "wildcard-pagination"); err != nil {
+		t.Fatal(err)
+	}
+	// More non-matching records than the old candidate batch for a 200-hit page.
+	if _, err := db.Exec(`WITH RECURSIVE seq(n) AS (
+		SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<6500
+	) INSERT INTO records(file_index,name,lower_name,record_id,lower_id,path,lower_path,category,list_path,size,data_type)
+	SELECT n,'','','','','misc/'||n||'.txt','misc/'||n||'.txt','file','',0,0 FROM seq`); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"equipment/character/项.equ", "equipment/character/链.equ"}
+	for n, path := range want {
+		if _, err := db.Exec(`INSERT INTO records(file_index,name,lower_name,record_id,lower_id,path,lower_path,category,list_path,size,data_type)
+		VALUES(?,'','','','',?,?,'file','',0,0)`, 6501+n, path, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index := &sqliteArchiveIndex{db: db}
+	for _, exact := range []bool{false, true} {
+		for _, pattern := range []string{"*.equ", "EQUIPMENT/*/?.EQU"} {
+			for _, limit := range []int{1, 200} {
+				t.Run(fmt.Sprintf("%s/exact=%t/limit=%d", pattern, exact, limit), func(t *testing.T) {
+					cursor := 0
+					var paths []string
+					for page := 0; ; page++ {
+						if page > len(want) {
+							t.Fatal("pagination did not terminate")
+						}
+						result, err := index.search(pattern, cursor, limit, exact)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if len(result.Hits) == 0 && result.NextCursor >= 0 {
+							t.Fatal("empty intermediate wildcard page")
+						}
+						for _, hit := range result.Hits {
+							paths = append(paths, hit.Path)
+						}
+						if result.NextCursor < 0 {
+							break
+						}
+						if result.NextCursor <= cursor {
+							t.Fatal("cursor did not advance")
+						}
+						cursor = result.NextCursor
+					}
+					if len(paths) != len(want) {
+						t.Fatalf("paths = %v, want %v", paths, want)
+					}
+					for n := range want {
+						if paths[n] != want[n] {
+							t.Fatalf("paths = %v, want %v", paths, want)
+						}
+					}
+				})
+			}
+		}
+	}
+	result, err := index.search("*.missing", 0, 200, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Hits) != 0 || result.NextCursor != -1 {
+		t.Fatalf("unmatched wildcard result = %#v", result)
+	}
+}
 
 func TestSQLiteArchiveIndexQueries(t *testing.T) {
 	a := pvf.New()

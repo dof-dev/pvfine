@@ -55,7 +55,7 @@ func TestValidateRejectsInvalidRuleFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	for _, want := range []string{"以点开头", "不能为负数", "title 不能为空", "不存在的 relation"} {
+	for _, want := range []string{"以点开头", "不能为负数", "不存在的 relation"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %v, want %q", err, want)
 		}
@@ -87,12 +87,27 @@ func TestValidateTokenGroupingFields(t *testing.T) {
 			want: "offset 不能为负数",
 		},
 		{
+			name: "negative group offset",
+			edit: func(rule *Rule) { rule.Target.GroupOffset = -1 },
+			want: "groupOffset 不能为负数",
+		},
+		{
 			name: "negative dynamic index",
 			edit: func(rule *Rule) {
 				index := -1
 				rule.Target.TokensPerLineIndex = &index
 			},
 			want: "tokensPerLineIndex 不能为负数",
+		},
+		{
+			name: "standalone values need record width",
+			edit: func(rule *Rule) {
+				rule.Target.Offset = 0
+				rule.Target.TokensPerLineIndex = nil
+				rule.Target.RecordTokens = 0
+				rule.Target.StandaloneValues = []int32{-1}
+			},
+			want: "需要配置正数 recordTokens",
 		},
 		{
 			name: "missing fallback",

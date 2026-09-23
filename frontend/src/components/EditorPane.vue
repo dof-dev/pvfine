@@ -18,12 +18,13 @@ import {
   useMessage,
 } from "naive-ui";
 import {
+  ArrowMoveInward20Regular,
   BookmarkAdd24Regular,
   Dismiss16Regular,
   DocumentAdd24Regular,
-  DocumentSearch24Regular,
   Eye24Regular,
   EyeOff24Regular,
+  PanelRight24Regular,
   Save24Regular,
   SplitHorizontal24Regular,
   SplitVertical24Regular,
@@ -40,8 +41,13 @@ import { useExplorerStore } from "../stores/explorer";
 import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor, { type PlaceholderEditRequest } from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
+import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 import ImageThumbnail from "./ImageThumbnail.vue";
 import PreviewHost from "./previews/PreviewHost.vue";
+import FileGUIHost from "./gui/FileGUIHost.vue";
+import { getGUIProvider } from "../gui/registry";
+import { createGUIModes } from "../gui/state";
+import { useFileGUIStore } from "../stores/fileGUI";
 import { getPreviewProvider } from "../previews/registry";
 import type { PreviewFile } from "../previews/types";
 import type { ResolvedThemeId } from "../theme";
@@ -58,6 +64,10 @@ const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
+function shortcutHint(command: ShortcutCommandId): string {
+  const binding = effectiveBinding(command, settings.shortcutOverrides);
+  return binding ? ` (${formatBinding(binding)})` : "";
+}
 const message = useMessage();
 const dialog = useDialog();
 const host = ref<HTMLDivElement | null>(null);
@@ -67,6 +77,10 @@ const bookmarking = ref(false);
 const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
 const previewVisibility = reactive(new Map<number, boolean>());
+const gui = useFileGUIStore();
+const guiModes = createGUIModes();
+function isGUI(index: number): boolean { return guiModes.entries.get(index)?.mode === "gui"; }
+watch(() => gui.epoch, () => guiModes.reset(), { flush: "sync" });
 const tabContextMenu = ref({
   show: false,
   x: 0,
@@ -215,6 +229,7 @@ const paneTabs = computed(() => {
     .map((index) => editor.tabs.find((tab) => tab.index === index))
     .filter((tab): tab is EditorTab => !!tab);
 });
+watch(() => paneTabs.value.map((tab) => tab.index), (indexes) => guiModes.prune(indexes), { flush: "sync" });
 const activeKeyStr = computed(() => {
   const key = pane.value?.activeKey;
   return key === null || key === undefined ? undefined : String(key);
@@ -340,17 +355,17 @@ function onTabMouseDown(event: MouseEvent, index: number): void {
 
 const tabContextMenuOptions = computed(() => [
   {
-    label: "关闭当前",
+    label: `关闭当前${shortcutHint("workspace.close")}`,
     key: "close",
     disabled: tabContextMenu.value.index === null,
   },
   {
-    label: "关闭所有",
+    label: `关闭所有${shortcutHint("editor.closeAll")}`,
     key: "close-all",
     disabled: editor.tabs.length === 0,
   },
   {
-    label: "关闭其它",
+    label: `关闭其它${shortcutHint("editor.closeOthers")}`,
     key: "close-others",
     disabled: editor.tabs.length <= 1 || tabContextMenu.value.index === null,
   },
@@ -571,10 +586,6 @@ function sizeText(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function isOpeningTab(index: number): boolean {
-  return editor.openingPaneId === paneId && pane.value?.activeKey === index;
-}
-
 function onDragStart(event: DragEvent, index: number): void {
   draggingIndex.value = index;
   editor.beginTabDrag(paneId, index);
@@ -707,7 +718,8 @@ function onDrop(event: DragEvent): void {
             @mousedown="onTabMouseDown($event, tab.index)"
             @contextmenu.stop="onTabContextMenu($event, tab.index)"
           >
-            <ImageThumbnail v-if="tab.icon" :reference="tab.icon" :size="16" />
+            <NSpin v-if="tab.loading" :size="12" />
+            <ImageThumbnail v-else-if="tab.icon" :reference="tab.icon" :size="16" />
             <span :class="['tab-dot', { dirty: tab.text !== tab.original }]" />
             <span class="tab-title">{{ tab.title }}</span>
             <NTooltip>
@@ -721,29 +733,12 @@ function onDrop(event: DragEvent): void {
                   <template #icon><NIcon :size="12"><Dismiss16Regular /></NIcon></template>
                 </NButton>
               </template>
-              关闭 (Cmd+W)
+              关闭{{ shortcutHint("workspace.close") }}
             </NTooltip>
           </span>
         </template>
 
         <div class="editor-info-bar" role="toolbar" aria-label="当前文件操作">
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NButton
-                quaternary
-                size="tiny"
-                class="editor-save-button"
-                :type="activeTabDirty ? 'primary' : 'default'"
-                :loading="editor.saving"
-                aria-label="保存"
-                @click="editor.saveActiveTab(paneId)"
-              >
-                <template #icon><NIcon><Save24Regular /></NIcon></template>
-              </NButton>
-            </template>
-            {{ activeTabDirty ? "保存当前文件 (Cmd+S)" : "当前文件没有待保存的修改" }}
-          </NTooltip>
-
           <div class="editor-file-tags" aria-label="当前文件关联信息">
             <NTag
               v-for="tag in fileTags"
@@ -764,6 +759,36 @@ function onDrop(event: DragEvent): void {
           </div>
 
           <div class="editor-pane-actions" role="group" aria-label="编辑器操作">
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  class="editor-save-button"
+                  :type="activeTabDirty ? 'primary' : 'default'"
+                  :loading="editor.saving"
+                  aria-label="保存"
+                  @click="editor.saveActiveTab(paneId)"
+                >
+                  <template #icon><NIcon><Save24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              {{ activeTabDirty ? `保存当前文件${shortcutHint("workspace.save")}` : "当前文件没有待保存的修改" }}
+            </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :loading="revealingFile"
+                  :disabled="!canRevealActiveFile"
+                  @click="onRevealActiveFile"
+                >
+                  <template #icon><NIcon><ArrowMoveInward20Regular /></NIcon></template>
+                </NButton>
+              </template>
+              定位当前文件
+            </NTooltip>
             <NTooltip v-if="activeTab?.index === tab.index && !activeHasID" trigger="hover">
               <template #trigger>
                 <NButton
@@ -792,26 +817,9 @@ function onDrop(event: DragEvent): void {
                   @click="onBookmarkActive"
                 >
                   <template #icon><NIcon><BookmarkAdd24Regular /></NIcon></template>
-                  {{ activeBookmarked ? "已在书签" : "加入书签" }}
                 </NButton>
               </template>
               {{ activeBookmarked ? "当前文件已在当前书签簿" : "加入当前书签簿" }}
-            </NTooltip>
-
-            <NTooltip trigger="hover">
-              <template #trigger>
-                <NButton
-                  quaternary
-                  size="tiny"
-                  :loading="revealingFile"
-                  :disabled="!canRevealActiveFile"
-                  @click="onRevealActiveFile"
-                >
-                  <template #icon><NIcon><DocumentSearch24Regular /></NIcon></template>
-                  在资源管理器中选中
-                </NButton>
-              </template>
-              定位当前文件
             </NTooltip>
 
             <NTooltip trigger="hover">
@@ -824,10 +832,9 @@ function onDrop(event: DragEvent): void {
                   @click="editor.split('columns', paneId)"
                 >
                   <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
-                  左右分屏
                 </NButton>
               </template>
-              左右分屏 (Cmd/Ctrl+\)
+              左右分屏{{ shortcutHint("editor.splitColumns") }}
             </NTooltip>
 
             <NTooltip trigger="hover">
@@ -840,10 +847,9 @@ function onDrop(event: DragEvent): void {
                   @click="editor.split('rows', paneId)"
                 >
                   <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
-                  上下分屏
                 </NButton>
               </template>
-              上下分屏 (Cmd/Ctrl+Shift+\)
+              上下分屏{{ shortcutHint("editor.splitRows") }}
             </NTooltip>
 
             <NTooltip v-if="previewProviderFor(tab)" trigger="hover">
@@ -852,13 +858,12 @@ function onDrop(event: DragEvent): void {
                   quaternary
                   size="tiny"
                   :type="isPreviewOpen(tab.index) ? 'primary' : 'default'"
-                  aria-label="切换文件预览"
+                  :aria-label="isPreviewOpen(tab.index) ? '收起文件预览' : '打开文件预览'"
                   @click="togglePreview(tab.index)"
                 >
                   <template #icon>
-                    <NIcon><EyeOff24Regular v-if="isPreviewOpen(tab.index)" /><Eye24Regular v-else /></NIcon>
+                    <NIcon><PanelRight24Regular /></NIcon>
                   </template>
-                  预览
                 </NButton>
               </template>
               {{ isPreviewOpen(tab.index) ? "收起文件预览" : "打开文件预览" }}
@@ -879,33 +884,78 @@ function onDrop(event: DragEvent): void {
               </template>
               在光标处插入 {8=`&lt;表号::键名&gt;`}，并创建/更新字符串表条目
             </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :type="tab.annotationsHidden ? 'primary' : 'default'"
+                  :disabled="tab.loading || !!tab.loadError || settings.annotationTagPlacement === 'hidden'"
+                  :aria-pressed="tab.annotationsHidden"
+                  :aria-label="tab.annotationsHidden ? '显示当前文件标注' : '隐藏当前文件标注'"
+                  @click="editor.toggleAnnotationsHidden(tab.index)"
+                >
+                  <template #icon>
+                    <NIcon><EyeOff24Regular v-if="tab.annotationsHidden" /><Eye24Regular v-else /></NIcon>
+                  </template>
+                </NButton>
+              </template>
+              {{ settings.annotationTagPlacement === 'hidden'
+                ? '设置中已全局隐藏标注'
+                : tab.annotationsHidden ? '显示当前文件标注' : '临时隐藏当前文件标注' }}
+            </NTooltip>
+            <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
+              <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
+                :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">DSL</NButton>
+              <NButton size="tiny" :type="isGUI(tab.index) ? 'primary' : 'default'"
+                :disabled="tab.loading || !!tab.loadError" :aria-pressed="isGUI(tab.index)"
+                @click="guiModes.set(tab.index, 'gui')">GUI</NButton>
+            </div>
           </div>
         </div>
 
         <div class="pane-body">
-          <div v-if="!tab.editable" class="readonly-hint">
-            该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
+          <div v-if="tab.loading" class="file-load-state" role="status" aria-live="polite">
+            <NSpin :size="28" />
+            <span>正在读取文件并加载标注…</span>
           </div>
-          <NSpin v-if="isOpeningTab(tab.index)" style="margin-top: 120px" />
-          <CodeEditor
-            v-else
-            :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
-            :doc="tab.text"
-            :read-only="!tab.editable"
-            :annotations="tab.annotations"
-            :tag-placement="settings.annotationTagPlacement"
-            :vim-mode="settings.vimMode"
-            :theme-id="props.themeId"
-            @change="(text: string) => editor.updateContent(tab.index, text)"
-            @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
-            @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
-          />
-          <PreviewHost
-            v-if="previewProviderFor(tab)"
+          <div v-else-if="tab.loadError" class="file-load-state" role="alert">
+            <span>文件加载失败：{{ tab.loadError }}</span>
+            <NButton size="small" @click="editor.retryOpenFile(tab.index)">重试</NButton>
+          </div>
+          <!-- CodeEditor has a fragment root: v-show must target a real element.
+               Keep the text subtree mounted to preserve selection and undo. -->
+          <div v-else v-show="!isGUI(tab.index)" class="text-mode-content">
+            <div v-if="!tab.editable" class="readonly-hint">
+              该文件类型(text {{ tab.dataType }},{{ sizeText(tab.size) }})暂不支持编辑
+            </div>
+            <CodeEditor
+              :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
+              :doc="tab.text"
+              :read-only="!tab.editable || editor.guiApplying"
+              :annotations="tab.annotations"
+              :tag-placement="tab.annotationsHidden ? 'hidden' : settings.annotationTagPlacement"
+              :vim-mode="settings.vimMode"
+              :theme-id="props.themeId"
+              @change="(text: string) => editor.updateContent(tab.index, text)"
+              @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"
+              @edit-placeholder="(request: PlaceholderEditRequest) => openPlaceholderEdit(tab.index, request)"
+            />
+            <PreviewHost
+              v-if="previewProviderFor(tab)"
+              :file="previewFile(tab)"
+              :active="!isGUI(tab.index) && editor.activePaneId === paneId && activeTab?.index === tab.index"
+              :open="isPreviewOpen(tab.index)"
+              @close="closePreview(tab.index)"
+            />
+          </div>
+          <FileGUIHost
+            v-if="!tab.loading && !tab.loadError && guiModes.entries.get(tab.index)?.opened"
+            v-show="isGUI(tab.index)"
+            :key="`${gui.epoch}:${tab.index}`"
             :file="previewFile(tab)"
-            :active="editor.activePaneId === paneId && activeTab?.index === tab.index"
-            :open="isPreviewOpen(tab.index)"
-            @close="closePreview(tab.index)"
+            :active="isGUI(tab.index) && activeTab?.index === tab.index"
+            @close="guiModes.set(tab.index, 'text')"
           />
         </div>
       </NTabPane>
@@ -1054,6 +1104,7 @@ function onDrop(event: DragEvent): void {
 </template>
 
 <style scoped>
+.gui-mode-switch { display: inline-flex; gap: 2px; margin-left: 4px; }
 .placeholder-edit {
   display: flex;
   flex-direction: column;
@@ -1272,7 +1323,8 @@ function onDrop(event: DragEvent): void {
   align-items: center;
   gap: 2px;
 }
-.pane-body {
+.pane-body,
+.text-mode-content {
   position: relative;
   flex: 1;
   min-width: 0;
@@ -1281,6 +1333,15 @@ function onDrop(event: DragEvent): void {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.file-load-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--pvf-text-muted);
 }
 .readonly-hint {
   padding: 6px 12px;

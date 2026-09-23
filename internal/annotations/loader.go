@@ -120,6 +120,20 @@ func MarshalLists(lists ListDocument) ([]byte, error) {
 func Validate(document Document) error {
 	normalizeImageTargets(&document)
 	problems := make([]string, 0)
+	validateVersions := func(prefix string, versions []string) {
+		for _, version := range versions {
+			if !ValidPVFVersion(version) {
+				problems = append(problems, fmt.Sprintf("%s.pvfVersions 包含无效版本 %q，只允许 90US、90CN、110US", prefix, version))
+			}
+		}
+	}
+	for i, rule := range document.Rules {
+		validateVersions(fmt.Sprintf("rules[%d]", i), rule.PVFVersions)
+	}
+	for i, field := range document.Fields {
+		validateVersions(fmt.Sprintf("fields[%d]", i), field.PVFVersions)
+	}
+
 	if document.Version != 1 {
 		problems = append(problems, fmt.Sprintf("version 必须为 1，当前为 %d", document.Version))
 	}
@@ -247,14 +261,14 @@ func Validate(document Document) error {
 
 		switch rule.Target.Kind {
 		case "path":
-			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+			if rule.Target.Offset != 0 || rule.Target.GroupOffset != 0 || len(rule.Target.StandaloneValues) > 0 || rule.Target.TokensPerLineIndex != nil {
 				problems = append(problems, prefix+" 的 offset/tokensPerLineIndex 只允许用于 token 标注")
 			}
 			if rule.Annotation.Type != "text" {
 				problems = append(problems, prefix+" 的 path 标注只支持 text 类型")
 			}
 		case "section":
-			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+			if rule.Target.Offset != 0 || rule.Target.GroupOffset != 0 || len(rule.Target.StandaloneValues) > 0 || rule.Target.TokensPerLineIndex != nil {
 				problems = append(problems, prefix+" 的 offset/tokensPerLineIndex 只允许用于 token 标注")
 			}
 			if strings.TrimSpace(rule.Target.Section) == "" {
@@ -279,6 +293,9 @@ func Validate(document Document) error {
 			if rule.Target.Offset < 0 {
 				problems = append(problems, prefix+".target.offset 不能为负数")
 			}
+			if rule.Target.GroupOffset < 0 {
+				problems = append(problems, prefix+".target.groupOffset 不能为负数")
+			}
 			if rule.Target.TokensPerLineIndex != nil && *rule.Target.TokensPerLineIndex < 0 {
 				problems = append(problems, prefix+".target.tokensPerLineIndex 不能为负数")
 			}
@@ -298,7 +315,7 @@ func Validate(document Document) error {
 					problems = append(problems, prefix+".target.contextIndex 必须位于 recordTokens 范围内")
 				}
 			}
-			if rule.Target.Offset != 0 || rule.Target.TokensPerLineIndex != nil {
+			if rule.Target.Offset != 0 || rule.Target.GroupOffset != 0 || len(rule.Target.StandaloneValues) > 0 || rule.Target.TokensPerLineIndex != nil {
 				if rule.Target.RecordTokens <= 0 {
 					problems = append(problems, prefix+".target.offset/tokensPerLineIndex 需要配置正数 recordTokens 作为回退值")
 				}
@@ -337,12 +354,13 @@ func Validate(document Document) error {
 			problems = append(problems, prefix+".target.kind 必须是 path、section 或 token")
 		}
 
-		if strings.TrimSpace(rule.Annotation.Title) == "" {
-			problems = append(problems, prefix+".annotation.title 不能为空")
-		}
 		switch rule.Annotation.Type {
 		case "text":
 		case "image":
+		case "path":
+			if root := strings.TrimSpace(strings.ReplaceAll(rule.Annotation.PathRoot, "\\", "/")); root != "" && (strings.HasPrefix(root, "/") || root == ".." || strings.HasPrefix(root, "../") || strings.Contains(root, "/../")) {
+				problems = append(problems, prefix+".annotation.pathRoot 必须是归档内的相对目录")
+			}
 		case "enum":
 			if len(rule.Annotation.Values) == 0 {
 				problems = append(problems, prefix+".annotation.values 不能为空")
@@ -364,7 +382,10 @@ func Validate(document Document) error {
 				}
 			}
 		default:
-			problems = append(problems, prefix+".annotation.type 必须是 text、image、enum 或 reference")
+			problems = append(problems, prefix+".annotation.type 必须是 text、image、enum、reference 或 path")
+		}
+		if rule.Annotation.Type != "path" && rule.Annotation.PathRoot != "" {
+			problems = append(problems, prefix+".annotation.pathRoot 只允许用于 path 标注")
 		}
 		if rule.Annotation.InlineImage && rule.Annotation.Type != "image" {
 			problems = append(problems, prefix+".annotation.inlineImage 只允许用于 image 标注")

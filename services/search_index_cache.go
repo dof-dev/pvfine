@@ -15,7 +15,11 @@ import (
 	"pvfine/internal/pvf"
 )
 
-const searchIndexCacheVersion = 1
+// searchIndexCacheVersion covers both cache formats: the small JSON snapshot's
+// Version field and the SQLite index identity string. Bump it whenever the
+// persisted metadata shape changes, so older files are rebuilt instead of
+// silently missing a newer field.
+const searchIndexCacheVersion = 3
 
 // searchIndexCacheIdentity is the cheap source identity used by the search
 // cache. The archive itself is already read before the index starts, but the
@@ -40,6 +44,7 @@ type persistedIndexedMetadata struct {
 	FileIndex  int32           `json:"fileIndex"`
 	Size       int32           `json:"size"`
 	DataType   int32           `json:"dataType"`
+	Rarity     int32           `json:"rarity"`
 	Icon       *ImageReference `json:"icon,omitempty"`
 	FieldImage *ImageReference `json:"fieldImage,omitempty"`
 }
@@ -204,6 +209,7 @@ func loadSearchIndexCache(a *pvf.Archive, specs []searchableListSpec, override s
 			fileIndex:  fileIndex,
 			size:       file.DataSize,
 			dataType:   file.DataType,
+			rarity:     saved.Rarity,
 			icon:       cloneImageReference(saved.Icon),
 			fieldImage: cloneImageReference(saved.FieldImage),
 		})
@@ -246,6 +252,7 @@ func saveSearchIndexCache(snapshot searchIndexCacheSnapshot, override string) er
 			FileIndex:  value.fileIndex,
 			Size:       value.size,
 			DataType:   value.dataType,
+			Rarity:     value.rarity,
 			Icon:       cloneImageReference(value.icon),
 			FieldImage: cloneImageReference(value.fieldImage),
 		})
@@ -286,15 +293,16 @@ func saveSearchIndexCache(snapshot searchIndexCacheSnapshot, override string) er
 
 // persistSearchIndexCacheAsync snapshots the small canonical metadata slice
 // under the core lock and performs compression/file IO off the request path.
-// The generation check prevents an older background build from overwriting a
-// newer cache after a mutation or archive switch.
+// The generation and archive revision checks prevent an older background build
+// from overwriting a newer cache after a mutation or archive switch.
 func (c *core) persistSearchIndexCacheAsync(a *pvf.Archive, gen uint64, metadata []indexedMetadata, total, skipped int) {
 	c.mu.RLock()
 	if c.archive != a || c.indexGen != gen || c.indexStatus.State != IndexStateReady ||
-		c.indexStatus.Refreshing {
+		c.indexStatus.Refreshing || a.Modified() {
 		c.mu.RUnlock()
 		return
 	}
+	revision := c.batchRevision
 	identity, err := searchIndexCacheIdentityForArchive(a)
 	if err != nil {
 		c.mu.RUnlock()
@@ -311,6 +319,13 @@ func (c *core) persistSearchIndexCacheAsync(a *pvf.Archive, gen uint64, metadata
 	c.mu.RUnlock()
 
 	go func() {
+		c.mu.RLock()
+		valid := c.archive == a && c.indexGen == gen && c.batchRevision == revision &&
+			c.indexStatus.State == IndexStateReady && !c.indexStatus.Refreshing && !a.Modified()
+		c.mu.RUnlock()
+		if !valid {
+			return
+		}
 		_ = saveSearchIndexCache(snapshot, override)
 	}()
 }

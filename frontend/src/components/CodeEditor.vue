@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { rarityColor } from "../rarity";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   EditorView,
@@ -21,9 +22,12 @@ import {
   StateEffect,
   StateField,
   type Range,
+  type RangeSet,
 } from "@codemirror/state";
 import {
   HighlightStyle,
+  foldGutter,
+  foldKeymap,
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
@@ -40,7 +44,9 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
+import { annotationAt, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
+import { pvfSectionFolding } from "../pvfSectionFolding";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
 import { useImageStore } from "../stores/images";
@@ -75,17 +81,20 @@ export interface PlaceholderEditRequest {
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
+// 记录最近一次同步文本，避免父组件回传相同值时再次序列化全文。
+let syncedDoc = props.doc;
 const readOnlyComp = new Compartment();
 const vimComp = new Compartment();
 const editorThemeComp = new Compartment();
 const images = useImageStore();
 
 interface AnnotationDisplay {
-  annotations: EditorAnnotation[];
+  annotations: RangeSet<AnnotationRange>;
   placement: AnnotationTagPlacement;
 }
 
-const setAnnotations = StateEffect.define<AnnotationDisplay>();
+const setAnnotations = StateEffect.define<EditorAnnotation[]>();
+const setAnnotationPlacement = StateEffect.define<AnnotationTagPlacement>();
 const setDiagnosticLine = StateEffect.define<number | null>();
 
 const javascriptHighlighting = syntaxHighlighting(
@@ -125,6 +134,7 @@ class AnnotationWidget extends WidgetType {
       other.annotation.title === this.annotation.title &&
       other.annotation.content === this.annotation.content &&
       other.annotation.type === this.annotation.type &&
+      other.annotation.rarity === this.annotation.rarity &&
       other.annotation.targetFileIndex === this.annotation.targetFileIndex &&
       other.annotation.image?.path === this.annotation.image?.path &&
       other.annotation.image?.index === this.annotation.image?.index &&
@@ -140,9 +150,13 @@ class AnnotationWidget extends WidgetType {
     tag.className = inlineImage
       ? "cm-annotation-inline-image"
       : `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
-    if (!inlineImage) tag.textContent = this.annotation.title;
+    if (!inlineImage) {
+      tag.textContent = this.annotation.title;
+      const color = rarityColor(this.annotation.rarity);
+      if (color) tag.style.color = color;
+    }
     const hints = [
-      this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开来源字符串表" : "",
+      this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开目标文件" : "",
       placeholder ? "单击修改译文" : "",
     ].filter(Boolean);
     const tooltip = hintText(this.annotation, hints);
@@ -343,6 +357,12 @@ function cancelTooltipHide(): void {
   clearTooltipHideTimer();
 }
 
+function hiddenAnnotationTarget(event: Event, currentView: EditorView): HTMLElement | null {
+  if (!(event.target instanceof HTMLElement)) return null;
+  const target = event.target.closest<HTMLElement>(".cm-annotation-hover");
+  return target && currentView.dom.contains(target) ? target : null;
+}
+
 watch(
   () => images.revision,
   () => {
@@ -374,21 +394,26 @@ function annotationDecorations(
   state: EditorState,
   display: AnnotationDisplay
 ): DecorationSet {
-  const ranges = display.annotations.flatMap((annotation) => {
-    const targetStart = Math.max(0, Math.min(state.doc.length, annotation.start));
-    const targetEnd = Math.max(targetStart, Math.min(state.doc.length, annotation.end));
-    const result: Range<Decoration>[] = [];
+  const ranges: Range<Decoration>[] = [];
+  for (const cursor = display.annotations.iter(); cursor.value; cursor.next()) {
+    const annotation = cursor.value.annotation;
+    const targetStart = cursor.from;
+    const targetEnd = cursor.to;
 
-    if (annotation.targetFileIndex >= 0 && targetStart < targetEnd) {
-      result.push(
-        Decoration.mark({ class: "cm-annotation-link" }).range(targetStart, targetEnd)
+    if (targetStart < targetEnd && (annotation.targetFileIndex >= 0 || display.placement === "hidden")) {
+      const classes = [
+        annotation.targetFileIndex >= 0 ? "cm-annotation-link" : "",
+        display.placement === "hidden" ? "cm-annotation-hover" : "",
+      ].filter(Boolean).join(" ");
+      ranges.push(
+        Decoration.mark({ class: classes }).range(targetStart, targetEnd)
       );
     }
 
     if (display.placement !== "hidden" && annotation.title.trim() !== "") {
       const position =
         display.placement === "line-end" ? state.doc.lineAt(targetEnd).to : targetEnd;
-      result.push(
+      ranges.push(
         Decoration.widget({
           widget: new AnnotationWidget(
             annotation,
@@ -401,15 +426,14 @@ function annotationDecorations(
         }).range(position)
       );
     }
-    return result;
-  }).sort((a, b) => a.from - b.from);
+  }
   return Decoration.set(ranges, true);
 }
 
 const annotationDisplayField = StateField.define<AnnotationDisplay>({
-  create() {
+  create(state) {
     return {
-      annotations: props.annotations ?? [],
+      annotations: indexAnnotations(props.annotations ?? [], state.doc.length),
       placement: props.tagPlacement ?? "after-target",
     };
   },
@@ -418,15 +442,14 @@ const annotationDisplayField = StateField.define<AnnotationDisplay>({
     if (transaction.docChanged) {
       next = {
         ...next,
-        annotations: next.annotations.map((annotation) => ({
-          ...annotation,
-          start: transaction.changes.mapPos(annotation.start, 1),
-          end: transaction.changes.mapPos(annotation.end, -1),
-        })),
+        annotations: next.annotations.map(transaction.changes),
       };
     }
     for (const effect of transaction.effects) {
-      if (effect.is(setAnnotations)) next = effect.value;
+      if (effect.is(setAnnotations)) {
+        next = { ...next, annotations: indexAnnotations(effect.value, transaction.state.doc.length) };
+      }
+      if (effect.is(setAnnotationPlacement)) next = { ...next, placement: effect.value };
     }
     return next;
   },
@@ -439,8 +462,8 @@ const annotationField = StateField.define<DecorationSet>({
   update(decorations, transaction) {
     let next = decorations.map(transaction.changes);
     for (const effect of transaction.effects) {
-      if (effect.is(setAnnotations)) {
-        next = annotationDecorations(transaction.state, effect.value);
+      if (effect.is(setAnnotations) || effect.is(setAnnotationPlacement)) {
+        return annotationDecorations(transaction.state, transaction.state.field(annotationDisplayField));
       }
     }
     return next;
@@ -513,9 +536,26 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
+      ...(!isJavaScript ? foldKeymap : []),
       { key: "Tab", run: insertTab, shift: indentLess },
     ]),
     EditorView.domEventHandlers({
+      mouseover(event, currentView) {
+        const display = currentView.state.field(annotationDisplayField, false);
+        if (display?.placement !== "hidden") return false;
+        const target = hiddenAnnotationTarget(event, currentView);
+        if (!target) return false;
+        const annotation = annotationAt(display.annotations, currentView.posAtDOM(target, 0));
+        if (annotation) showAnnotationTooltip(annotation, target);
+        return false;
+      },
+      mouseout(event, currentView) {
+        const target = hiddenAnnotationTarget(event, currentView);
+        if (target && !(event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
+          scheduleHideTooltip();
+        }
+        return false;
+      },
       click(event, currentView) {
         const mouseEvent = event as MouseEvent;
         if (!mouseEvent.metaKey && !mouseEvent.ctrlKey) return false;
@@ -525,10 +565,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
         });
         if (position === null) return false;
         const display = currentView.state.field(annotationDisplayField, false);
-        const annotation = display?.annotations.find(
-          (item) =>
-            item.targetFileIndex >= 0 && item.start <= position && position < item.end
-        );
+        const annotation = display && referenceAt(display.annotations, position);
         if (!annotation) return false;
         mouseEvent.preventDefault();
         mouseEvent.stopPropagation();
@@ -542,6 +579,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
     diagnosticLineField,
     indentUnit.of("\t"),
     isJavaScript ? javascript() : pvfLanguage.extension,
+    ...(!isJavaScript ? [foldGutter(), ...pvfSectionFolding] : []),
     isJavaScript
       ? [
           tooltips({ parent: document.body, position: "fixed" }),
@@ -552,7 +590,10 @@ function makeExtensions(themeId: ResolvedThemeId) {
     editorThemeComp.of(createEditorTheme(themeId)),
     EditorView.lineWrapping,
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) emit("change", u.state.doc.toString());
+      if (u.docChanged) {
+        syncedDoc = u.state.doc.toString();
+        emit("change", syncedDoc);
+      }
     }),
   ];
 }
@@ -655,27 +696,27 @@ watch(
   () => props.doc,
   (doc) => {
     if (!view) return;
-    const current = view.state.doc.toString();
-    if (doc !== current) {
+    if (doc !== syncedDoc) {
+      syncedDoc = doc;
       view.dispatch({
-        changes: { from: 0, to: current.length, insert: doc },
+        changes: { from: 0, to: view.state.doc.length, insert: doc },
         effects: setDiagnosticLine.of(null),
       });
     }
   }
 );
 
+// 标注整体替换时才重建，禁止深度 watch 大数组。位置显示切换沿用已映射的范围。
 watch(
-  () => [props.annotations, props.tagPlacement] as const,
-  ([annotations, placement]) => {
-    view?.dispatch({
-      effects: setAnnotations.of({
-        annotations: annotations ?? [],
-        placement: placement ?? "after-target",
-      }),
-    });
-  },
-  { deep: true }
+  () => props.annotations,
+  (annotations) => view?.dispatch({ effects: setAnnotations.of(annotations ?? []) })
+);
+watch(
+  () => props.tagPlacement,
+  (placement) => {
+    hideAnnotationTooltip();
+    view?.dispatch({ effects: setAnnotationPlacement.of(placement ?? "after-target") });
+  }
 );
 
 watch(

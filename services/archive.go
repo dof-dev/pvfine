@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,6 +59,13 @@ func (s *ArchiveService) OpenDialog() (*ArchiveInfo, error) {
 
 // Open 加载指定路径的归档并构建目录索引。
 func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
+	return s.c.openArchive(path)
+}
+
+// openArchive installs path as the working archive: parse, derived indexes,
+// background version session and the semantic search index. It is shared by
+// the open dialog and the backup recovery so both produce identical state.
+func (c *core) openArchive(path string) (ArchiveInfo, error) {
 	startedAt := time.Now()
 	if _, err := os.Stat(path); err != nil {
 		return ArchiveInfo{}, err
@@ -66,24 +74,35 @@ func (s *ArchiveService) Open(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
-	if err := s.c.setArchive(a); err != nil {
+	if err := c.setArchive(a); err != nil {
 		return ArchiveInfo{}, err
 	}
-	s.c.recordOpenDuration(time.Since(startedAt))
+	c.recordOpenDuration(time.Since(startedAt))
 	info := a.Info()
 	// Version repository discovery/recovery is deliberately detached from the
 	// normal open path. The raw PVF and its tree are usable immediately; the
 	// background task will replace the in-memory archive only when recovery is
 	// actually needed.
-	s.c.startVersionLoad(path, a)
+	c.startVersionLoad(path, a)
 	emitEvent("archive:opened", info)
-	s.c.startSearchIndex()
+	c.startSearchIndex()
 	return info, nil
 }
 
 // Close 关闭当前归档,丢弃未保存的内存修改。
 func (s *ArchiveService) Close() {
+	s.c.mu.RLock()
+	sourcePath := ""
+	if s.c.archive != nil {
+		sourcePath = s.c.archive.SourcePath()
+	}
+	s.c.mu.RUnlock()
 	s.c.closeArchive()
+	if s.c.autosave != nil {
+		// The workspace is gone; a backup of its discarded edits would only
+		// ask for a restore that no longer has a session behind it.
+		s.c.autosave.DropForSource(sourcePath)
+	}
 	emitEvent("archive:closed")
 }
 
@@ -238,6 +257,36 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 	return result, nil
 }
 
+// ListModifiedFiles lists the files currently changed in the in-memory PVF
+// overlay. It deliberately does not depend on the optional version sidecar,
+// so the version panel can show pending edits before version control is
+// initialized.
+func (s *ArchiveService) ListModifiedFiles() ([]*TreeNode, error) {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	if s.c.archive == nil {
+		return nil, ErrNoArchive
+	}
+
+	result := make([]*TreeNode, 0, s.c.archive.ModifiedCount())
+	for index := int32(0); index < s.c.archive.FileCount(); index++ {
+		if !s.c.archive.IsModified(index) {
+			continue
+		}
+		file := s.c.archive.File(index)
+		path := s.c.archive.Path(index)
+		result = append(result, &TreeNode{
+			Name:       pathBase(path),
+			Path:       path,
+			Size:       file.DataSize,
+			DataType:   file.DataType,
+			FileIndex:  index,
+			ChangeKind: archiveChangeKind(s.c.archive, index),
+		})
+	}
+	return result, nil
+}
+
 // ResolveFiles resolves archive files by their normalized paths. Missing
 // paths are omitted and duplicate input paths are returned only once.
 func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
@@ -354,6 +403,7 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 		s.c.mu.Unlock()
 		return nil, fmt.Errorf("文件已存在: %s", path)
 	}
+	mutationCheckpoint := a.MutationCheckpoint()
 	var before pvfversion.ContentSnapshot
 	if s.c.versionRepo != nil {
 		before = make(pvfversion.ContentSnapshot)
@@ -374,6 +424,8 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 			return nil, recordErr
 		}
 	}
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
 	node := &TreeNode{
 		Name:        a.File(index).Name,
 		Path:        a.Path(index),
@@ -389,7 +441,7 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
-	s.c.startSearchIndex()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:changed", info)
 	if versioned {
 		emitVersionState(s.c, "file-created")
@@ -428,6 +480,7 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	mutationCheckpoint := a.MutationCheckpoint()
 	mutationPaths := make([]string, 0, len(fileIndexes))
 	for _, index := range fileIndexes {
 		mutationPaths = append(mutationPaths, a.Path(index))
@@ -487,23 +540,13 @@ func (s *ArchiveService) deleteFiles(fileIndexes []int32, syncRegistrations bool
 			return nil, recordErr
 		}
 	}
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
 	info := a.Info()
 	versioned := s.c.versionRepo != nil
-	forceSearchRefresh := false
-	for _, mutationPath := range mutationPaths {
-		normalizedPath := normalizeSearchPath(mutationPath)
-		if strings.HasSuffix(normalizedPath, ".str") || isNPCEntryPath(normalizedPath) || normalizedPath == npcListPath {
-			forceSearchRefresh = true
-			break
-		}
-	}
 	s.c.mu.Unlock()
 
-	if forceSearchRefresh {
-		s.c.startSearchIndexForced()
-	} else {
-		s.c.startSearchIndex()
-	}
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:changed", info)
 	if versioned {
 		emitVersionState(s.c, "files-deleted")
@@ -643,6 +686,72 @@ func (s *ArchiveService) SearchExact(query string, cursor int, limit int) (*Sear
 }
 
 func (s *ArchiveService) search(query string, cursor int, limit int, exact bool) (*SearchResult, error) {
+	return s.searchScoped(query, cursor, limit, exact, false, "")
+}
+
+// SearchItems searches only registered equipment and stackable items. Filtering
+// happens before pagination, so unrelated records cannot hide valid choices.
+func (s *ArchiveService) SearchItems(query string, cursor int, limit int) (*SearchResult, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 30
+	}
+	var exact *SearchHit
+	var exactArchive *pvf.Archive
+	firstPage := cursor <= 0
+	rawCursor := 0
+	if cursor > 0 {
+		rawCursor = cursor - 1
+	}
+	query = strings.TrimSpace(query)
+	if _, err := strconv.ParseInt(query, 10, 32); err == nil {
+		s.c.mu.Lock()
+		if s.c.archive != nil && s.c.annotationEngine != nil {
+			if ref, ok := s.c.resolveAnnotationReferenceLocked("物品", query); ok {
+				if meta, err := s.c.archive.ScriptMetadata(ref.FileIndex); err == nil {
+					file := s.c.archive.File(ref.FileIndex)
+					category := SearchCategoryStackable
+					if strings.HasSuffix(strings.ToLower(s.c.archive.Path(ref.FileIndex)), ".equ") {
+						category = SearchCategoryEquipment
+					}
+					exact = &SearchHit{ID: query, Name: markedName(meta), Path: s.c.archive.Path(ref.FileIndex), FileIndex: ref.FileIndex, Rarity: meta.RarityValue(), Icon: imageReferenceFromPVF(meta.Icon), Category: category, Size: file.DataSize, DataType: file.DataType}
+					exactArchive = s.c.archive
+				}
+			}
+		}
+		s.c.mu.Unlock()
+	}
+	if exact != nil && firstPage && limit == 1 {
+		return &SearchResult{Hits: []*SearchHit{exact}, NextCursor: 1}, nil
+	}
+	excludeID := ""
+	if exact != nil {
+		excludeID = exact.ID
+	}
+	if exact != nil && firstPage {
+		limit--
+	}
+	result, err := s.searchScoped(query, rawCursor, limit, false, true, excludeID)
+	if err != nil {
+		return nil, err
+	}
+	if exact != nil {
+		s.c.mu.RLock()
+		current := s.c.archive == exactArchive
+		s.c.mu.RUnlock()
+		if !current {
+			return nil, fmt.Errorf("归档已变化，请重新搜索")
+		}
+		if firstPage {
+			result.Hits = append([]*SearchHit{exact}, result.Hits...)
+		}
+	}
+	if result.NextCursor >= 0 {
+		result.NextCursor++
+	}
+	return result, nil
+}
+
+func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
 	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -656,7 +765,7 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 		if s.c.indexStatus.State == IndexStateError {
 			return nil, errors.New(s.c.indexStatus.Error)
 		}
-		result, err := s.c.diskIndex.search(query, cursor, limit, exact)
+		result, err := s.c.diskIndex.searchScoped(query, cursor, limit, exact, itemsOnly, excludeID)
 		if err != nil {
 			return nil, err
 		}
@@ -667,6 +776,7 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 			visuals := s.c.diskIndex.visuals(hit.FileIndex)
 			hit.Icon = cloneImageReference(visuals.icon)
 			hit.FieldImage = cloneImageReference(visuals.fieldImage)
+			hit.Rarity = visuals.rarity
 		}
 		return result, nil
 	}
@@ -691,6 +801,12 @@ func (s *ArchiveService) search(query string, cursor int, limit int, exact bool)
 	i := cursor
 	for ; i < len(records) && len(res.Hits) < limit; i++ {
 		record := &records[i]
+		if excludeID != "" && record.hit.ID == excludeID {
+			continue
+		}
+		if itemsOnly && record.hit.Category != SearchCategoryEquipment && record.hit.Category != SearchCategoryStackable {
+			continue
+		}
 		matched := matcher.match(record.lowerPath) ||
 			matcher.match(record.lowerName) ||
 			matcher.match(record.lowerID)

@@ -85,3 +85,21 @@ func (a *Archive) structureLockedError() error {
 	}
 	return ErrStructureLocked
 }
+
+// ClientVersion identifies the known client family for configuration applicability.
+// It must not be used to determine parsing or writing capabilities.
+func (a *Archive) ClientVersion() string {
+	if a == nil {
+		return ""
+	}
+	switch a.Format() {
+	case FormatStandard:
+		return "90US"
+	case FormatAlternate:
+		return "90CN"
+	case FormatPaged110:
+		return "110US"
+	default:
+		return ""
+	}
+}

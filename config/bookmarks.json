@@ -133,14 +133,54 @@
         {
           "path": "worldmap/worldmap.lst",
           "name": "副本接口"
+        },
+        {
+          "path": "etc/equipmentpartset.etc",
+          "name": "套装"
+        }
+      ]
+    },
+    {
+      "id": "bookmark-group-2",
+      "name": "掉落",
+      "entries": [
+        {
+          "path": "etc/itemdropinfo_monster_hell.etc",
+          "name": "深渊掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_clearreward.etc",
+          "name": "翻牌掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_monseter.etc",
+          "name": "怪物掉落"
+        },
+        {
+          "path": "etc/itemdropinfo_monseter_extra.etc",
+          "name": "精英掉落"
+        },
+        {
+          "path": "etc/worlddrop.etc",
+          "name": "全局掉率"
+        }
+      ]
+    },
+    {
+      "id": "bookmark-group-3",
+      "name": "常用道具",
+      "entries": [
+        {
+          "path": "stackable/consumption_1254.stk",
+          "name": "红气息"
         }
       ]
     }
   ],
   "entries": [
     {
-      "path": "stackable/consumption_1254.stk",
-      "name": "consumption_1254.stk"
+      "path": "equipment/character/common/belt/larmor/100220443.equ",
+      "name": "100220443.equ"
     }
   ]
 }

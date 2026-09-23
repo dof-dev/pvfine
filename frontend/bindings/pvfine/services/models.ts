@@ -96,12 +96,46 @@ export interface AppSettings {
     "backupSourceOnSave": boolean;
     "npkDirectory": string;
     "theme": string;
+
+    /**
+     * AutosaveEnabled turns the timed workspace snapshot on. It is off by
+     * default: the snapshot rewrites a whole PVF, so the user opts in.
+     */
+    "autosaveEnabled": boolean;
+
+    /**
+     * AutosavePath is the single-slot snapshot file. Empty means the platform
+     * cache directory resolved by DefaultAutosavePath.
+     */
+    "autosavePath": string;
+    "autosaveIntervalSeconds": number;
+
+    /**
+     * ShortcutOverrides stores only bindings changed by the user. An empty
+     * value explicitly disables a command's default binding.
+     */
+    "shortcutOverrides": { [_ in string]?: string } | null;
 }
 
 /**
  * ArchiveInfo 是前端可观察的归档状态快照。
  */
 export type ArchiveInfo = pvf$0.ArchiveInfoView;
+
+/**
+ * AutosaveStatus is the UI-facing state of the backup slot.
+ */
+export interface AutosaveStatus {
+    "enabled": boolean;
+    "path": string;
+    "defaultPath": string;
+    "exists": boolean;
+    "cachedAt": number;
+    "sourcePath": string;
+    "sizeBytes": number;
+    "running": boolean;
+    "lastError": string;
+}
 
 export interface BatchApplyResult {
     "appliedFiles": number;
@@ -197,6 +231,71 @@ export interface BookmarkGroup {
     "entries"?: BookmarkEntry[] | null;
 }
 
+/**
+ * CacheClearResult reports what one clear pass removed.
+ */
+export interface CacheClearResult {
+    "freedBytes": number;
+    "usage": CacheUsage;
+}
+
+/**
+ * CacheUsage is the disk footprint reported to the settings page.
+ */
+export interface CacheUsage {
+    "path": string;
+    "files": number;
+    "totalBytes": number;
+
+    /**
+     * InUseBytes covers the indexes the running session holds open. They are
+     * rebuilt once the archive is closed, so a clear pass has to skip them.
+     */
+    "inUseBytes": number;
+}
+
+/**
+ * DropRateApplyRequest applies the complete editor snapshot atomically.
+ */
+export interface DropRateApplyRequest {
+    "revision": number;
+    "sections": (DropRateSection | null)[] | null;
+}
+
+/**
+ * DropRateApplyResult reports the in-memory archive state after applying.
+ */
+export interface DropRateApplyResult {
+    "revision": number;
+    "fileIndexes": number[] | null;
+    "modifiedCount": number;
+}
+
+/**
+ * DropRateDocument is the structured view consumed by the drop-rate editor.
+ * Rates are percentage hundredths: 1234 means 12.34%.
+ */
+export interface DropRateDocument {
+    "pvfVersion": string;
+    "revision": number;
+    "sections": (DropRateSection | null)[] | null;
+}
+
+/**
+ * DropRateGroup contains five rarity probabilities in percentage hundredths.
+ */
+export interface DropRateGroup {
+    "rates": number[] | null;
+}
+
+/**
+ * DropRateSection identifies one of the four supported drop files.
+ */
+export interface DropRateSection {
+    "key": string;
+    "groups": (DropRateGroup | null)[] | null;
+}
+
 export interface EditorAnnotation {
     "start": number;
     "end": number;
@@ -208,6 +307,7 @@ export interface EditorAnnotation {
     "image"?: ImageReference | null;
     "inlineImage"?: boolean;
     "placeholder"?: PlaceholderRef | null;
+    "rarity": number;
 }
 
 /**
@@ -245,7 +345,26 @@ export interface EquipmentPreviewDocument {
     "durabilityText": string;
     "weightText": string;
     "priceText": string;
+    "partSet"?: EquipmentSetPreviewDocument | null;
     "issues": PreviewIssue[] | null;
+}
+
+/**
+ * EquipmentSetAbility is one bonus unlocked by wearing a number of set pieces.
+ */
+export interface EquipmentSetAbility {
+    "pieces": number;
+    "baseExplain": string;
+    "detailExplain": string;
+}
+
+/**
+ * EquipmentSetPreviewDocument is the set tooltip associated with an equipment.
+ */
+export interface EquipmentSetPreviewDocument {
+    "name": string;
+    "parts": string[] | null;
+    "abilities": EquipmentSetAbility[] | null;
 }
 
 /**
@@ -460,6 +579,19 @@ export interface PreviewIssue {
 }
 
 /**
+ * RecoveryInfo describes a backup that can be restored on startup.
+ */
+export interface RecoveryInfo {
+    "sourcePath": string;
+    "sourceName": string;
+    "cachedAt": number;
+    "sizeBytes": number;
+    "pendingFiles": number;
+    "sourceExists": boolean;
+    "sourceChanged": boolean;
+}
+
+/**
  * RenderingReloadResult describes the renderer that was activated.
  */
 export interface RenderingReloadResult {
@@ -623,6 +755,7 @@ export interface SearchHit {
     "size": number;
     "dataType": number;
     "fileIndex": number;
+    "rarity": number;
     "changeKind"?: string;
     "annotations"?: TreeAnnotation[] | null;
     "pathAnnotations"?: { [_ in string]?: TreeAnnotation[] | null } | null;
@@ -637,6 +770,103 @@ export interface SearchResult {
     "hits": (SearchHit | null)[] | null;
     "nextCursor": number;
     "scanned": number;
+}
+
+export interface ShopCategory {
+    "id": string;
+    "name": string;
+}
+
+export interface ShopCost {
+    "kind": string;
+    "itemId": string;
+    "quantity": string;
+    "name": string;
+    "icon": ImageReference | null;
+}
+
+export interface ShopDocument {
+    "revision": number;
+    "name": string;
+    "categoryType": string;
+    "categories": ShopCategory[] | null;
+    "tabs": ShopTab[] | null;
+    "issues": PreviewIssue[] | null;
+}
+
+export interface ShopDraft {
+    "fileIndex": number;
+    "path": string;
+    "text": string;
+}
+
+export interface ShopEditRequest {
+    "fileIndex": number;
+    "path": string;
+    "text": string;
+    "revision": number;
+    "action": string;
+    "tabIndex": number;
+    "sourceStart": number;
+    "categoryId": string;
+    "itemId": string;
+    "name": string;
+    "setGold": boolean;
+
+    /**
+     * empty removes [price], "0" is an explicit zero
+     */
+    "gold": string;
+    "setMaterials": boolean;
+    "materials": ShopMaterialInput[] | null;
+    "drafts": ShopDraft[] | null;
+}
+
+export interface ShopEditResult {
+    "revision": number;
+    "files": ShopEditedFile[] | null;
+    "affectedItems": number;
+    "modifiedCount": number;
+}
+
+export interface ShopEditedFile {
+    "fileIndex": number;
+    "path": string;
+    "beforeText": string;
+    "text": string;
+}
+
+export interface ShopEntry {
+    "item": ShopItem;
+    "sourceStart": number;
+    "sourceEnd": number;
+}
+
+export interface ShopGroup {
+    "categoryId": string;
+    "sourceStart": number;
+    "items": ShopEntry[] | null;
+}
+
+export interface ShopItem {
+    "fileIndex": number;
+    "path": string;
+    "id": string;
+    "name": string;
+    "rarity": number;
+    "icon": ImageReference | null;
+    "costs": ShopCost[] | null;
+}
+
+export interface ShopMaterialInput {
+    "itemId": string;
+    "quantity": string;
+}
+
+export interface ShopTab {
+    "name": string;
+    "sourceStart": number;
+    "groups": ShopGroup[] | null;
 }
 
 export interface StoredFileSet {
@@ -714,6 +944,12 @@ export interface TreeTag {
     "id": string;
     "name": string;
     "category": string;
+
+    /**
+     * Rarity is the target file's [rarity] value, or pvf.RarityUnknown when the
+     * file declares none. The explorer colors the tag with it.
+     */
+    "rarity": number;
 }
 
 /**

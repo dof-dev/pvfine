@@ -3,9 +3,13 @@
 
 import * as AnnotationService from "./annotationservice.js";
 import * as ArchiveService from "./archiveservice.js";
+import * as AutosaveService from "./autosaveservice.js";
 import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
+import * as CacheService from "./cacheservice.js";
+import * as DropService from "./dropservice.js";
 import * as EditorService from "./editorservice.js";
+import * as FileGUIService from "./fileguiservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
 import * as PreviewService from "./previewservice.js";
@@ -18,9 +22,13 @@ import * as VersionService from "./versionservice.js";
 export {
     AnnotationService,
     ArchiveService,
+    AutosaveService,
     BatchService,
     BookmarkService,
+    CacheService,
+    DropService,
     EditorService,
+    FileGUIService,
     FileSetService,
     ImageService,
     PreviewService,
@@ -43,6 +51,7 @@ export type {
     AnnotationReloadResult,
     AppSettings,
     ArchiveInfo,
+    AutosaveStatus,
     BatchApplyResult,
     BatchDiffLine,
     BatchFilePreview,
@@ -53,9 +62,18 @@ export type {
     BookmarkDocument,
     BookmarkEntry,
     BookmarkGroup,
+    CacheClearResult,
+    CacheUsage,
+    DropRateApplyRequest,
+    DropRateApplyResult,
+    DropRateDocument,
+    DropRateGroup,
+    DropRateSection,
     EditorAnnotation,
     EquipmentPreviewAttribute,
     EquipmentPreviewDocument,
+    EquipmentSetAbility,
+    EquipmentSetPreviewDocument,
     EquipmentSkillLevelup,
     FileMeta,
     FileRegistration,
@@ -73,6 +91,7 @@ export type {
     ListRegistrationTarget,
     PlaceholderRef,
     PreviewIssue,
+    RecoveryInfo,
     RenderingReloadResult,
     ScriptApplyResult,
     ScriptCompileResult,
@@ -88,6 +107,18 @@ export type {
     ScriptSession,
     SearchHit,
     SearchResult,
+    ShopCategory,
+    ShopCost,
+    ShopDocument,
+    ShopDraft,
+    ShopEditRequest,
+    ShopEditResult,
+    ShopEditedFile,
+    ShopEntry,
+    ShopGroup,
+    ShopItem,
+    ShopMaterialInput,
+    ShopTab,
     StoredFileSet,
     StoredFileSetEntry,
     StructuredOperation,

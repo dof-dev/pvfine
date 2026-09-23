@@ -1,6 +1,7 @@
 package pvf
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"strconv"
@@ -40,9 +41,17 @@ func (a *Archive) SetRawBytes(i int32, b []byte) error {
 	if i < 0 || i >= int32(len(a.items)) {
 		return ErrBadIndex
 	}
+	previous, err := a.RawBytes(i)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(previous, b) {
+		return nil
+	}
 	cp := make([]byte, len(b))
 	copy(cp, b)
 	a.overlay[i] = cp
+	a.recordMutation(i, a.Path(i), MutationModified)
 	return nil
 }
 
@@ -56,7 +65,11 @@ func (a *Archive) SetDataType(i int32, dataType int32) error {
 	if dataType != TypeScript && dataType != TypeUnicode {
 		return ErrBadDataType
 	}
+	if a.items[i].typ == dataType {
+		return nil
+	}
 	a.items[i].typ = dataType
+	a.recordMutation(i, a.Path(i), MutationModified)
 	return nil
 }
 
@@ -124,19 +137,16 @@ func (a *Archive) SetText(i int32, text string) error {
 	case TypeUnicode:
 		if a.payloadIsPainted(i) {
 			if encoded, err := EncodeKoreanMojibake(text); err == nil {
-				a.overlay[i] = encoded
-				return nil
+				return a.SetRawBytes(i, encoded)
 			}
 		}
-		a.overlay[i] = utf16le(text)
-		return nil
+		return a.SetRawBytes(i, utf16le(text))
 	case TypeScript:
 		raw, err := a.encodeScript(text)
 		if err != nil {
 			return err
 		}
-		a.overlay[i] = raw
-		return nil
+		return a.SetRawBytes(i, raw)
 	default:
 		return ErrBadIndex
 	}
@@ -164,6 +174,7 @@ func (a *Archive) AddFile(relPath string, data []byte, dataType int32) int32 {
 	i := int32(len(a.items) - 1)
 	a.pathIndex[normalized] = i
 	a.structuralDirty = true
+	a.recordMutation(i, normalized, MutationAdded)
 	if data != nil {
 		cp := make([]byte, len(data))
 		copy(cp, data)
@@ -199,7 +210,9 @@ func (a *Archive) RemoveFiles(indexes []int32) ([]string, error) {
 	for oldIndex, item := range a.items {
 		index := int32(oldIndex)
 		if _, ok := removed[index]; ok {
-			paths = append(paths, a.Path(index))
+			path := a.Path(index)
+			paths = append(paths, path)
+			a.recordMutation(index, path, MutationRemoved)
 			if item.chunk >= 0 && item.chunk < int32(len(a.groups)) && item.size > 0 {
 				nextRemovedSpans[item.chunk] = append(
 					nextRemovedSpans[item.chunk],
@@ -295,6 +308,7 @@ type scriptFormatRule struct {
 	// tokensPerLineIndex is resolved during the raw token pre-scan and is nil
 	// once the frame is ready for rendering.
 	tokensPerLineIndex *int
+	standaloneValues   []int32
 }
 
 // decodeScript decompiles a TypeScript payload back to readable form.
@@ -325,11 +339,24 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		tokensOnLine int
 	}
 	sectionStack := []sectionFrame{}
+	// Legacy PVF scripts use unpaired sections: the next section at the same
+	// depth ends the current one. Keep those frames separate from the paired
+	// section stack so nested paired sections retain their existing semantics.
+	activeUnpaired := make(map[int]*sectionFrame)
 	topLevelSectionSeen := false
 	atLineStart := true
 	tokenSeen := false
 	fileTokensOnLine := 0
 	fileValuesSeen := 0
+	currentSectionFrame := func() *sectionFrame {
+		if frame, ok := activeUnpaired[len(sectionStack)]; ok {
+			return frame
+		}
+		if len(sectionStack) > 0 {
+			return &sectionStack[len(sectionStack)-1]
+		}
+		return nil
+	}
 	writeIndent := func(depth int) {
 		for i := 0; i < depth; i++ {
 			sb.WriteByte('\t')
@@ -353,8 +380,7 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 	}
 	markSectionValue := func() {
 		tokenSeen = true
-		if len(sectionStack) > 0 {
-			frame := &sectionStack[len(sectionStack)-1]
+		if frame := currentSectionFrame(); frame != nil {
 			frame.firstToken = false
 			frame.valuesSeen++
 			if frame.format.tokensPerLine > 0 {
@@ -372,8 +398,7 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		}
 	}
 	prepareSectionValue := func(forceNewLine bool) {
-		if len(sectionStack) > 0 {
-			frame := &sectionStack[len(sectionStack)-1]
+		if frame := currentSectionFrame(); frame != nil {
 			if frame.format.tokensPerLine > 0 {
 				if frame.valuesSeen > 0 && frame.valuesSeen <= frame.format.offset {
 					if !atLineStart {
@@ -427,17 +452,21 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		if !tokenSeen {
 			return 0
 		}
-		if len(sectionStack) == 0 {
+		frame := currentSectionFrame()
+		if frame == nil {
 			if fileRule.tokensPerLine > 0 {
 				return 0
 			}
 			return 1
 		}
-		frame := sectionStack[len(sectionStack)-1]
-		if frame.format.tokensPerLine > 0 || frame.firstToken {
-			return len(sectionStack)
+		depth := len(sectionStack)
+		if _, ok := activeUnpaired[len(sectionStack)]; ok {
+			depth++
 		}
-		return len(sectionStack) + 1
+		if frame.format.tokensPerLine > 0 || frame.firstToken {
+			return depth
+		}
+		return depth + 1
 	}
 	writeValuePrefix := func() {
 		prepareSectionValue(false)
@@ -450,14 +479,47 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		markSectionValue()
 	}
 
+	// Standalone integer values break the current row and restart grouping.
+	isStandaloneValue := func(value int32) bool {
+		values := fileRule.standaloneValues
+		if frame := currentSectionFrame(); frame != nil && frame.format.tokensPerLine > 0 {
+			values = frame.format.standaloneValues
+		}
+		for _, standalone := range values {
+			if value == standalone {
+				return true
+			}
+		}
+		return false
+	}
+	resetTokensOnLine := func() {
+		if frame := currentSectionFrame(); frame != nil && frame.format.tokensPerLine > 0 {
+			frame.tokensOnLine = 0
+		} else {
+			fileTokensOnLine = 0
+		}
+	}
 	for i := 0; i < n; i++ {
 		base := i * 5
 		typ := raw[base]
 		v := int32(binary.LittleEndian.Uint32(raw[base+1:]))
 		switch typ {
 		case 0:
+			standalone := isStandaloneValue(v)
+			if standalone {
+				if !atLineStart {
+					sb.WriteByte('\n')
+					atLineStart = true
+				}
+				resetTokensOnLine()
+			}
 			writeValuePrefix()
 			sb.WriteString(strconv.FormatInt(int64(v), 10))
+			if standalone {
+				sb.WriteByte('\n')
+				atLineStart = true
+				resetTokensOnLine()
+			}
 		case 2:
 			writeValuePrefix()
 			f := math.Float32frombits(uint32(v))
@@ -465,6 +527,20 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		case 3:
 			tag := a.ResolveString(v)
 			name, closing, isTag := parseSectionTag(tag)
+			if isTag {
+				depth := len(sectionStack)
+				if closing {
+					for activeDepth := range activeUnpaired {
+						if activeDepth >= depth {
+							delete(activeUnpaired, activeDepth)
+						}
+					}
+				} else {
+					// A new section at this depth ends a legacy unpaired
+					// section before the new section starts.
+					delete(activeUnpaired, depth)
+				}
+			}
 			isSectionOpening := isTag && !closing && sectionClosers[name]
 			if closing {
 				for i := len(sectionStack) - 1; i >= 0; i-- {
@@ -498,6 +574,16 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 					format:       sectionRule,
 					tokensOnLine: 0,
 				})
+			} else if isTag && !closing {
+				sectionRule := sectionFormats[i]
+				if sectionRule.tokensPerLine > 0 {
+					activeUnpaired[len(sectionStack)] = &sectionFrame{
+						name:         name,
+						firstToken:   true,
+						format:       sectionRule,
+						tokensOnLine: 0,
+					}
+				}
 			}
 		case 5, 7, 8, 10:
 			// Block-string markers. Types 8 and 10 are the string-pool
@@ -527,6 +613,7 @@ func scriptFormatRuleFromSpec(spec rendering.FormatSpec) scriptFormatRule {
 		offset:             spec.Offset,
 		tokensPerLine:      spec.TokensPerLine,
 		tokensPerLineIndex: spec.TokensPerLineIndex,
+		standaloneValues:   spec.StandaloneValues,
 	}
 }
 
@@ -537,8 +624,9 @@ type scriptRenderSection struct {
 	values       []string
 }
 
-// scriptSectionFormats pre-scans paired sections so a dynamic
-// tokensPerLineIndex can be resolved before the first value is rendered.
+// scriptSectionFormats pre-scans paired and legacy unpaired sections so a
+// dynamic tokensPerLineIndex can be resolved before the first value is
+// rendered.
 func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *rendering.Engine) (map[int]scriptFormatRule, map[string]bool) {
 	n := len(raw) / 5
 	sectionClosers := make(map[string]bool)
@@ -554,8 +642,24 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 
 	formats := make(map[int]scriptFormatRule)
 	stack := make([]scriptRenderSection, 0)
+	activeUnpaired := make(map[int]*scriptRenderSection)
 	resolveFrame := func(frame scriptRenderSection) {
 		formats[frame.openingIndex] = resolveDynamicScriptFormat(frame.format, frame.values)
+	}
+	closeUnpaired := func(depth int) {
+		if frame, ok := activeUnpaired[depth]; ok {
+			resolveFrame(*frame)
+			delete(activeUnpaired, depth)
+		}
+	}
+	closeUnpairedAtOrAbove := func(depth int) {
+		for activeDepth, frame := range activeUnpaired {
+			if activeDepth < depth {
+				continue
+			}
+			resolveFrame(*frame)
+			delete(activeUnpaired, activeDepth)
+		}
 	}
 	for i := 0; i < n; i++ {
 		base := i * 5
@@ -565,7 +669,9 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 			if !isTag {
 				continue
 			}
+			depth := len(stack)
 			if closing {
+				closeUnpairedAtOrAbove(depth)
 				match := -1
 				for position := len(stack) - 1; position >= 0; position-- {
 					if stack[position].name == name {
@@ -581,31 +687,43 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 				}
 				continue
 			}
-			if !sectionClosers[name] {
-				continue
-			}
+			closeUnpaired(depth)
 			format := scriptFormatRule{}
 			if renderer != nil {
 				format = scriptFormatRuleFromSpec(renderer.SectionFormat(path, name))
 			}
-			stack = append(stack, scriptRenderSection{
+			frame := &scriptRenderSection{
 				name:         name,
 				openingIndex: i,
 				format:       format,
-			})
+			}
+			if sectionClosers[name] {
+				stack = append(stack, *frame)
+			} else if format.tokensPerLine > 0 {
+				activeUnpaired[depth] = frame
+			}
 			continue
 		}
-		if len(stack) == 0 || stack[len(stack)-1].format.tokensPerLineIndex == nil {
+		frame := (*scriptRenderSection)(nil)
+		if active, ok := activeUnpaired[len(stack)]; ok {
+			frame = active
+		} else if len(stack) > 0 {
+			frame = &stack[len(stack)-1]
+		}
+		if frame == nil || frame.format.tokensPerLineIndex == nil {
 			continue
 		}
 		value, ok := a.scriptTokenValue(raw, i)
 		if !ok {
 			continue
 		}
-		frame := &stack[len(stack)-1]
 		if len(frame.values) <= *frame.format.tokensPerLineIndex {
 			frame.values = append(frame.values, value)
 		}
+	}
+	for depth, frame := range activeUnpaired {
+		resolveFrame(*frame)
+		delete(activeUnpaired, depth)
 	}
 	for position := len(stack) - 1; position >= 0; position-- {
 		resolveFrame(stack[position])

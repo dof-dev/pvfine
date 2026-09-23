@@ -34,6 +34,31 @@ type removedFileSpan struct {
 	off, size int32
 }
 
+// MutationKind identifies one effective archive entry mutation. The mutation
+// journal is intentionally small: services use it to decide which derived
+// indexes are affected after a compound operation has committed.
+type MutationKind string
+
+const (
+	MutationModified MutationKind = "modified"
+	MutationAdded    MutationKind = "added"
+	MutationRemoved  MutationKind = "removed"
+)
+
+// FileMutation is one effective file-level change. Path is captured before a
+// structural edit can renumber the remaining entries.
+type FileMutation struct {
+	Index int32
+	Path  string
+	Kind  MutationKind
+}
+
+// MutationSummary describes changes recorded after a mutation checkpoint.
+type MutationSummary struct {
+	Files      []FileMutation
+	Structural bool
+}
+
 type groupItem struct{ compSize, origSize int32 }
 
 // Archive is a parsed PVF container. It is not safe for concurrent
@@ -75,6 +100,7 @@ type Archive struct {
 	pathIndex         map[string]int32
 	structuralDirty   bool // file entries were added or removed since the last save
 	removedSpans      map[int32][]removedFileSpan
+	mutations         []FileMutation // effective changes since the last checkpoint
 
 	// scriptRenderer controls the user-facing decompiled layout. The
 	// canonical renderer is kept stable so version content hashes do not
@@ -90,6 +116,79 @@ type Archive struct {
 	}
 }
 
+// MutationCheckpoint returns the current position in the archive mutation
+// journal. The journal is local to one Archive and is not part of the packed
+// file format.
+func (a *Archive) MutationCheckpoint() int {
+	if a == nil {
+		return 0
+	}
+	return len(a.mutations)
+}
+
+// MutationsSince returns effective file changes recorded after checkpoint.
+// Callers may safely retain the returned slices.
+func (a *Archive) MutationsSince(checkpoint int) MutationSummary {
+	if a == nil {
+		return MutationSummary{}
+	}
+	if checkpoint < 0 {
+		checkpoint = 0
+	}
+	if checkpoint > len(a.mutations) {
+		checkpoint = len(a.mutations)
+	}
+	result := MutationSummary{
+		Files: make([]FileMutation, len(a.mutations)-checkpoint),
+	}
+	copy(result.Files, a.mutations[checkpoint:])
+	for _, mutation := range result.Files {
+		if mutation.Kind == MutationAdded || mutation.Kind == MutationRemoved {
+			result.Structural = true
+			break
+		}
+	}
+	return result
+}
+
+// ClearMutations forgets journal entries that have already been consumed by
+// the owning service. It does not alter archive content.
+func (a *Archive) ClearMutations() {
+	if a != nil {
+		a.mutations = nil
+	}
+}
+
+// PendingEdits lists the entries that currently differ from the packed
+// baseline: replacement payloads held in the overlay and entries added since
+// the archive was parsed. Removed entries cannot be reported because their
+// paths are gone from the file table. Callers must not mutate the archive
+// while iterating; the returned slice is detached.
+func (a *Archive) PendingEdits() []FileMutation {
+	if a == nil {
+		return nil
+	}
+	result := make([]FileMutation, 0, len(a.overlay))
+	for i := range a.items {
+		index := int32(i)
+		if a.items[i].chunk < 0 {
+			result = append(result, FileMutation{Index: index, Path: a.Path(index), Kind: MutationAdded})
+			continue
+		}
+		if _, ok := a.overlay[index]; ok {
+			result = append(result, FileMutation{Index: index, Path: a.Path(index), Kind: MutationModified})
+		}
+	}
+	return result
+}
+
+func (a *Archive) recordMutation(index int32, path string, kind MutationKind) {
+	if a == nil || path == "" {
+		return
+	}
+	a.mutations = append(a.mutations, FileMutation{Index: index, Path: path, Kind: kind})
+}
+
 type chunkCacheEntry struct {
 	bytes int64
 	used  uint64
@@ -102,11 +201,23 @@ const defaultResolveCacheLimit = int64(16 << 20)
 // keep their per-page keys in sibling "sk.dat" / "DFO.exe" files; the bundled
 // 110US key table is used when the sibling sk.dat is absent.
 func Open(path string) (*Archive, error) {
+	return OpenWithSidecars(path, "")
+}
+
+// OpenWithSidecars reads and parses the archive at path while resolving
+// container key sidecars from sidecarDir instead of the file's own directory.
+// Backups of Paged110 archives live outside the client folder, so their page
+// keys have to be borrowed from the directory of the file they came from.
+// An empty sidecarDir behaves like Open.
+func OpenWithSidecars(path, sidecarDir string) (*Archive, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	a, err := parse(data, filepath.Dir(path))
+	if sidecarDir == "" {
+		sidecarDir = filepath.Dir(path)
+	}
+	a, err := parse(data, sidecarDir)
 	if err != nil {
 		return nil, err
 	}

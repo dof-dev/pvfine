@@ -35,6 +35,7 @@ export interface SearchItem {
   id: string;
   category: string;
   fileIndex: number;
+  rarity: number;
   size: number;
   dataType: number;
   changeKind: string;
@@ -104,6 +105,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       id: n.id,
       category: n.category,
       fileIndex: n.fileIndex,
+      rarity: n.rarity,
       size: n.size,
       dataType: n.dataType,
       changeKind: n.changeKind ?? "",
@@ -208,6 +210,14 @@ export const useExplorerStore = defineStore("explorer", () => {
   /** 文件树消费完一次定位请求后回调，避免重复滚动。 */
   function consumeRevealRequest(): void {
     revealRequest.value = null;
+  }
+
+  /** 已加载目录/搜索结果中的文件名，用于内容返回前的标签占位。 */
+  function getFilePath(index: number): string | undefined {
+    for (const item of itemsByKey.values()) {
+      if (!item.isDir && item.fileIndex === index) return item.key;
+    }
+    return hits.value.find((item) => item.fileIndex === index)?.path;
   }
 
   function getItem(path: string): TreeItem | undefined {
@@ -370,6 +380,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     toTreeItem,
     toSearchItem,
     getItem,
+    getFilePath,
     loadRoots,
     reload,
     loadChildren,

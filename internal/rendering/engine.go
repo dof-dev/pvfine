@@ -59,6 +59,7 @@ func (e *Engine) Document() Document {
 	document.Rules = append([]Rule(nil), e.document.Rules...)
 	for index := range document.Rules {
 		document.Rules[index].Match.Extensions = append([]string(nil), document.Rules[index].Match.Extensions...)
+		document.Rules[index].Format.StandaloneValues = append([]int32(nil), document.Rules[index].Format.StandaloneValues...)
 		if value := document.Rules[index].Format.TokensPerLineIndex; value != nil {
 			copy := *value
 			document.Rules[index].Format.TokensPerLineIndex = &copy

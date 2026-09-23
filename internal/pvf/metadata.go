@@ -31,18 +31,46 @@ type ScriptImageReference struct {
 	Index int32  `json:"index"`
 }
 
+// StringTableReference identifies one placeholder used by a script metadata
+// field. Services use it to invalidate only registered records whose display
+// metadata actually depends on a changed localization file.
+type StringTableReference struct {
+	Index int    `json:"index"`
+	Key   string `json:"key"`
+}
+
 // ScriptMetadata is the small metadata projection shared by name/search and
 // image rendering. It intentionally does not decompile the full script.
 type ScriptMetadata struct {
-	Name       string                `json:"name,omitempty"`
-	HasName    bool                  `json:"-"`
-	Icon       *ScriptImageReference `json:"icon,omitempty"`
-	FieldImage *ScriptImageReference `json:"fieldImage,omitempty"`
+	Name                  string                 `json:"name,omitempty"`
+	HasName               bool                   `json:"-"`
+	Icon                  *ScriptImageReference  `json:"icon,omitempty"`
+	FieldImage            *ScriptImageReference  `json:"fieldImage,omitempty"`
+	StringTableReferences []StringTableReference `json:"-"`
+
+	// Rarity is the raw value of the first [rarity] section, which the
+	// frontend maps to a display color (equipment and stackables share the
+	// same 0..6 scale). HasRarity reports whether the section exists at all.
+	Rarity    int32 `json:"rarity"`
+	HasRarity bool  `json:"-"`
 
 	// NameFallback reports that the name's `<table::key>` placeholder was
 	// answered by a language overlay because the archive's own localization has
 	// no text for that key, so a caller that displays the name can flag it.
 	NameFallback bool `json:"-"`
+}
+
+// RarityUnknown is the sentinel used by callers that project Rarity into a
+// plain int32: it means the file declares no [rarity] section.
+const RarityUnknown = -1
+
+// RarityValue returns Rarity, or RarityUnknown when the script has no
+// [rarity] section, so callers never mistake an absent value for "普通".
+func (m ScriptMetadata) RarityValue() int32 {
+	if !m.HasRarity {
+		return RarityUnknown
+	}
+	return m.Rarity
 }
 
 // ScriptListPairs parses a TypeScript .lst payload as consecutive id/path
@@ -374,8 +402,9 @@ func (a *Archive) ListID(i int32, path string) (string, bool, error) {
 	return "", false, nil
 }
 
-// ScriptMetadata extracts [name], [icon] and [field image] in one raw token
-// scan without formatting or materializing the full decompiled script.
+// ScriptMetadata extracts [name], [icon], [field image] and [rarity] in one
+// raw token scan without formatting or materializing the full decompiled
+// script.
 //
 // The name is display text: type 8/10 string-pool references are handled like
 // the older 5/6/7 ones, and `<table::key>` placeholders (which is what the
@@ -510,12 +539,79 @@ func (a *Archive) ScriptMetadata(i int32) (ScriptMetadata, error) {
 				}
 				break
 			}
+		case "rarity":
+			// The preview reads the same field as "the first [rarity] token in
+			// document order", so the index uses that occurrence too. Both
+			// equipment and stackables store the value as an integer token, but
+			// a quoted number is also accepted.
+			if metadata.HasRarity || len(section.values) == 0 {
+				continue
+			}
+			value := section.values[0]
+			if value.typ == 0 {
+				metadata.Rarity, metadata.HasRarity = value.value, true
+				continue
+			}
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(value.text), 10, 32); err == nil {
+				metadata.Rarity, metadata.HasRarity = int32(parsed), true
+			}
+		}
+	}
+	// Character lists identify base jobs, not the generic [name] of a character.
+	// Keep this in the shared metadata projection so every index and relation
+	// uses the same name and localization dependency tracking.
+	path := strings.ToLower(a.Path(i))
+	if strings.HasPrefix(path, "character/") && strings.HasSuffix(path, ".chr") {
+		for _, section := range sections {
+			if section.depth != 0 || !strings.EqualFold(section.name, "growtype name") || len(section.values) == 0 {
+				continue
+			}
+			if value := section.values[0].text; strings.TrimSpace(value) != "" {
+				metadata.Name, metadata.HasName = value, true
+			}
+			break
 		}
 	}
 	if metadata.HasName {
+		metadata.StringTableReferences = stringTableReferences(metadata.Name)
 		metadata.Name, metadata.NameFallback = a.resolvePlaceholders(metadata.Name, "")
 	}
+	if metadata.Icon != nil {
+		metadata.StringTableReferences = append(metadata.StringTableReferences, stringTableReferences(metadata.Icon.Path)...)
+	}
+	if metadata.FieldImage != nil {
+		metadata.StringTableReferences = append(metadata.StringTableReferences, stringTableReferences(metadata.FieldImage.Path)...)
+	}
 	return metadata, nil
+}
+
+func stringTableReferences(text string) []StringTableReference {
+	if !strings.Contains(text, "<") || !strings.Contains(text, "::") {
+		return nil
+	}
+	result := make([]StringTableReference, 0, 1)
+	seen := make(map[string]struct{})
+	for offset := 0; offset < len(text); {
+		start := strings.IndexByte(text[offset:], '<')
+		if start < 0 {
+			break
+		}
+		start += offset
+		end := strings.IndexByte(text[start:], '>')
+		if end < 0 {
+			break
+		}
+		end += start
+		if index, key, ok := parsePlaceholder(text[start : end+1]); ok {
+			identity := fmt.Sprintf("%d\x00%s", index, key)
+			if _, exists := seen[identity]; !exists {
+				seen[identity] = struct{}{}
+				result = append(result, StringTableReference{Index: index, Key: key})
+			}
+		}
+		offset = end + 1
+	}
+	return result
 }
 
 // ScriptName extracts the first direct string value from the [name] section

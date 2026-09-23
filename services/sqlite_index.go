@@ -319,6 +319,7 @@ func archiveIndexIdentity(a *pvf.Archive) (string, string, error) {
 		return "", "", err
 	}
 	h := sha256.New()
+	fmt.Fprintf(h, "metadata:%d\x00", searchIndexCacheVersion)
 	fmt.Fprintf(h, "%s\x00%d\x00%d\x00%d\x00%d\x00%d", filepath.Clean(path), info.Size(), info.ModTime().UnixNano(), a.FileCount(), a.Header().GroupCount, a.Header().BodySize)
 	identity := hex.EncodeToString(h.Sum(nil))
 	return identity, filepath.Clean(path), nil
@@ -497,9 +498,9 @@ CREATE TABLE records(
 CREATE TABLE tags(file_index INTEGER NOT NULL, tag_id TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
  PRIMARY KEY(file_index, tag_id, category));
 CREATE TABLE visuals(file_index INTEGER PRIMARY KEY, icon_path TEXT NOT NULL, icon_index INTEGER NOT NULL,
- field_path TEXT NOT NULL, field_index INTEGER NOT NULL);
+ field_path TEXT NOT NULL, field_index INTEGER NOT NULL, rarity INTEGER NOT NULL DEFAULT -1);
 INSERT INTO dirs(path,parent,name,child_count) VALUES('','','',0);
-INSERT INTO meta(key,value) VALUES('schema','1'),('identity',?),('complete','0');
+INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0');
 `
 	tx, err := db.Begin()
 	if err != nil {
@@ -656,7 +657,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 		_ = recordStmt.Close()
 		return rollback(err)
 	}
-	visualStmt, err := tx.Prepare(`INSERT OR REPLACE INTO visuals(file_index,icon_path,icon_index,field_path,field_index) VALUES(?,?,?,?,?)`)
+	visualStmt, err := tx.Prepare(`INSERT OR REPLACE INTO visuals(file_index,icon_path,icon_index,field_path,field_index,rarity) VALUES(?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tagStmt.Close()
 		_ = recordStmt.Close()
@@ -766,7 +767,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 				fieldPath, fieldIndex = metadata.FieldImage.Path, metadata.FieldImage.Index
 			}
 			if _, written := visualsWritten[index]; !written {
-				if _, err := visualStmt.Exec(index, iconPath, iconIndex, fieldPath, fieldIndex); err != nil {
+				if _, err := visualStmt.Exec(index, iconPath, iconIndex, fieldPath, fieldIndex, metadata.RarityValue()); err != nil {
 					_ = visualStmt.Close()
 					_ = tagStmt.Close()
 					_ = recordStmt.Close()
@@ -903,7 +904,10 @@ func (i *sqliteArchiveIndex) suggest(prefix string, limit int) ([]string, error)
 func (i *sqliteArchiveIndex) tags(fileIndex int32) ([]TreeTag, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
-	rows, err := i.db.Query(`SELECT tag_id,name,category FROM tags WHERE file_index=? ORDER BY category,tag_id`, fileIndex)
+	// The rarity lives with the file's visuals; a file without a visuals row
+	// (an unregistered file) reports RarityUnknown.
+	rows, err := i.db.Query(`SELECT t.tag_id,t.name,t.category,COALESCE(v.rarity,?) FROM tags t
+LEFT JOIN visuals v ON v.file_index=t.file_index WHERE t.file_index=? ORDER BY t.category,t.tag_id`, pvf.RarityUnknown, fileIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -911,7 +915,7 @@ func (i *sqliteArchiveIndex) tags(fileIndex int32) ([]TreeTag, error) {
 	result := make([]TreeTag, 0)
 	for rows.Next() {
 		var tag TreeTag
-		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Category); err != nil {
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Category, &tag.Rarity); err != nil {
 			return nil, err
 		}
 		result = append(result, tag)
@@ -923,11 +927,11 @@ func (i *sqliteArchiveIndex) visuals(fileIndex int32) fileVisuals {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	var iconPath, fieldPath string
-	var iconIndex, fieldIndex int32
-	if err := i.db.QueryRow(`SELECT icon_path,icon_index,field_path,field_index FROM visuals WHERE file_index=?`, fileIndex).Scan(&iconPath, &iconIndex, &fieldPath, &fieldIndex); err != nil {
-		return fileVisuals{}
+	var iconIndex, fieldIndex, rarity int32
+	if err := i.db.QueryRow(`SELECT icon_path,icon_index,field_path,field_index,rarity FROM visuals WHERE file_index=?`, fileIndex).Scan(&iconPath, &iconIndex, &fieldPath, &fieldIndex, &rarity); err != nil {
+		return fileVisuals{rarity: pvf.RarityUnknown}
 	}
-	var result fileVisuals
+	result := fileVisuals{rarity: rarity}
 	if iconPath != "" && iconIndex >= 0 {
 		result.icon = &ImageReference{Path: iconPath, Index: iconIndex}
 	}
@@ -938,6 +942,10 @@ func (i *sqliteArchiveIndex) visuals(fileIndex int32) fileVisuals {
 }
 
 func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool) (*SearchResult, error) {
+	return i.searchScoped(query, cursor, limit, exact, false, "")
+}
+
+func (i *sqliteArchiveIndex) searchScoped(query string, cursor, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	result := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -953,8 +961,16 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 	}
 	where := "rowid>?"
 	args := []any{cursor}
-	if !strings.ContainsAny(q, "*?") {
-		op := "instr"
+	if excludeID != "" {
+		where += " AND record_id<>?"
+		args = append(args, excludeID)
+	}
+	if itemsOnly {
+		where += " AND category IN (?,?)"
+		args = append(args, SearchCategoryEquipment, SearchCategoryStackable)
+	}
+	wildcard := strings.ContainsAny(q, "*?")
+	if !wildcard {
 		if exact {
 			where += " AND (lower_path=? OR lower_name=? OR lower_id=?)"
 			args = append(args, q, q, q)
@@ -962,10 +978,16 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 			where += " AND (instr(lower_path,?)>0 OR instr(lower_name,?)>0 OR instr(lower_id,?)>0)"
 			args = append(args, q, q, q)
 		}
-		_ = op
 	}
 	batchLimit := limit*32 + 1
-	rows, err := i.db.Query(`SELECT rowid,name,record_id,path,category,size,data_type,file_index FROM records WHERE `+where+` ORDER BY rowid LIMIT ?`, append(args, batchLimit)...)
+	querySQL := `SELECT rowid,name,record_id,path,category,size,data_type,file_index FROM records WHERE ` + where + ` ORDER BY rowid`
+	// Wildcards are filtered below, so a SQL row limit can produce an empty
+	// page before reaching any matches. Stream until the page is full or EOF.
+	if !wildcard {
+		querySQL += ` LIMIT ?`
+		args = append(args, batchLimit)
+	}
+	rows, err := i.db.Query(querySQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -983,13 +1005,8 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 		}
 		last = rowid
 		scanned = int(rowid)
-		if strings.ContainsAny(q, "*?") && !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
+		if !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
 			continue
-		}
-		if !strings.ContainsAny(q, "*?") { /* SQL is a candidate filter; exact semantics are still checked for Unicode. */
-			if !(matcher.match(strings.ToLower(hit.Path)) || matcher.match(strings.ToLower(hit.Name)) || matcher.match(strings.ToLower(hit.ID))) {
-				continue
-			}
 		}
 		hit.ChangeKind = ""
 		result.Hits = append(result.Hits, &hit)
@@ -1000,7 +1017,7 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if last > 0 && (len(result.Hits) >= limit || rowsSeen > batchLimit-1) {
+	if last > 0 && (len(result.Hits) >= limit || (!wildcard && rowsSeen >= batchLimit)) {
 		result.NextCursor = int(last)
 	}
 	result.Scanned = scanned
@@ -1008,11 +1025,19 @@ func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool)
 }
 
 func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
+	values, err := i.indexedNameValues(fileIndex)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(values, " / "), nil
+}
+
+func (i *sqliteArchiveIndex) indexedNameValues(fileIndex int32) ([]string, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	rows, err := i.db.Query(`SELECT name FROM records WHERE file_index=? AND category<>? AND name<>'' ORDER BY id`, fileIndex, SearchCategoryFile)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
 	seen := make(map[string]struct{})
@@ -1020,7 +1045,7 @@ func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
 	for rows.Next() {
 		var value string
 		if err := rows.Scan(&value); err != nil {
-			return "", err
+			return nil, err
 		}
 		if _, ok := seen[value]; ok {
 			continue
@@ -1028,7 +1053,34 @@ func (i *sqliteArchiveIndex) indexedNames(fileIndex int32) (string, error) {
 		seen[value] = struct{}{}
 		values = append(values, value)
 	}
-	return strings.Join(values, " / "), rows.Err()
+	return values, rows.Err()
+}
+
+func (i *sqliteArchiveIndex) indexedFileIndexes() ([]int32, error) {
+	i.dbMu.RLock()
+	defer i.dbMu.RUnlock()
+	rows, err := i.db.Query(`SELECT DISTINCT file_index FROM records WHERE category<>? ORDER BY file_index`, SearchCategoryFile)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]int32, 0)
+	for rows.Next() {
+		var index int32
+		if err := rows.Scan(&index); err != nil {
+			return nil, err
+		}
+		result = append(result, index)
+	}
+	return result, rows.Err()
+}
+
+func (i *sqliteArchiveIndex) hasSemanticFile(fileIndex int32) bool {
+	i.dbMu.RLock()
+	defer i.dbMu.RUnlock()
+	var exists int
+	err := i.db.QueryRow(`SELECT 1 FROM records WHERE file_index=? AND category<>? LIMIT 1`, fileIndex, SearchCategoryFile).Scan(&exists)
+	return err == nil && exists == 1
 }
 
 func (i *sqliteArchiveIndex) eachFileByPath(fn func(index int32, path string, size, dataType int32) bool) error {

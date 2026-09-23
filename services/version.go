@@ -873,6 +873,8 @@ func (s *VersionService) Undo() (*VersionStatus, error) {
 		}
 		paths = append(paths, key)
 	}
+	a := s.c.archive
+	mutationCheckpoint := a.MutationCheckpoint()
 	if err := applyVersionContentPathsLocked(s.c, paths, record.Before); err != nil {
 		s.c.mu.Unlock()
 		return nil, err
@@ -895,10 +897,12 @@ func (s *VersionService) Undo() (*VersionStatus, error) {
 	}
 	s.c.sortVersionChangesLocked()
 	s.c.versionUndo = s.c.versionUndo[:len(s.c.versionUndo)-1]
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndexForced()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("undo")
 	return &status, nil
@@ -920,10 +924,13 @@ func (s *VersionService) Discard() (*VersionStatus, error) {
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	a := s.c.archive
+	mutationSummary := a.MutationsSince(0)
+	a.ClearMutations()
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndexForced()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("discarded")
 	return &status, nil
@@ -955,10 +962,13 @@ func (s *VersionService) Checkout(commitID string) (*VersionStatus, error) {
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	a := s.c.archive
+	mutationSummary := a.MutationsSince(0)
+	a.ClearMutations()
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndexForced()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("checkout")
 	emitEvent("version:checked-out", status)
@@ -1164,6 +1174,9 @@ func (s *VersionService) RestorePath(path string) (*VersionStatus, error) {
 		s.c.mu.Unlock()
 		return nil, err
 	}
+	a := s.c.archive
+	mutationSummary := a.MutationsSince(0)
+	a.ClearMutations()
 	if content, exists := desired[path]; exists {
 		s.c.versionWorking[path] = content.Entry
 	} else {
@@ -1180,7 +1193,7 @@ func (s *VersionService) RestorePath(path string) (*VersionStatus, error) {
 	status := s.c.versionStatusLocked()
 	info := s.c.archive.Info()
 	s.c.mu.Unlock()
-	s.c.startSearchIndexForced()
+	s.c.scheduleArchiveMutations(a, mutationSummary)
 	emitEvent("archive:reloaded", info)
 	s.emitVersionChanged("restored")
 	return &status, nil
@@ -1293,11 +1306,11 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 			return
 		}
 
-		var children map[string][]*TreeNode
-		var paths []pathEntry
-		if session.archive != archive && session.archive.FileCount() < largeArchiveIndexThreshold {
-			children, paths, err = buildIndex(session.archive)
+		var prepared *preparedArchiveIndexes
+		if session.archive != archive {
+			prepared, err = prepareArchiveDerivedIndexes(session.archive)
 			if err != nil {
+				closePreparedArchiveIndexes(prepared)
 				_ = session.repo.Close()
 				c.finishVersionLoad(archive, loadID, err)
 				return
@@ -1311,7 +1324,13 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 			return
 		}
 		if session.archive != archive {
-			c.installArchiveIndexesPreservingSearchLocked(session.archive, children, paths)
+			if err := c.installPreparedArchiveIndexesLocked(session.archive, prepared, true); err != nil {
+				c.mu.Unlock()
+				closePreparedArchiveIndexes(prepared)
+				_ = session.repo.Close()
+				c.finishVersionLoad(archive, loadID, err)
+				return
+			}
 		}
 		if err := c.attachVersionSessionLocked(session); err != nil {
 			c.versionLoading = false
@@ -1626,6 +1645,15 @@ func setVersionContent(archive *pvf.Archive, index int32, content pvfversion.Con
 }
 
 func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.ContentSnapshot) error {
+	return applyContentPathsLocked(c, paths, desired, true)
+}
+
+// applyContentPathsLocked materializes desired onto the live archive. When
+// compareWorking is set, entries the version working snapshot already matches
+// are skipped (undo/checkout). Backup recovery passes false: there the backup is
+// authoritative for every recovered path, so a payload can never be dropped
+// because some other snapshot happens to agree with it.
+func applyContentPathsLocked(c *core, paths []string, desired pvfversion.ContentSnapshot, compareWorking bool) error {
 	// Undo is a live archive mutation even when the file table does not change.
 	// Advance the shared revision before touching payloads so any script
 	// preview or running transaction is rejected/cancelled consistently.
@@ -1660,8 +1688,10 @@ func applyVersionContentPathsLocked(c *core, paths []string, desired pvfversion.
 			structural = true
 			continue
 		}
-		if current, ok := c.versionWorking[key]; ok && sameVersionEntry(current, content.Entry) {
-			continue
+		if compareWorking {
+			if current, ok := c.versionWorking[key]; ok && sameVersionEntry(current, content.Entry) {
+				continue
+			}
 		}
 		if err := setVersionContent(c.archive, index, content); err != nil {
 			return err

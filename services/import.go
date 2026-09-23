@@ -208,14 +208,23 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 	result.TargetDir = targetDir
 	result.Mode = mode
 
-	var children map[string][]*TreeNode
-	var paths []pathEntry
-	if stage.FileCount() < largeArchiveIndexThreshold {
-		children, paths, err = buildIndex(stage)
-		if err != nil {
-			s.c.mu.Unlock()
-			return nil, err
-		}
+	// The staged archive is isolated, so prepare its directory/SQLite
+	// projection without holding the core lock. A concurrent archive mutation
+	// invalidates this import before it is installed.
+	revision := s.c.batchRevision
+	s.c.batchRevision++
+	s.c.mu.Unlock()
+	prepared, prepareErr := prepareArchiveDerivedIndexes(stage)
+	s.c.mu.Lock()
+	if prepareErr != nil {
+		closePreparedArchiveIndexes(prepared)
+		s.c.mu.Unlock()
+		return nil, prepareErr
+	}
+	if s.c.archive != a || s.c.batchRevision != revision+1 {
+		closePreparedArchiveIndexes(prepared)
+		s.c.mu.Unlock()
+		return nil, ErrBatchPlanStale
 	}
 	if s.c.versionRepo != nil {
 		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(stage, targetPaths)
@@ -228,44 +237,18 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 			return nil, err
 		}
 	}
-
-	s.c.installArchiveIndexesPreservingSearchLocked(stage, children, paths)
-	if s.c.indexDirty == nil {
-		s.c.indexDirty = make(map[int32]struct{})
+	if err := s.c.installPreparedArchiveIndexesLocked(stage, prepared, true); err != nil {
+		closePreparedArchiveIndexes(prepared)
+		s.c.mu.Unlock()
+		return nil, err
 	}
-	changedPathSet := make(map[string]struct{}, len(files))
-	forceSearchRefresh := false
-	for _, file := range files {
-		normalizedPath := normalizeSearchPath(file.targetPath)
-		changedPathSet[normalizedPath] = struct{}{}
-		if strings.HasSuffix(normalizedPath, ".str") || isNPCEntryPath(normalizedPath) || normalizedPath == npcListPath {
-			forceSearchRefresh = true
-		}
-		if index, exists := stage.Find(file.targetPath); exists {
-			s.c.indexDirty[index] = struct{}{}
-		}
-	}
-	if s.c.searchIndexListPending == nil {
-		s.c.searchIndexListPending = make(map[int32]struct{})
-	}
-	for _, spec := range s.c.searchableListSpecsLocked() {
-		listIndex, exists := stage.FindList(spec.listPath)
-		if !exists {
-			continue
-		}
-		if _, changed := changedPathSet[normalizeSearchPath(stage.Path(listIndex))]; changed {
-			s.c.searchIndexListPending[listIndex] = struct{}{}
-		}
-	}
+	mutationSummary := stage.MutationsSince(0)
+	stage.ClearMutations()
 	info := stage.Info()
 	versioned := s.c.versionRepo != nil
 	s.c.mu.Unlock()
 
-	if forceSearchRefresh {
-		s.c.startSearchIndexForced()
-	} else {
-		s.c.startSearchIndex()
-	}
+	s.c.scheduleArchiveMutations(stage, mutationSummary)
 	emitEvent("archive:changed", info)
 	emitEvent("archive:advanced-search-stale", map[string]any{"import": true})
 	if versioned {

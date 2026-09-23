@@ -139,6 +139,13 @@ func (a *Archive) stringTablePaths(index int) []string {
 	return append([]string(nil), st.paths[index]...)
 }
 
+// StringTablePaths returns the candidate archive paths that can answer one
+// string-table index, ordered by the same precedence used for placeholder
+// resolution.
+func (a *Archive) StringTablePaths(index int) []string {
+	return a.stringTablePaths(index)
+}
+
 // loadStringTable parses one `.str` payload (UTF-16LE, `key>value` lines,
 // `//` comments) and caches the result. Localized siblings of the universal
 // file are preferred when the listed path is missing.

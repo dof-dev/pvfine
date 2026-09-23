@@ -396,6 +396,61 @@ func TestScriptListPairsMalformedPayload(t *testing.T) {
 	}
 }
 
+func TestScriptMetadataRarity(t *testing.T) {
+	a := New()
+	for _, tc := range []struct {
+		name string
+		text string
+		want int32
+	}{
+		{
+			name: "equipment/rarity.equ",
+			text: "[name]\n`史诗项链`\n[rarity]\n4\n[usable job]\n`[all]`",
+			want: 4,
+		},
+		{
+			name: "stackable/rarity.stk",
+			text: "[name]\n`魔法药剂`\n[rarity]\n1\n[price]\n100",
+			want: 1,
+		},
+		{
+			name: "equipment/no-rarity.equ",
+			text: "[name]\n`无稀有度`\n[usable job]\n`[all]`",
+			want: RarityUnknown,
+		},
+		{
+			name: "equipment/quoted.equ",
+			text: "[name]\n`引号`\n[rarity]\n`3`",
+			want: 3,
+		},
+		{
+			name: "equipment/broken.equ",
+			text: "[name]\n`非法`\n[rarity]\n`极高`",
+			want: RarityUnknown,
+		},
+		{
+			name: "equipment/first-wins.equ",
+			text: "[name]\n`取首个`\n[rarity]\n2\n[random option]\n[rarity]\n5",
+			want: 2,
+		},
+	} {
+		index, err := a.AddFileText(tc.name, tc.text, TypeScript)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata, err := a.ScriptMetadata(index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := metadata.RarityValue(); got != tc.want {
+			t.Fatalf("%s rarity = %d, want %d", tc.name, got, tc.want)
+		}
+		if tc.want == RarityUnknown && metadata.HasRarity {
+			t.Fatalf("%s reported HasRarity for an absent value", tc.name)
+		}
+	}
+}
+
 func TestRealScriptMetadata(t *testing.T) {
 	path := os.Getenv("PVF_TESTFILE")
 	if path == "" {
@@ -418,5 +473,34 @@ func TestRealScriptMetadata(t *testing.T) {
 	}
 	if metadata.FieldImage == nil || metadata.FieldImage.Path == "" || metadata.FieldImage.Index < 0 {
 		t.Fatalf("real field image = %#v", metadata.FieldImage)
+	}
+}
+
+func TestCharacterMetadataUsesFirstGrowtypeName(t *testing.T) {
+	a := New()
+	for _, tc := range []struct{ text, want string }{
+		{"[name]\n`generic`\n[growtype name]\n`鬼剑士` `剑魂`", "鬼剑士"},
+		{"[growtype name]\n`鬼剑士` `剑魂`\n[name]\n`generic`", "鬼剑士"},
+		{"[name]\n`fallback`", "fallback"},
+		{"[growtype name]\n`` `not the first`\n[name]\n`fallback`", "fallback"},
+	} {
+		i, err := a.AddFileText("character/test.chr", tc.text, TypeScript)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := a.ScriptMetadata(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.Name != tc.want {
+			t.Fatalf("name=%q want=%q", m.Name, tc.want)
+		}
+		if err := a.SetText(i, "[growtype name]\n`新职业` `转职`"); err != nil {
+			t.Fatal(err)
+		}
+		m, err = a.ScriptMetadata(i)
+		if err != nil || m.Name != "新职业" {
+			t.Fatalf("updated metadata=%#v, err=%v", m, err)
+		}
 	}
 }

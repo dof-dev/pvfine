@@ -20,6 +20,7 @@ type EditorAnnotation struct {
 	Image           *ImageReference `json:"image,omitempty"`
 	InlineImage     bool            `json:"inlineImage,omitempty"`
 	Placeholder     *PlaceholderRef `json:"placeholder,omitempty"`
+	Rarity          int32           `json:"rarity"`
 }
 
 // PlaceholderRef identifies the string-table entry a placeholder annotation
@@ -53,6 +54,11 @@ type relationTarget struct {
 }
 
 func buildPathAnnotations(engine *annotationrules.Engine, children map[string][]*TreeNode) map[string][]TreeAnnotation {
+	// Disk-backed archives resolve annotations lazily. Preserve the nil cache
+	// sentinel on reload instead of installing an empty, authoritative cache.
+	if children == nil {
+		return nil
+	}
 	result := make(map[string][]TreeAnnotation)
 	if engine == nil {
 		return result
@@ -124,8 +130,16 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	filePath := c.archive.Path(index)
 	view := pvf.ParseScriptView(text)
-	results := c.annotationEngine.AnnotateWithContextAndListResolver(
+	results := c.annotationEngine.AnnotateWithResolvers(
 		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
+		func(root, value string) (int32, bool) {
+			value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+			if value == "" {
+				return -1, false
+			}
+			root = strings.Trim(strings.TrimSpace(strings.ReplaceAll(root, "\\", "/")), "/")
+			return c.archive.Find(path.Clean(path.Join(root, strings.TrimLeft(value, "/"))))
+		},
 	)
 	annotations := make([]EditorAnnotation, 0, len(results))
 	for _, result := range results {
@@ -140,6 +154,17 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
 	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations)
+	for i := range annotations {
+		annotation := &annotations[i]
+		annotation.Rarity = pvf.RarityUnknown
+		if annotation.TargetFileIndex < 0 {
+			continue
+		}
+		switch strings.ToLower(path.Ext(c.archive.Path(annotation.TargetFileIndex))) {
+		case ".equ", ".stk":
+			annotation.Rarity = c.fileVisualsLocked(annotation.TargetFileIndex).rarity
+		}
+	}
 	c.editorAnnotation = editorAnnotationCache{
 		valid:       true,
 		fileIndex:   index,
@@ -324,6 +349,11 @@ func (c *core) readRelationTargetNameLocked(fileIndex int32, listPath, nameSecti
 }
 
 func (c *core) readRelationTargetNameFromTextLocked(listPath, nameSection, text string) string {
+	if sameSearchPath(listPath, "character/character.lst") {
+		if name := firstSectionValue(text, "growtype name"); strings.TrimSpace(name) != "" {
+			return resolvePreviewText(c.archive, name)
+		}
+	}
 	name := firstSectionValue(text, nameSection)
 	if name != "" || !sameSearchPath(listPath, itemShopListPath) {
 		return name

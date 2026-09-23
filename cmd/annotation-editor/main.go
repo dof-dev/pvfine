@@ -38,9 +38,10 @@ type editorServer struct {
 }
 
 type previewRequest struct {
-	Path     string                    `json:"path"`
-	Text     string                    `json:"text"`
-	Document *annotationrules.Document `json:"document,omitempty"`
+	PVFVersion string                    `json:"pvfVersion,omitempty"`
+	Path       string                    `json:"path"`
+	Text       string                    `json:"text"`
+	Document   *annotationrules.Document `json:"document,omitempty"`
 }
 
 func main() {
@@ -230,6 +231,11 @@ func (s *editorServer) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.PVFVersion != "" && !annotationrules.ValidPVFVersion(request.PVFVersion) {
+		writeAPIError(w, http.StatusBadRequest, "pvfVersion 只允许 90US、90CN、110US 或空值")
+		return
+	}
+
 	var document annotationrules.Document
 	if request.Document != nil {
 		document = *request.Document
@@ -259,6 +265,7 @@ func (s *editorServer) handlePreview(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	engine = engine.ForVersion(request.PVFVersion)
 	results := engine.Annotate(request.Path, pvf.ParseScriptView(request.Text), nil)
 	pathResults := engine.AnnotatePath(request.Path, false)
 	writeJSON(w, http.StatusOK, map[string]any{

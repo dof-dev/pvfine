@@ -36,6 +36,7 @@ func resolveFieldRule(rule Rule, fields []FieldDefinition) (Rule, error) {
 		}
 		resolved := Rule{
 			ID:          rule.ID,
+			PVFVersions: rule.PVFVersions,
 			Description: rule.Description,
 			Field:       rule.Field,
 			Match:       field.Match,
@@ -51,7 +52,7 @@ func resolveFieldRule(rule Rule, fields []FieldDefinition) (Rule, error) {
 		}
 		if rule.Annotation.Title != "" || rule.Annotation.Type != "" ||
 			rule.Annotation.Content != "" || len(rule.Annotation.Values) > 0 ||
-			rule.Annotation.Relation != "" || rule.Annotation.InlineImage {
+			rule.Annotation.Relation != "" || rule.Annotation.PathRoot != "" || rule.Annotation.InlineImage {
 			resolved.Annotation = rule.Annotation
 		}
 		return resolved, nil
@@ -144,20 +145,22 @@ func extractField(field FieldDefinition, view pvf.ScriptView) []PreviewFieldValu
 			if recordTokens <= 0 {
 				continue
 			}
-			for start := target.Offset; start+recordTokens <= len(tokens); start += recordTokens {
-				offset := *target.Index
-				if offset < 0 || offset >= recordTokens {
-					continue
+			for _, group := range repeatedTokenGroups(target, tokens) {
+				for start := group.start; start+recordTokens <= group.end; start += recordTokens {
+					offset := *target.Index
+					if offset < 0 || offset >= recordTokens {
+						continue
+					}
+					record := tokens[start : start+recordTokens]
+					context := ""
+					if target.ContextIndex != nil && *target.ContextIndex >= 0 && *target.ContextIndex < len(record) {
+						context = record[*target.ContextIndex].Value
+					}
+					result = append(result, PreviewFieldValue{
+						Field: field, Values: valuesOf(record), Context: context,
+						Start: record[offset].Start, End: record[offset].End,
+					})
 				}
-				record := tokens[start : start+recordTokens]
-				context := ""
-				if target.ContextIndex != nil && *target.ContextIndex >= 0 && *target.ContextIndex < len(record) {
-					context = record[*target.ContextIndex].Value
-				}
-				result = append(result, PreviewFieldValue{
-					Field: field, Values: valuesOf(record), Context: context,
-					Start: record[offset].Start, End: record[offset].End,
-				})
 			}
 			continue
 		}

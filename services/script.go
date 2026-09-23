@@ -652,6 +652,7 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 			return ScriptApplyResult{}, err
 		}
 	}
+	mutationCheckpoint := plan.archive.MutationCheckpoint()
 	structural, err := plan.transaction.Commit(selected)
 	if err != nil {
 		s.c.mu.Unlock()
@@ -690,7 +691,6 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 	// After a structural commit every index is rebuilt, so resolve each
 	// surviving path against the new table instead of the previewed index.
 	appliedIndexes := make([]int32, 0, len(ordered))
-	forceSearchRefresh := false
 	for _, key := range ordered {
 		row := rowsByKey[key]
 		if row.preview.Status != ScriptFileChanged {
@@ -704,10 +704,10 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 			s.c.editorText = make(map[int32]string)
 		}
 		s.c.editorText[index] = row.afterText
-		_, force := s.c.queueSearchIndexMutationLocked(index)
-		forceSearchRefresh = forceSearchRefresh || force
 		appliedIndexes = append(appliedIndexes, index)
 	}
+	mutationSummary := plan.archive.MutationsSince(mutationCheckpoint)
+	plan.archive.ClearMutations()
 	s.c.batchRevision++
 	s.c.batchPlan = nil
 	s.c.invalidateScriptPlanLocked()
@@ -741,11 +741,7 @@ func (s *ScriptService) Apply(planID string, changeKeys []string) (ScriptApplyRe
 	if versioned {
 		emitVersionState(s.c, "script-applied")
 	}
-	if structural || forceSearchRefresh {
-		s.c.startSearchIndexForced()
-	} else {
-		s.c.startSearchIndex()
-	}
+	s.c.scheduleArchiveMutations(plan.archive, mutationSummary)
 	return ScriptApplyResult{
 		AppliedFiles: int32(len(ordered)), FileIndexes: appliedIndexes,
 		ModifiedCount: info.ModifiedCount, Revision: revision, Structural: structural,

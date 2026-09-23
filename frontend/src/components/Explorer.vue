@@ -802,6 +802,7 @@ function buildSearchTree(items: SearchItem[]): TreeItem[] {
         id: item.id,
         name: item.label,
         category: item.category,
+        rarity: item.rarity,
       });
     }
   }

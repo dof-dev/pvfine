@@ -2,35 +2,17 @@
 import { computed, onUnmounted, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { useDialog } from "naive-ui";
-import { useArchiveStore } from "../stores/archive";
-import { useEditorStore } from "../stores/editor";
-import { useFileSetStore } from "../stores/fileSets";
-import { useVersionStore } from "../stores/version";
-import { useScriptStore } from "../stores/script";
+import { useAutosaveStore } from "../stores/autosave";
+import { hasUnsavedWorkspaceChanges } from "../unsaved";
 
 type CloseAction = "close" | "quit";
 
 const dialog = useDialog();
-const archive = useArchiveStore();
-const editor = useEditorStore();
-const fileSets = useFileSetStore();
-const version = useVersionStore();
-const script = useScriptStore();
+const autosave = useAutosaveStore();
 const pendingAction = ref<CloseAction | null>(null);
 const closing = ref(false);
 
-const hasUnsavedChanges = computed(
-  () =>
-    archive.modifiedCount > 0 ||
-    editor.dirtyCount > 0 ||
-    fileSets.dirty ||
-    // 工作区分离后脚本内容在独立窗口里：本窗口的 script.dirty 停留在分离那一刻
-    // 的值（在那边保存也不会同步回来），必须改用独立窗口上报的 dirty，否则
-    // 会在已保存的情况下误报有未保存修改。
-    (script.workspaceDetached ? script.detachedDirty : script.dirty) ||
-    version.status.changedFiles > 0 ||
-    version.status.needsSave
-);
+const hasUnsavedChanges = computed(() => hasUnsavedWorkspaceChanges());
 
 function eventData(event: any): any {
   return event?.data ?? event;
@@ -59,6 +41,9 @@ function requestClose(action: CloseAction): void {
 async function confirmClose(action: CloseAction): Promise<void> {
   if (pendingAction.value !== action || closing.value) return;
   closing.value = true;
+  // 用户已经确认放弃这些修改:配套的备份缓存也没有保护对象了,不删除会在下次
+  // 启动时提示恢复一个被主动丢弃的工作区。
+  await autosave.discardForWorkspace();
   const eventName = action === "quit" ? "app:quit-confirmed" : "app:close-confirmed";
   try {
     await Events.Emit(eventName);

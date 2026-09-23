@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pvfine - 现代化、高性能的 Script.pvf 跨平台桌面编辑器与解析套件</title>
+  <meta name="description" content="专为百万级游戏脚本与资产打造的现代化跨平台桌面套件。基于 Go + Wails v3 + Vue 3，支持 110US Paged 分页归档、90CN 变体恢复、双向无损反编译、ANI 与装备原生预览及 Goja 脚本沙箱。">
+  <link rel="icon" type="image/png" href="assets/appicon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Ambient Lighting Effects -->
+  <div class="ambient-bg">
+    <div class="ambient-glow-1"></div>
+    <div class="ambient-glow-2"></div>
+    <div class="ambient-grid"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="brand-logo" title="查看 GitHub 最新发布">
+        <div class="brand-icon-wrapper">
+          <img src="assets/appicon.png" alt="pvfine Logo" class="brand-icon-img">
+        </div>
+        <span>pvfine</span>
+        <span class="version-pill" id="release-version-pill">v0.7.0</span>
+      </a>
+
+      <nav>
+        <ul class="nav-menu">
+          <li><a href="#features" class="nav-link">核心特性</a></li>
+          <li><a href="#showcase" class="nav-link">界面体验</a></li>
+          <li><a href="#comparison" class="nav-link">世代对比</a></li>
+          <li><a href="#sdk" class="nav-link">Go SDK</a></li>
+          <li><a href="#download" class="nav-link">版本下载</a></li>
+          <li><a href="https://github.com/dof-dev/pvfine" target="_blank" rel="noopener" class="nav-link">GitHub ↗</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <button id="theme-toggle-btn" class="btn btn-ghost btn-sm" aria-label="切换主题">🌙</button>
+        <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-primary btn-sm" id="nav-download-btn">免费下载</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="container">
+        <a href="#features" class="hero-announcement">
+          <span class="badge-tag">NEW</span>
+          <span>完整支持新一代 110US (Paged110) 分页归档与 AES 密钥链自动反解</span>
+          <span style="opacity: 0.7;">→</span>
+        </a>
+
+        <h1 class="hero-title">
+          重新定义 <span class="gradient-text">PVF 逆向与脚本编辑</span> 体验
+        </h1>
+
+        <p class="hero-subtitle">
+          专为百万级游戏脚本与资源打造的现代化桌面套件。<br>
+          纯 Go 高性能内核赋能，秒级加载索引、100% 逐字节无损写回、原生动作与贴图渲染。
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="#download" id="hero-download-btn" class="btn btn-primary btn-lg">
+            立即下载 pvfine
+          </a>
+          <a href="#sdk" class="btn btn-secondary btn-lg">
+            Go SDK 调用
+          </a>
+          <a href="https://github.com/dof-dev/pvfine" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">
+            查看源码 (GPL-3.0) ↗
+          </a>
+        </div>
+
+        <div class="hero-features-chips">
+          <div class="chip-item"><span class="chip-dot"></span> 百万条目 &lt; 1s 秒开</div>
+          <div class="chip-item"><span class="chip-dot"></span> 100% 字节级一致性验证</div>
+          <div class="chip-item"><span class="chip-dot"></span> UTF-16LE 智能池防乱码</div>
+          <div class="chip-item"><span class="chip-dot"></span> macOS · Windows · Linux 跨平台</div>
+        </div>
+
+        <!-- Hero Interactive App Simulator -->
+        <div class="hero-mockup-wrapper" id="showcase">
+          <div class="mockup-glow-back"></div>
+          <div class="app-window">
+            <!-- macOS Window Bar -->
+            <div class="window-titlebar">
+              <div class="window-traffic-lights">
+                <span class="traffic-light light-close"></span>
+                <span class="traffic-light light-min"></span>
+                <span class="traffic-light light-max"></span>
+              </div>
+              <div class="window-title">
+                <span style="opacity: 0.5;">⚡️ Script.pvf — </span>
+                <span id="window-active-filename" style="font-family: var(--font-mono); font-size: 0.78rem;">equipment/character/common/amulet/100300001.equ</span>
+              </div>
+              <div class="window-actions">
+                <span class="window-badge">Paged110 · 52 Keys OK</span>
+              </div>
+            </div>
+
+            <!-- App Main Layout -->
+            <div class="app-body">
+              <!-- Sidebar File Tree -->
+              <aside class="app-sidebar">
+                <div class="sidebar-header">
+                  <span>资源管理器 (1,048,576)</span>
+                  <span style="font-size: 0.7rem; color: var(--accent-emerald);">● READY</span>
+                </div>
+                <ul class="sidebar-tree">
+                  <li class="tree-item active" data-view="equ">
+                    <span class="tree-icon">📄</span>
+                    <span>100300001.equ</span>
+                    <span class="tree-badge dirty">Dirty</span>
+                  </li>
+                  <li class="tree-item" data-view="ani">
+                    <span class="tree-icon">🎬</span>
+                    <span>skill_slash.ani</span>
+                    <span class="tree-badge" style="background: rgba(79,140,255,0.15); color: var(--primary);">Preview</span>
+                  </li>
+                  <li class="tree-item" data-view="shop">
+                    <span class="tree-icon">🛍️</span>
+                    <span>seria_shop.shp</span>
+                    <span class="tree-badge" style="background: rgba(168,85,247,0.15); color: var(--accent-purple);">GUI Mode</span>
+                  </li>
+                  <li class="tree-item" data-view="script">
+                    <span class="tree-icon">⚡</span>
+                    <span>batch_rarity.pvf.js</span>
+                    <span class="tree-badge new">Goja</span>
+                  </li>
+                  <li class="tree-item" style="opacity: 0.5;">
+                    <span class="tree-icon">📁</span>
+                    <span>stackable/cash/</span>
+                  </li>
+                  <li class="tree-item" style="opacity: 0.5;">
+                    <span class="tree-icon">📁</span>
+                    <span>character/swordman/</span>
+                  </li>
+                </ul>
+              </aside>
+
+              <!-- Main View Area -->
+              <div class="app-main">
+                <!-- Tabs Bar -->
+                <div class="app-tabs-bar">
+                  <div class="app-tab active" data-view="equ">
+                    <span>📄 100300001.equ</span>
+                    <span class="tab-close">×</span>
+                  </div>
+                  <div class="app-tab" data-view="ani">
+                    <span>🎬 skill_slash.ani</span>
+                    <span class="tab-close">×</span>
+                  </div>
+                  <div class="app-tab" data-view="shop">
+                    <span>🛍️ seria_shop.shp (GUI)</span>
+                    <span class="tab-close">×</span>
+                  </div>
+                  <div class="app-tab" data-view="script">
+                    <span>⚡ batch_rarity.pvf.js</span>
+                    <span class="tab-close">×</span>
+                  </div>
+                </div>
+
+                <!-- View Switcher Containers -->
+                <div class="mockup-view-container">
+
+                  <!-- VIEW 1: EQU Code Editor + Live Equipment Card -->
+                  <div class="mockup-view view-editor active">
+                    <div class="code-pane">
+                      <div class="code-line"><span class="line-num">1</span><span class="line-content"><span class="syn-tag">#PVF_Begin</span></span></div>
+                      <div class="code-line"><span class="line-num">2</span><span class="line-content"><span class="syn-tag">[name]</span></span></div>
+                      <div class="code-line"><span class="line-num">3</span><span class="line-content">&nbsp;&nbsp;<span class="syn-str">`王者之星·神圣护符`</span> <span class="inline-tag tag-str">110US &lt;31::amulet_star&gt;</span></span></div>
+                      <div class="code-line"><span class="line-num">4</span><span class="line-content"><span class="syn-tag">[grade]</span></span></div>
+                      <div class="code-line"><span class="line-num">5</span><span class="line-content">&nbsp;&nbsp;<span class="syn-num">5</span> <span class="inline-tag tag-equip">史诗 (Epic)</span></span></div>
+                      <div class="code-line"><span class="line-num">6</span><span class="line-content"><span class="syn-tag">[attach type]</span></span></div>
+                      <div class="code-line"><span class="line-num">7</span><span class="line-content">&nbsp;&nbsp;<span class="syn-str">`[trade]`</span></span></div>
+                      <div class="code-line"><span class="line-num">8</span><span class="line-content"><span class="syn-tag">[physical attack]</span></span></div>
+                      <div class="code-line"><span class="line-num">9</span><span class="line-content">&nbsp;&nbsp;<span class="syn-num">142</span></span></div>
+                      <div class="code-line"><span class="line-num">10</span><span class="line-content"><span class="syn-tag">[magical attack]</span></span></div>
+                      <div class="code-line"><span class="line-num">11</span><span class="line-content">&nbsp;&nbsp;<span class="syn-num">158</span></span></div>
+                      <div class="code-line"><span class="line-num">12</span><span class="line-content"><span class="syn-tag">[move speed]</span></span></div>
+                      <div class="code-line"><span class="line-num">13</span><span class="line-content">&nbsp;&nbsp;<span class="syn-num">80</span> <span class="syn-comment"># 移动速度 +8%</span></span></div>
+                    </div>
+
+                    <div class="preview-pane">
+                      <div class="preview-title">
+                        <span>原生装备属性渲染</span>
+                        <span style="color: var(--accent-amber);">EPIC</span>
+                      </div>
+                      <div class="equip-card">
+                        <div class="equip-header">
+                          <div class="equip-icon">💎</div>
+                          <div>
+                            <div class="equip-name">王者之星·神圣护符</div>
+                            <div class="equip-type">项链 / 史诗 / Lv.90+</div>
+                          </div>
+                        </div>
+                        <div class="equip-attrs">
+                          <div class="equip-attr-row"><span>物理攻击力</span><span class="equip-attr-val">+142</span></div>
+                          <div class="equip-attr-row"><span>魔法攻击力</span><span class="equip-attr-val">+158</span></div>
+                          <div class="equip-attr-row"><span>独立攻击力</span><span class="equip-attr-val">+95</span></div>
+                          <div class="equip-attr-row"><span>力量 / 智力</span><span class="equip-attr-val">+84</span></div>
+                          <div class="equip-attr-row" style="color: #60a5fa;"><span>移动速度</span><span class="equip-attr-val">+8.0%</span></div>
+                          <div class="equip-attr-row" style="color: #60a5fa;"><span>所有属性强化</span><span class="equip-attr-val">+22</span></div>
+                        </div>
+                      </div>
+                      <div style="font-size: 0.72rem; color: var(--text-faint); line-height: 1.4;">
+                        ✓ PreviewService 纯 Go 计算基础四维加成<br>
+                        ✓ 按住 <kbd>Cmd</kbd> 单击标注 Tag 瞬时跳转 LST 关联脚本
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- VIEW 2: ANI Animation Player -->
+                  <div class="mockup-view view-ani">
+                    <div class="ani-stage">
+                      <div class="ani-grid-canvas"></div>
+                      <div class="ani-sprite-box">
+                        <div class="ani-character">⚔️</div>
+                        <div class="ani-shadow"></div>
+                      </div>
+                      <div class="ani-controls-bar">
+                        <button id="ani-play-toggle" class="btn btn-ghost btn-sm" style="color:#fff;">⏸ 暂停</button>
+                        <span style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted);">Frame: 4 / 12 (80ms)</span>
+                        <span style="font-size: 0.75rem; color: var(--accent-emerald);">● 循环播放</span>
+                      </div>
+                    </div>
+                    <div class="preview-pane">
+                      <div class="preview-title">
+                        <span>ANI 关键帧调度模型</span>
+                        <span>12 Frames</span>
+                      </div>
+                      <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div><strong>贴图源包:</strong> <code>character/swordman.NPK</code></div>
+                        <div><strong>图层调度:</strong> Body / Weapon / Glow FX</div>
+                        <div><strong>混合模式:</strong> DXT5 Alpha 渐变插值</div>
+                      </div>
+                      <div style="margin-top: 1rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; font-size: 0.72rem; color: var(--text-faint);">
+                        编辑器内置原生 NPK / IMG 解码器，秒级扫描数万张动作纹理，免开游戏即验特效！
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- VIEW 3: Shop GUI Mode -->
+                  <div class="mockup-view view-shop">
+                    <div class="shop-category-tabs">
+                      <span class="shop-pill active">史诗特惠 (Tab 1)</span>
+                      <span class="shop-pill">深渊挑战书 (Tab 2)</span>
+                      <span class="shop-pill">装扮与消耗品</span>
+                      <span class="shop-pill" style="border-style: dashed;">+ 新增分类</span>
+                    </div>
+                    <div class="shop-items-grid">
+                      <div class="shop-item-card">
+                        <div class="shop-item-top">
+                          <div class="shop-item-icon">🗡️</div>
+                          <div class="shop-item-info">
+                            <div class="shop-item-name">无影剑-艾雷诺</div>
+                            <div class="shop-item-price">🪙 0 金币 + 💎 900 灿烂灵魂</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="shop-item-card">
+                        <div class="shop-item-top">
+                          <div class="shop-item-icon">📜</div>
+                          <div class="shop-item-info">
+                            <div class="shop-item-name">魔界深渊通行证 × 50</div>
+                            <div class="shop-item-price">🪙 2,500,000 金币</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="shop-item-card">
+                        <div class="shop-item-top">
+                          <div class="shop-item-icon">🧪</div>
+                          <div class="shop-item-info">
+                            <div class="shop-item-name">闪亮的世界仪礼盒</div>
+                            <div class="shop-item-price">🪙 100,000 金币</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; align-items: center; font-size: 0.78rem; color: var(--text-muted);">
+                      <span>✨ FileGUIProvider: 结构化解析 <code>[need material]</code> 与 <code>[price]</code>，Staging 隔离校验后安全落盘</span>
+                    </div>
+                  </div>
+
+                  <!-- VIEW 4: JavaScript Goja Sandbox Diff -->
+                  <div class="mockup-view view-script">
+                    <div class="diff-pane" style="border-right: 1px solid var(--border-subtle);">
+                      <div style="color: var(--text-faint); margin-bottom: 0.5rem;">// workspace/scripts/batch_rarity.pvf.js</div>
+                      <div style="color: #60a5fa;">pvf.files('equipment/character/swordman/*.equ')</div>
+                      <div style="color: var(--text-muted);">&nbsp;&nbsp;.forEach(file => {</div>
+                      <div style="color: var(--text-muted);">&nbsp;&nbsp;&nbsp;&nbsp;const doc = pvf.parse(file.text());</div>
+                      <div style="color: var(--text-muted);">&nbsp;&nbsp;&nbsp;&nbsp;if (doc.get('[grade]') === 4) {</div>
+                      <div style="color: #34d399;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;doc.set('[grade]', 5); // 批量升阶为史诗</div>
+                      <div style="color: #34d399;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;file.update(doc.render());</div>
+                      <div style="color: var(--text-muted);">&nbsp;&nbsp;&nbsp;&nbsp;}</div>
+                      <div style="color: var(--text-muted);">&nbsp;&nbsp;});</div>
+                    </div>
+                    <div class="diff-pane">
+                      <div style="color: var(--text-faint); margin-bottom: 0.5rem;">// 事务隔离 Diff 预览 (已匹配 124 个文件)</div>
+                      <div class="diff-del">- [grade] 4</div>
+                      <div class="diff-add">+ [grade] 5</div>
+                      <div style="margin-top: 1rem;">
+                        <button class="btn btn-primary btn-sm" style="font-size: 0.75rem;">应用选中变更 (124)</button>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Metrics Strip -->
+    <section class="metrics-section">
+      <div class="container">
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-number gradient-text">&lt; 1.0s</div>
+            <div class="metric-label">百万级头部解密与索引</div>
+            <div class="metric-desc">流式按需解密，二次载入 0 等待</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-number" style="color: var(--accent-emerald);">100%</div>
+            <div class="metric-label">逐字节一致写回</div>
+            <div class="metric-desc">未改动 Chunk 保持原字节 Hash 完全匹配</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-number" style="color: var(--accent-cyan);">52 组</div>
+            <div class="metric-label">Paged110 AES 密钥链反解</div>
+            <div class="metric-desc">sk.dat 私钥推导与分页保护全自动解析</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-number" style="color: var(--accent-purple);">0 依赖</div>
+            <div class="metric-label">独立 Go 内核与沙箱</div>
+            <div class="metric-desc">无需 Node.js、Python 或外部运行时</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bento Grid Features Section -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">ARCHITECTED FOR PRECISION</span>
+          <h2 class="section-title">现代逆向工程套件的标准设计</h2>
+          <p class="section-desc">抛弃陈旧老迈的十年前旧工具，体验为现代多核处理器与高清屏幕设计的极致工作流。</p>
+        </div>
+
+        <div class="bento-grid">
+          <!-- Card 1 -->
+          <div class="bento-card bento-card-wide">
+            <div class="bento-icon">🚀</div>
+            <h3 class="bento-title">极速解析与虚拟分块加载（Chunk-based LRU）</h3>
+            <p class="bento-desc">
+              采用虚拟分块解密架构，对 100 万+ 条目的超大型归档，仅在用户需要编辑特定文件时按需解密对应数据块，告别打开归档动辄几分钟的煎熬。配合 SQLite 磁盘反向索引与游标分页搜索，全量检索实时响应。
+            </p>
+            <div class="bento-visual">
+              <span style="color: var(--accent-emerald);">[Cache]</span> Chunk #412 loaded (4KB) &bull; LRU Hits: 99.4% &bull; RAM: 48MB / 1.8GB PVF
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="bento-card">
+            <div class="bento-icon">🌐</div>
+            <h3 class="bento-title">全版本归档与变体兼容</h3>
+            <p class="bento-desc">
+              深度解析新一代 110US (Paged110) 10MiB 分页保护、sk.dat 私钥推导与 52 组 AES 密钥；内置 90CN 变体未知密钥自动推导与种子恢复算法。
+            </p>
+            <div class="bento-visual">
+              <span>AES-256-CBC</span> / <span>sk.dat PKCS#1</span> / <span>HASH 重建</span>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="bento-card">
+            <div class="bento-icon">📝</div>
+            <h3 class="bento-title">双向无损反编译与占位符就地编辑</h3>
+            <p class="bento-desc">
+              将 5 字节二进制 Token 流还原为具备嵌套缩进感知的结构化脚本。110US 字符串表支持行内直接修改译文，按 UTF-16LE 局部改写，杜绝乱码并即刻刷新索引。
+            </p>
+            <div class="bento-visual">
+              <span>{8=&lt;31::equip_1&gt;}</span> &rarr; <span style="color: var(--accent-emerald);">"无影剑" (即时热替换)</span>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="bento-card">
+            <div class="bento-icon">🖼️</div>
+            <h3 class="bento-title">原生动作动画与贴图预览</h3>
+            <p class="bento-desc">
+              内置纯 Go NPK / IMG 只读解码器与 DXT1/3/5 纹理渲染器。ANI 动作播放器支持逐帧步进、阴影开关和贴图图层调度，不用进游戏即可验证特效。
+            </p>
+            <div class="bento-visual">
+              <span>ANI Keyframes</span> &bull; <span>NPK Sprite Cache</span> &bull; <span>DXT5 Decompress</span>
+            </div>
+          </div>
+
+          <!-- Card 5 -->
+          <div class="bento-card">
+            <div class="bento-icon">🗂️</div>
+            <h3 class="bento-title">结构化 GUI 编辑与 ItemPicker</h3>
+            <p class="bento-desc">
+              为 <code>.shp</code> 商店与基础掉率提供高品质可视化看板。支持拖拽管理分页、商品成本联动校验，Staging 隔离校验后安全落盘，避免破坏原文件。
+            </p>
+            <div class="bento-visual">
+              <span>GUIProvider</span> &bull; <span>Epoch Revision Guard</span> &bull; <span>ItemPicker</span>
+            </div>
+          </div>
+
+          <!-- Card 6 -->
+          <div class="bento-card">
+            <div class="bento-icon">🧩</div>
+            <h3 class="bento-title">JS 脚本沙箱与本地版本控制（VCS）</h3>
+            <p class="bento-desc">
+              集成 Goja 沙箱运行时，使用 JavaScript 编写批量改写规则，并生成可视 Diff 审阅；内置 SQLite + SHA-256 CAS 本地版本库，随时快照与回滚。
+            </p>
+            <div class="bento-visual">
+              <span>Goja JS API</span> &bull; <span>CAS SHA-256 Snapshot</span> &bull; <span>Safe Revert</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Matrix Section -->
+    <section class="comparison-section" id="comparison">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">NEXT GENERATION VS LEGACY</span>
+          <h2 class="section-title">为什么你需要升级到 pvfine</h2>
+          <p class="section-desc">跨越十年的技术鸿沟，为你的生产力带来质的飞跃。</p>
+        </div>
+
+        <div class="comparison-table-wrapper">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>特性对比维度</th>
+                <th class="col-pvfine">⚡️ pvfine (现代化套件)</th>
+                <th>传统老旧 PVF 编辑器</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>百万级文件打开速度</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ &lt; 1.0 秒 (流式按需解密)</span></td>
+                <td><span class="check-no">✗ 耗时 2~5 分钟甚至内存溢出卡死</span></td>
+              </tr>
+              <tr>
+                <td><strong>110US (Paged110) 分页归档</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ 完整支持 (AES-256 / sk.dat / 无损重写)</span></td>
+                <td><span class="check-no">✗ 完全无法识别或报错崩溃</span></td>
+              </tr>
+              <tr>
+                <td><strong>90CN 非标准变体恢复</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ nkpi 明文签名约束 + 自动推导</span></td>
+                <td><span class="check-no">✗ 需手动算段种子，稍有不慎全包损坏</span></td>
+              </tr>
+              <tr>
+                <td><strong>未改动保存字节级一致性</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ 100% 逐字节一致 (Byte-Exact)</span></td>
+                <td><span class="check-no">✗ 字符串池错乱、Hash 重排导致文件损坏</span></td>
+              </tr>
+              <tr>
+                <td><strong>中文编码与防乱码策略</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ 规范 sTrW (UTF-16LE) 智能池路由</span></td>
+                <td><span class="check-no">✗ 常见保存后进游戏出现问号/方块乱码</span></td>
+              </tr>
+              <tr>
+                <td><strong>动画与装备资源预览</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ ANI 关键帧播放器 + NPK 贴图 + 装备高保真面板</span></td>
+                <td><span class="check-no">✗ 无预览，必须进游戏反复重启验证</span></td>
+              </tr>
+              <tr>
+                <td><strong>自动化批量脚本</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ 进程内 Goja JS 沙箱 + 事务 Diff 预览</span></td>
+                <td><span class="check-no">✗ 无沙箱，只能写简陋批处理或手动逐个点</span></td>
+              </tr>
+              <tr>
+                <td><strong>跨平台支持</strong></td>
+                <td class="col-pvfine"><span class="check-yes">✓ macOS (Apple Silicon / Intel) · Windows · Linux</span></td>
+                <td><span class="check-no">✗ 仅限陈旧 Windows 32 位环境</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Go SDK Section -->
+    <section class="sdk-section" id="sdk">
+      <div class="container">
+        <div class="sdk-grid">
+          <div class="sdk-content">
+            <span class="section-tag">PURE GO API</span>
+            <h2 class="section-title">解耦核心，支持作为独立 Go SDK 调用</h2>
+            <p class="section-desc">
+              <code>internal/pvf</code> 纯 Go 内核完全脱离 UI 独立运行。你可以在自己的 CLI 自动化构建管线、CI/CD 流程或微服务中直接引入。
+            </p>
+            <ul class="sdk-features-list">
+              <li class="sdk-feature-item">
+                <span class="sdk-feature-icon">✓</span>
+                <div>
+                  <strong>零 Cgo 纯 Go 实现</strong>
+                  <div style="font-size: 0.84rem; color: var(--text-muted);">跨平台交叉编译极其顺畅，无任何动态链接库依赖。</div>
+                </div>
+              </li>
+              <li class="sdk-feature-item">
+                <span class="sdk-feature-icon">✓</span>
+                <div>
+                  <strong>内存 Overlay 机制</strong>
+                  <div style="font-size: 0.84rem; color: var(--text-muted);">所有改动均在内存缓冲层安全演练，原子落盘确保原归档完好无损。</div>
+                </div>
+              </li>
+              <li class="sdk-feature-item">
+                <span class="sdk-feature-icon">✓</span>
+                <div>
+                  <strong>结构化 Token 树遍历</strong>
+                  <div style="font-size: 0.84rem; color: var(--text-muted);">支持 5-byte Token 树的精准读取、节点注入与文本互转。</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sdk-code-box">
+            <div class="sdk-code-header">
+              <span class="sdk-code-title">main.go</span>
+              <button class="copy-btn" data-target="#sdk-sample-code">📋 复制示例代码</button>
+            </div>
+            <pre class="sdk-pre"><code id="sdk-sample-code"><span style="color: #f43f5e;">package</span> main
+
+<span style="color: #f43f5e;">import</span> (
+    <span style="color: #34d399;">"fmt"</span>
+    <span style="color: #34d399;">"log"</span>
+    <span style="color: #34d399;">"pvfine/internal/pvf"</span>
+)
+
+<span style="color: #f43f5e;">func</span> <span style="color: #60a5fa;">main</span>() {
+    <span style="color: #6b7280;">// 1. 打开归档 (自动识别 90US / 90CN / 110US)</span>
+    archive, err := pvf.<span style="color: #60a5fa;">Open</span>(<span style="color: #34d399;">"Script.pvf"</span>)
+    <span style="color: #f43f5e;">if</span> err != <span style="color: #fbbf24;">nil</span> {
+        log.<span style="color: #60a5fa;">Fatalf</span>(<span style="color: #34d399;">"打开失败: %v"</span>, err)
+    }
+
+    <span style="color: #6b7280;">// 2. 毫秒级根据路径索引条目</span>
+    idx, found := archive.<span style="color: #60a5fa;">Find</span>(<span style="color: #34d399;">"equipment/common/1003.equ"</span>)
+    <span style="color: #f43f5e;">if</span> found {
+        text, _ := archive.<span style="color: #60a5fa;">Text</span>(idx)
+        fmt.<span style="color: #60a5fa;">Println</span>(<span style="color: #34d399;">"原脚本:"</span>, text)
+
+        <span style="color: #6b7280;">// 3. 内存 Overlay 修改</span>
+        archive.<span style="color: #60a5fa;">SetText</span>(idx, text + <span style="color: #34d399;">"\n# pvfine mod\n"</span>)
+    }
+
+    <span style="color: #6b7280;">// 4. 原子重打包并另存为</span>
+    archive.<span style="color: #60a5fa;">SaveAs</span>(<span style="color: #34d399;">"Script_modified.pvf"</span>)
+    fmt.<span style="color: #60a5fa;">Println</span>(<span style="color: #34d399;">"保存成功！"</span>)
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Matrix Section -->
+    <section class="download-section" id="download">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">CROSS PLATFORM</span>
+          <h2 class="section-title">立刻下载 pvfine 开启极速体验</h2>
+          <p class="section-desc" id="hero-download-hint">开源、免费、无任何广告与遥测。</p>
+        </div>
+
+        <div class="download-cards-grid">
+          <!-- macOS -->
+          <div class="download-card" data-os="macos">
+            <span class="recommended-badge badge-tag" style="display: none; position: absolute; top: 1rem; right: 1rem;">当前系统推荐</span>
+            <div class="download-os-icon">🍎</div>
+            <div class="download-os-name">macOS</div>
+            <div class="download-os-desc">支持 macOS 12.0+ Monterey 及以上</div>
+            <div class="download-links-list">
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-primary" data-asset-type="mac-universal">
+                macOS 通用安装包 (.dmg)
+              </a>
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-secondary" data-asset-type="mac-intel">
+                Intel x86_64 专用 (.dmg)
+              </a>
+            </div>
+          </div>
+
+          <!-- Windows -->
+          <div class="download-card" data-os="windows">
+            <span class="recommended-badge badge-tag" style="display: none; position: absolute; top: 1rem; right: 1rem;">当前系统推荐</span>
+            <div class="download-os-icon">🪟</div>
+            <div class="download-os-name">Windows</div>
+            <div class="download-os-desc">支持 Windows 10 / 11 64-bit</div>
+            <div class="download-links-list">
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-primary" data-asset-type="win-installer">
+                Windows 自动安装包 (.exe)
+              </a>
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-secondary" data-asset-type="win-portable">
+                便携独立运行版 (.exe)
+              </a>
+            </div>
+          </div>
+
+          <!-- Linux -->
+          <div class="download-card" data-os="linux">
+            <span class="recommended-badge badge-tag" style="display: none; position: absolute; top: 1rem; right: 1rem;">当前系统推荐</span>
+            <div class="download-os-icon">🐧</div>
+            <div class="download-os-name">Linux</div>
+            <div class="download-os-desc">Ubuntu / Debian / Arch / Fedora</div>
+            <div class="download-links-list">
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-primary" data-asset-type="linux-appimage">
+                Universal AppImage
+              </a>
+              <a href="https://github.com/dof-dev/pvfine/releases/latest" target="_blank" rel="noopener" class="btn btn-secondary" data-asset-type="linux-deb">
+                Debian / Ubuntu (.deb)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 2.5rem; text-align: center;">
+          <a href="https://github.com/dof-dev/pvfine/releases" target="_blank" rel="noopener" class="nav-link" style="color: var(--primary); font-size: 0.95rem; font-weight: 500;">
+            查看 GitHub 全部发布历史与完整 Changelog ↗
+          </a>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="#" class="brand-logo">
+            <div class="brand-icon-wrapper" style="width: 28px; height: 28px;">
+              <img src="assets/appicon.png" alt="pvfine Logo" class="brand-icon-img">
+            </div>
+            <span>pvfine</span>
+          </a>
+          <p class="footer-desc">
+            现代化、高性能的 Script.pvf 跨平台桌面编辑器与解析套件。基于 Go 1.25、Wails v3 与 Vue 3 构建。
+          </p>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">产品与生态</h4>
+          <ul class="footer-links">
+            <li><a href="#features" class="footer-link">核心特性</a></li>
+            <li><a href="#showcase" class="footer-link">交互视窗</a></li>
+            <li><a href="#comparison" class="footer-link">新旧世代对比</a></li>
+            <li><a href="#download" class="footer-link">跨平台下载</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">开发者与规格</h4>
+          <ul class="footer-links">
+            <li><a href="#sdk" class="footer-link">Go SDK 文档</a></li>
+            <li><a href="https://github.com/dof-dev/pvfine/blob/main/docs/FORMAT.md" target="_blank" rel="noopener" class="footer-link">FORMAT.md 二进制规格</a></li>
+            <li><a href="https://github.com/dof-dev/pvfine/blob/main/docs/PVF新格式分析.md" target="_blank" rel="noopener" class="footer-link">110US Paged 容器解析</a></li>
+            <li><a href="https://github.com/dof-dev/pvfine/releases" target="_blank" rel="noopener" class="footer-link">版本发布日志</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">开源与社区</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/dof-dev/pvfine" target="_blank" rel="noopener" class="footer-link">GitHub 仓库</a></li>
+            <li><a href="https://github.com/dof-dev/pvfine/issues" target="_blank" rel="noopener" class="footer-link">提交 Issue / 反馈</a></li>
+            <li><a href="https://github.com/dof-dev/pvfine/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">GPL-3.0 协议</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div class="disclaimer-text">
+          <strong>免责声明：</strong>
+          本项目（pvfine）旨在用于文件格式研究、逆向工程学习、单机交流与算法探索。不提供、不分发任何受版权保护的游戏客户端原始资源包。使用本项目对任何游戏资源进行的提取、修改等操作，所有法律风险与责任均由使用者自行承担。
+        </div>
+        <div>
+          &copy; 2026 pvfine Project. Open source under GPL-3.0.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>

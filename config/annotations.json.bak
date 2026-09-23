@@ -1351,7 +1351,8 @@
       "target": {
         "kind": "token",
         "section": "item list",
-        "index": 0
+        "index": 0,
+        "recordTokens": 1
       },
       "annotation": {
         "title": "ID",
@@ -1359,6 +1360,52 @@
         "relation": "物品"
       },
       "group": "shp"
+    },
+    {
+      "id": "path.etc",
+      "match": {
+        "glob": "etc/itemdropinfo_monster_hell.etc"
+      },
+      "target": {
+        "kind": "path",
+        "section": "name"
+      },
+      "annotation": {
+        "title": "深渊掉落",
+        "type": "text"
+      },
+      "group": "path"
+    },
+    {
+      "id": "rule.25",
+      "description": "套装效果路径",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "equipment part set",
+        "index": 1
+      },
+      "annotation": {
+        "title": "",
+        "type": "path",
+        "pathRoot": "equipment/"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "world drop",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "world drop",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "text"
+      },
+      "group": "etc"
     }
   ]
 }

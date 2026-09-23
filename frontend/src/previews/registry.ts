@@ -2,6 +2,8 @@ import AniPreview from "../components/previews/AniPreview.vue";
 import EquipmentPreview from "../components/previews/EquipmentPreview.vue";
 import type { PreviewFile, PreviewProvider } from "./types";
 
+const equipmentTypeSection = /^[ \t]*\[equipment type\][ \t]*(?:#.*)?$/i;
+
 const providers: PreviewProvider[] = [
   {
     id: "ani",
@@ -12,7 +14,8 @@ const providers: PreviewProvider[] = [
   {
     id: "equ",
     label: "装备预览",
-    matches: (file) => file.path.toLowerCase().endsWith(".equ"),
+    matches: (file) => file.path.toLowerCase().endsWith(".equ") &&
+      file.text.split(/\r\n|\r|\n/).some((line) => equipmentTypeSection.test(line)),
     component: EquipmentPreview,
     chrome: "game-tooltip",
   },

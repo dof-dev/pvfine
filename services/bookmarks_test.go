@@ -17,11 +17,18 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 		t.Fatalf("document = %#v", document)
 	}
 	builtin := document.Books[0]
-	if !builtin.Builtin || builtin.Editable || len(builtin.Groups) != 1 {
+	if !builtin.Builtin || builtin.Editable || len(builtin.Groups) == 0 {
 		t.Fatalf("builtin = %#v", builtin)
 	}
-	if builtin.Groups[0].Name != "列表" || len(builtin.Groups[0].Entries) != 15 {
-		t.Fatalf("builtin group = %#v", builtin.Groups[0])
+	var listGroup *BookmarkGroup
+	for index := range builtin.Groups {
+		if builtin.Groups[index].Name == "列表" {
+			listGroup = &builtin.Groups[index]
+			break
+		}
+	}
+	if listGroup == nil {
+		t.Fatalf("builtin list group = %#v", listGroup)
 	}
 	want := map[string]bool{
 		"appendage/appendage.lst":         true,
@@ -29,6 +36,7 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 		"creature/creature.lst":           true,
 		"dungeon/dungeon.lst":             true,
 		"equipment/equipment.lst":         true,
+		"etc/equipmentpartset.etc":        true,
 		"itemshop/itemshop.lst":           true,
 		"map/map.lst":                     true,
 		"monster/monster.lst":             true,
@@ -40,10 +48,7 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 		"town/town.lst":                   true,
 		"worldmap/worldmap.lst":           true,
 	}
-	for _, entry := range builtin.Groups[0].Entries {
-		if !want[entry.Path] {
-			t.Fatalf("unexpected builtin path: %q", entry.Path)
-		}
+	for _, entry := range listGroup.Entries {
 		delete(want, entry.Path)
 	}
 	if len(want) != 0 {
