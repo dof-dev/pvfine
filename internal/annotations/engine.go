@@ -289,7 +289,7 @@ func (e *Engine) listAnnotations(filePath string, view pvf.ScriptView, resolver 
 		}
 		switch kind {
 		case "list":
-			if normalizePath(relation.ListPath) == normalizePath(filePath) {
+			if sameListPath(relation.ListPath, filePath) {
 				appendBinding(listBinding{
 					relationName: relationName,
 					listPath:     relation.ListPath,
@@ -298,7 +298,7 @@ func (e *Engine) listAnnotations(filePath string, view pvf.ScriptView, resolver 
 			}
 		case "contextual":
 			for context, listPath := range relation.ContextPaths {
-				if normalizePath(listPath) != normalizePath(filePath) {
+				if !sameListPath(listPath, filePath) {
 					continue
 				}
 				appendBinding(listBinding{
@@ -710,6 +710,22 @@ func (r compiledRule) matches(filePath string, isDir bool) bool {
 
 func normalizePath(value string) string {
 	return strings.ToLower(strings.Trim(strings.ReplaceAll(value, "\\", "/"), "/"))
+}
+
+// sameListPath accepts the list/ location used by newer clients for a
+// relation configured with the older category directory layout.
+func sameListPath(configured, actual string) bool {
+	configured, actual = normalizePath(configured), normalizePath(actual)
+	if configured == actual {
+		return true
+	}
+	if strings.HasPrefix(actual, "list/") && strings.Contains(configured, "/") {
+		return path.Base(configured) == path.Base(actual)
+	}
+	if strings.HasPrefix(configured, "list/") && strings.Contains(actual, "/") {
+		return path.Base(configured) == path.Base(actual)
+	}
+	return false
 }
 
 func globMatch(pattern, value string) bool {

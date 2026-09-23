@@ -101,6 +101,56 @@ func TestSearchIndexResolvesPaged110Names(t *testing.T) {
 	}
 }
 
+func TestPaged110ItemAnnotationRelations(t *testing.T) {
+	c, a, itemIndex, _ := paged110LayoutFixture(t)
+	sourceIndex, err := a.AddFileText("stackable/source.stk", "[input item]\n514530375 1", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	reference, found := c.resolveAnnotationReferenceLocked("物品", "514530375")
+	c.mu.Unlock()
+	if !found || reference.FileIndex != itemIndex || reference.Name != "白色兽语腰带 [A款]" {
+		t.Fatalf("item relation = %#v, found = %v", reference, found)
+	}
+	source, err := NewEditorService(c).GetFile(sourceIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkedSource := false
+	for _, annotation := range source.Annotations {
+		if annotation.TargetFileIndex == itemIndex && annotation.Title == "白色兽语腰带 [A款]" {
+			linkedSource = true
+			break
+		}
+	}
+	if !linkedSource {
+		t.Fatalf("item reference annotation does not link to item %d: %#v", itemIndex, source.Annotations)
+	}
+
+	listIndex, ok := a.Find("list/equipment.lst")
+	if !ok {
+		t.Fatal("equipment list missing")
+	}
+	file, err := NewEditorService(c).GetFile(listIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked := false
+	for _, annotation := range file.Annotations {
+		if annotation.TargetFileIndex == itemIndex && annotation.Title == "白色兽语腰带 [A款]" {
+			linked = true
+			break
+		}
+	}
+	if !linked {
+		t.Fatalf("list annotations do not link to item %d: %#v", itemIndex, file.Annotations)
+	}
+}
+
 // TestSearchIndexMarksOverlayFallbackNames covers the marker the explorer, the
 // search results and the editor tags add when a name only the language overlay
 // could answer.

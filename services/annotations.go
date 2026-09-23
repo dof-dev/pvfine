@@ -295,6 +295,16 @@ func (c *core) appendUnindexedListLinksLocked(filePath string, view pvf.ScriptVi
 
 func (c *core) hasListRelationPathLocked(filePath string) bool {
 	current := normalizeAnnotationPath(filePath)
+	matches := func(configured string) bool {
+		if normalizeAnnotationPath(configured) == current {
+			return true
+		}
+		if c.archive == nil {
+			return false
+		}
+		index, ok := c.archive.FindList(configured)
+		return ok && normalizeAnnotationPath(c.archive.Path(index)) == current
+	}
 	for _, relation := range c.annotationEngine.Document().Relations {
 		kind := relation.Kind
 		if kind == "" {
@@ -302,12 +312,12 @@ func (c *core) hasListRelationPathLocked(filePath string) bool {
 		}
 		switch kind {
 		case "list":
-			if normalizeAnnotationPath(relation.ListPath) == current {
+			if matches(relation.ListPath) {
 				return true
 			}
 		case "contextual":
 			for _, listPath := range relation.ContextPaths {
-				if normalizeAnnotationPath(listPath) == current {
+				if matches(listPath) {
 					return true
 				}
 			}
@@ -366,7 +376,7 @@ func (c *core) readRelationTargetNameFromTextLocked(listPath, nameSection, text 
 	}
 	name := firstSectionValue(text, nameSection)
 	if name != "" || !sameSearchPath(listPath, itemShopListPath) {
-		return name
+		return resolvePreviewText(c.archive, name)
 	}
 	npcID := firstSectionValue(text, "npc")
 	if npcID == "" {
@@ -456,10 +466,11 @@ func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.Re
 	if c.archive == nil {
 		return result
 	}
-	listIndex, ok := c.archive.Find(listPath)
+	listIndex, ok := c.archive.FindList(listPath)
 	if !ok {
 		return result
 	}
+	listPath = c.archive.Path(listIndex)
 	text, err := c.archive.Text(listIndex)
 	if err != nil {
 		return result
