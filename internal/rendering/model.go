@@ -45,4 +45,6 @@ type FormatSpec struct {
 	// StandaloneValues are integer tokens rendered on their own line. Each
 	// occurrence resets the tokens-per-line counter for subsequent values.
 	StandaloneValues []int32 `json:"standaloneValues,omitempty"`
+	// NestedSections are paired child sections which preserve an unpaired parent.
+	NestedSections []string `json:"nestedSections,omitempty"`
 }

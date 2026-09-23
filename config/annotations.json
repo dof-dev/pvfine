@@ -1393,6 +1393,38 @@
       "group": "equ"
     },
     {
+      "id": "independent drop.monster id",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "independent drop",
+        "index": 1,
+        "recordTokens": 17
+      },
+      "annotation": {
+        "title": "怪物 ID",
+        "type": "reference",
+        "relation": "怪物"
+      },
+      "group": "etc"
+    },
+    {
+      "id": "independent drop.item id",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "independent drop",
+        "index": 2,
+        "recordTokens": 17
+      },
+      "annotation": {
+        "title": "物品 ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "etc"
+    },
+    {
       "id": "world drop",
       "match": {},
       "target": {

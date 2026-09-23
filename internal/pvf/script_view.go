@@ -54,6 +54,12 @@ type semanticSection struct {
 // its formatting. Malformed fragments are skipped in the same tolerant spirit
 // as encodeScript, while valid tokens retain their exact editor positions.
 func ParseScriptView(text string) ScriptView {
+	return ParseScriptViewWithNestedSections(text, nil)
+}
+
+// ParseScriptViewWithNestedSections preserves an unpaired parent while parsing
+// paired child sections explicitly declared by the active rendering rules.
+func ParseScriptViewWithNestedSections(text string, isNested func(parent, child string) bool) ScriptView {
 	lexemes := lexScriptText(text)
 	pairedNames := make(map[string]bool)
 	for _, lexeme := range lexemes {
@@ -81,6 +87,10 @@ func ParseScriptView(text string) ScriptView {
 			}
 
 			for len(sections) > 0 && !sections[len(sections)-1].paired {
+				parent := sections[len(sections)-1].name
+				if pairedNames[lexeme.name] && isNested != nil && isNested(parent, lexeme.name) {
+					break
+				}
 				sections = sections[:len(sections)-1]
 			}
 			sectionPath := make([]string, 0, len(sections)+1)

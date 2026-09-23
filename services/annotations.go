@@ -129,7 +129,17 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		return cloneEditorAnnotations(c.editorAnnotation.annotations), nil
 	}
 	filePath := c.archive.Path(index)
-	view := pvf.ParseScriptView(text)
+	view := pvf.ParseScriptViewWithNestedSections(text, func(parent, child string) bool {
+		if c.renderingEngine == nil {
+			return false
+		}
+		for _, nested := range c.renderingEngine.SectionFormat(filePath, parent).NestedSections {
+			if strings.EqualFold(nested, child) {
+				return true
+			}
+		}
+		return false
+	})
 	results := c.annotationEngine.AnnotateWithResolvers(
 		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
 		func(root, value string) (int32, bool) {

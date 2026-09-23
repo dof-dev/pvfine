@@ -180,6 +180,49 @@ func TestScriptRenderingStandaloneValuesResetGrouping(t *testing.T) {
 	}
 }
 
+func TestScriptRenderingIndependentDropWithOptionalList(t *testing.T) {
+	a := New()
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [
+    {
+      "id": "independent.drop",
+      "target": {"kind": "section", "section": "independent drop"},
+      "format": {"tokensPerLine": 17, "nestedSections": ["list"]}
+    },
+    {
+      "id": "list",
+      "target": {"kind": "section", "section": "list"},
+      "format": {"tokensPerLine": 2}
+    }
+  ]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+
+	input := "[independent drop]\n" +
+		"1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17\n" +
+		"[list]\n100 200 300 400\n[/list]\n" +
+		"18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34\n" +
+		"35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51\n" +
+		"[next]"
+	want := "[independent drop]\n" +
+		"\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t16\t17\n" +
+		"\t[list]\n\t\t100\t200\n\t\t300\t400\n\t[/list]\n" +
+		"\t18\t19\t20\t21\t22\t23\t24\t25\t26\t27\t28\t29\t30\t31\t32\t33\t34\n" +
+		"\t35\t36\t37\t38\t39\t40\t41\t42\t43\t44\t45\t46\t47\t48\t49\t50\t51\n\n" +
+		"[next]\n"
+	encoded, err := a.encodeScript(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a.decodeScriptForPath(encoded, "item.equ"); got != want {
+		t.Fatalf("rendering = %q, want %q", got, want)
+	}
+}
+
 func TestCanonicalTextIgnoresUserRenderingOverride(t *testing.T) {
 	a := New()
 	index, err := a.AddFileText("skills/test.skl", "[records]\n1 2 3 4 5\n[/records]", TypeScript)

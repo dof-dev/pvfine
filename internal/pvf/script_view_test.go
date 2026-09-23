@@ -43,6 +43,30 @@ func TestParseScriptViewNestedDirectTokens(t *testing.T) {
 	}
 }
 
+func TestParseScriptViewPairedChildInsideUnpairedSection(t *testing.T) {
+	view := ParseScriptViewWithNestedSections("[independent drop]\n1 2\n[list]\n100 200\n[/list]\n3 4\n[next]\n5", func(parent, child string) bool {
+		return parent == "independent drop" && child == "list"
+	})
+	var parentID int
+	var got []string
+	for _, element := range view.Elements {
+		if element.Kind != ScriptElementToken {
+			continue
+		}
+		if element.Value == "1" {
+			parentID = element.SectionID
+		}
+		got = append(got, element.Section+":"+element.Value)
+		if element.Value == "3" && (element.SectionID != parentID || element.Index != 2) {
+			t.Fatalf("token after list did not resume parent: %#v", element)
+		}
+	}
+	want := []string{"independent drop:1", "independent drop:2", "list:100", "list:200", "independent drop:3", "independent drop:4", "next:5"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("tokens = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseScriptViewUsesUTF16Offsets(t *testing.T) {
 	view := ParseScriptView("[name]\n`😀中`")
 	for _, element := range view.Elements {

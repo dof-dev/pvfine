@@ -309,6 +309,7 @@ type scriptFormatRule struct {
 	// once the frame is ready for rendering.
 	tokensPerLineIndex *int
 	standaloneValues   []int32
+	nestedSections     []string
 }
 
 // decodeScript decompiles a TypeScript payload back to readable form.
@@ -448,6 +449,15 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 			atLineStart = true
 		}
 	}
+	effectiveSectionDepth := func() int {
+		depth := len(sectionStack)
+		for activeDepth := range activeUnpaired {
+			if activeDepth <= len(sectionStack) {
+				depth++
+			}
+		}
+		return depth
+	}
 	contentIndent := func() int {
 		if !tokenSeen {
 			return 0
@@ -459,10 +469,7 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 			}
 			return 1
 		}
-		depth := len(sectionStack)
-		if _, ok := activeUnpaired[len(sectionStack)]; ok {
-			depth++
-		}
+		depth := effectiveSectionDepth()
 		if frame.format.tokensPerLine > 0 || frame.firstToken {
 			return depth
 		}
@@ -538,7 +545,9 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 				} else {
 					// A new section at this depth ends a legacy unpaired
 					// section before the new section starts.
-					delete(activeUnpaired, depth)
+					if parent := activeUnpaired[depth]; parent == nil || !sectionClosers[name] || !isNestedScriptSection(parent.format, name) {
+						delete(activeUnpaired, depth)
+					}
 				}
 			}
 			isSectionOpening := isTag && !closing && sectionClosers[name]
@@ -550,7 +559,8 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 					}
 				}
 			}
-			isTopLevelSection := isTag && !closing && len(sectionStack) == 0
+			sectionDepth := effectiveSectionDepth()
+			isTopLevelSection := isTag && !closing && sectionDepth == 0
 			if isTopLevelSection && topLevelSectionSeen {
 				if !atLineStart {
 					sb.WriteByte('\n')
@@ -558,7 +568,7 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 				sb.WriteByte('\n')
 				atLineStart = true
 			}
-			writeLineTag(tag, len(sectionStack))
+			writeLineTag(tag, sectionDepth)
 			tokenSeen = true
 			if isTag && !closing {
 				markSectionTag()
@@ -614,6 +624,7 @@ func scriptFormatRuleFromSpec(spec rendering.FormatSpec) scriptFormatRule {
 		tokensPerLine:      spec.TokensPerLine,
 		tokensPerLineIndex: spec.TokensPerLineIndex,
 		standaloneValues:   spec.StandaloneValues,
+		nestedSections:     spec.NestedSections,
 	}
 }
 
@@ -687,7 +698,9 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 				}
 				continue
 			}
-			closeUnpaired(depth)
+			if parent := activeUnpaired[depth]; parent == nil || !sectionClosers[name] || !isNestedScriptSection(parent.format, name) {
+				closeUnpaired(depth)
+			}
 			format := scriptFormatRule{}
 			if renderer != nil {
 				format = scriptFormatRuleFromSpec(renderer.SectionFormat(path, name))
@@ -729,6 +742,16 @@ func (a *Archive) scriptSectionFormats(raw []byte, path string, renderer *render
 		resolveFrame(stack[position])
 	}
 	return formats, sectionClosers
+}
+
+// isNestedScriptSection identifies explicitly declared paired child sections.
+func isNestedScriptSection(format scriptFormatRule, name string) bool {
+	for _, child := range format.nestedSections {
+		if strings.EqualFold(strings.TrimSpace(child), strings.TrimSpace(name)) {
+			return true
+		}
+	}
+	return false
 }
 
 // formatScriptFloat renders a float token so that re-encoding reproduces the

@@ -104,6 +104,9 @@ func Validate(document Document) error {
 
 		switch rule.Target.Kind {
 		case "file":
+			if len(rule.Format.NestedSections) > 0 {
+				problems = append(problems, prefix+".format.nestedSections 只允许用于 section 规则")
+			}
 			if strings.TrimSpace(rule.Target.Section) != "" {
 				problems = append(problems, prefix+".target.section 仅允许用于 section 规则")
 			}
@@ -116,6 +119,12 @@ func Validate(document Document) error {
 			}
 		default:
 			problems = append(problems, prefix+".target.kind 必须是 file 或 section")
+		}
+		for _, child := range rule.Format.NestedSections {
+			if strings.TrimSpace(child) == "" || strings.ContainsAny(child, "[]/") {
+				problems = append(problems, prefix+".format.nestedSections 必须包含有效的子 Section 名称")
+				break
+			}
 		}
 		if rule.Format.Offset < 0 {
 			problems = append(problems, prefix+".format.offset 不能为负数")

@@ -29,6 +29,29 @@
       }
     },
     {
+      "id": "section.independent-drop",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "independent drop"
+      },
+      "format": {
+        "tokensPerLine": 17,
+        "nestedSections": ["list"]
+      }
+    },
+    {
+      "id": "section.list",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "list"
+      },
+      "format": {
+        "tokensPerLine": 2
+      }
+    },
+    {
       "id": "section.skill-data-up",
       "match": {},
       "target": {

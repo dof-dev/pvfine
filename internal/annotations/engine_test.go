@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"pvfine/internal/pvf"
+	"pvfine/internal/rendering"
 )
 
 func intPtr(value int) *int { return &value }
@@ -274,6 +275,49 @@ func TestAnnotateStandaloneGroupsDoNotMatchQuotedSentinel(t *testing.T) {
 	if len(results) != 2 || text[results[0].Start:results[0].End] != "`-1`" ||
 		text[results[1].Start:results[1].End] != "10" {
 		t.Fatalf("results = %#v", results)
+	}
+}
+
+func TestDefaultIndependentDropReferencesAcrossOptionalList(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := rendering.LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "[independent drop]\n" +
+		"1 101 201 4 5 6 7 8 9 10 11 12 13 14 15 16 17\n" +
+		"[list]\n901 902\n903 904\n[/list]\n" +
+		"18 102 202 21 22 23 24 25 26 27 28 29 30 31 32 33 34\n" +
+		"35 103 203 38 39 40 41 42 43 44 45 46 47 48 49 50 51\n" +
+		"[next]\n1"
+	var resolved []string
+	view := pvf.ParseScriptViewWithNestedSections(text, func(parent, child string) bool {
+		for _, nested := range renderer.SectionFormat("etc/test.etc", parent).NestedSections {
+			if nested == child {
+				return true
+			}
+		}
+		return false
+	})
+	results := engine.Annotate("etc/test.etc", view, func(relation, id string) (Reference, bool) {
+		resolved = append(resolved, relation+":"+id)
+		return Reference{ID: id, Name: relation + id, FileIndex: 7}, true
+	})
+	want := []string{"怪物:101", "物品:201", "怪物:102", "物品:202", "怪物:103", "物品:203"}
+	wantResolved := []string{"怪物:101", "怪物:102", "怪物:103", "物品:201", "物品:202", "物品:203"}
+	if strings.Join(resolved, ",") != strings.Join(wantResolved, ",") {
+		t.Fatalf("resolved = %#v, want %#v", resolved, wantResolved)
+	}
+	if len(results) != len(want) {
+		t.Fatalf("results = %#v", results)
+	}
+	for i, result := range results {
+		if result.TargetFileIndex != 7 || !strings.HasSuffix(want[i], ":"+text[result.Start:result.End]) {
+			t.Fatalf("result[%d] = %#v", i, result)
+		}
 	}
 }
 

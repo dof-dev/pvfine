@@ -18,7 +18,7 @@ func TestLoadDefault(t *testing.T) {
 	for _, rule := range rules {
 		seen[rule.ID] = true
 	}
-	for _, id := range []string{"file.lst", "section.skill-data-up", "section.skill-levelup"} {
+	for _, id := range []string{"file.lst", "section.independent-drop", "section.list", "section.skill-data-up", "section.skill-levelup"} {
 		if !seen[id] {
 			t.Fatalf("default rules missing %q", id)
 		}
@@ -70,6 +70,16 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 			name: "dynamic index",
 			json: `{"version":1,"rules":[{"id":"bad","match":{},"target":{"kind":"section","section":"records"},"format":{"tokensPerLine":2,"tokensPerLineIndex":-1}}]}`,
 			want: "tokensPerLineIndex 不能为负数",
+		},
+		{
+			name: "nested sections on file",
+			json: `{"version":1,"rules":[{"id":"bad","match":{},"target":{"kind":"file"},"format":{"tokensPerLine":2,"nestedSections":["list"]}}]}`,
+			want: "nestedSections 只允许用于 section 规则",
+		},
+		{
+			name: "invalid nested section",
+			json: `{"version":1,"rules":[{"id":"bad","match":{},"target":{"kind":"section","section":"records"},"format":{"tokensPerLine":2,"nestedSections":["[/list]"]}}]}`,
+			want: "nestedSections 必须包含有效的子 Section 名称",
 		},
 		{
 			name: "glob",

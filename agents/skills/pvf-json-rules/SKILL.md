@@ -3,7 +3,7 @@ name: pvf-json-rules
 description: >-
   在 pvfine 项目中直接编辑 config/annotations.json 和 config/rendering.json，
   新增或调整 PVF 标注与脚本渲染规则。涵盖文件/Section 匹配、重复记录、-1
-  分隔、groupOffset、动态宽度、共享字段、关联列表、验证与重新加载。用户要求
+  分隔、groupOffset、动态宽度、嵌套 Section、共享字段、关联列表、验证与重新加载。用户要求
   “加标注”“调整渲染”“修改 JSON 规则”“为新 section 配置格式”时使用；
   不通过标注规则编辑器。
 ---
@@ -66,6 +66,8 @@ description: >-
 
 **执行顺序**：Section 直接 token → 应用一次 `offset` → 用整数 `standaloneValues` 分组（分隔 token 不入组）→ 每组应用 `groupOffset` → 按固定/动态 `recordTokens` 划完整记录 → 用记录内 `index` 定位标注。连续 `-1` 会形成空组，不产生记录。反引号包围的字符串（例如下方代码中的 `-1` 字符串 token）**不是**整数分隔符；仅整数类型 token 命中。
 
+**嵌套 Section**：父 Section 的标注只统计自己的直接 token；子 Section 的 token 单独统计，不占父级记录宽度。若未闭合的父 Section 后接有闭合标签的子 Section，并希望 `[/子段]` 后的 token 继续归属父段，须在渲染规则中为父段声明 `format.nestedSections`。例如 `[independent drop]` 的 17-token 记录，第 2 个 token 是怪物 ID、第 3 个是物品 ID：分别用 `section: "independent drop"`、`recordTokens: 17`、`index: 1`/`2` 配置两条 `reference` 规则，relation 为 `怪物`/`物品`。每条记录后的可选 `[list]...[/list]` 不会打断父级计数；`[list]` 的 2-token 排版由单独的渲染规则控制。重复记录的 `index` 从 0 开始。
+
 例如 `offset: 1`、`standaloneValues: [-1]`、`groupOffset: 1`、`recordTokens: 2`、`index: 0`：
 
 ```text
@@ -116,6 +118,9 @@ description: >-
 | `format.offset` | Section/文件开头前 N 个 token 各占一行，此后再开始 `tokensPerLine` 分组；不是标注用的 `groupOffset`。 |
 | `format.tokensPerLineIndex` | **仅 Section**：取 Section 内从 0 开始的直接 token 中的正整数作为每行宽度，失败则回退到 `tokensPerLine`。 |
 | `format.standaloneValues` | 32 位有符号整数数组；指定的整数 token 独占一行，并重置后续的行计数。 |
+| `format.nestedSections` | **仅 Section**：允许这些“有闭合标签”的子 Section 嵌套在当前未闭合父 Section 内，而不是把父 Section 提前结束；名称不带 `[]`。子 Section 自身的每行 token 数仍由它自己的 Section 规则决定。 |
+
+例如 `[independent drop]` 每 17 个 token 一组，并允许每组后可选一个 `[list]...[/list]`，其中 list 每 2 个 token 一组：父规则配置 `"tokensPerLine": 17, "nestedSections": ["list"]`，再为 `section: "list"` 配置 `"tokensPerLine": 2`。有 list 时进入子 Section 的 2-token 分组，`[/list]` 后继续父级 17-token 分组；没有 list 时父级直接继续下一组。
 
 渲染规则**不支持** `groupOffset`，也不支持标注的 `recordTokens` / `index`。两份 JSON 的同名 `standaloneValues` 含义相关，但前者只换行、后者只划分标注记录；有双重需求时两份文件都配。
 
@@ -141,6 +146,6 @@ description: >-
 
 ## 5. 参考实现（需要新字段时先核对）
 
-- 标注模型与校验：`internal/annotations/model.go`、`internal/annotations/loader.go`；分组与重复记录：`internal/annotations/engine.go` 的 `repeatedTokenGroups` / `repeatedRecordTokens`；共享字段：`internal/annotations/fields.go`。
+- 标注模型与校验：`internal/annotations/model.go`、`internal/annotations/loader.go`；分组与重复记录：`internal/annotations/engine.go` 的 `repeatedTokenGroups` / `repeatedRecordTokens`；共享字段：`internal/annotations/fields.go`。嵌套段的编辑器视图由 `internal/pvf/script_view.go` 的 `ParseScriptViewWithNestedSections` 解析，`services/annotations.go` 按当前文件的渲染规则提供父子段关系。
 - 渲染模型、匹配优先级与校验：`internal/rendering/model.go`、`internal/rendering/engine.go`、`internal/rendering/loader.go`；实际 token 输出：`internal/pvf/file.go`。
 - 热重载：`services/annotation_service.go`、`services/rendering_service.go`；内置配置来源：`config/embed.go`。如果本 skill 与代码不一致，以**当前代码及有效测试**为准，并同步更新本 skill。
