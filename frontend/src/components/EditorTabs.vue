@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   NButton,
   NIcon,
@@ -23,6 +23,8 @@ import { useEditorStore } from "../stores/editor";
 import { useAdvancedSearchStore } from "../stores/advancedSearch";
 import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
+import { useSettingsStore } from "../stores/settings";
+import { effectiveBinding, formatBinding } from "../shortcuts";
 import EditorLayout from "./EditorLayout.vue";
 import ScriptWorkbench from "./ScriptWorkbench.vue";
 import type { ResolvedThemeId } from "../theme";
@@ -32,6 +34,7 @@ const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
 const version = useVersionStore();
 const script = useScriptStore();
+const settings = useSettingsStore();
 const message = useMessage();
 
 const openingRecent = ref("");
@@ -39,9 +42,10 @@ const isDragging = ref(false);
 let dragCounter = 0;
 let dropTargetObserver: MutationObserver | null = null;
 
-const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
-  `${navigator.platform} ${navigator.userAgent}`
-);
+const openShortcut = computed(() => {
+  const binding = effectiveBinding("archive.open", settings.shortcutOverrides);
+  return binding ? formatBinding(binding) : "";
+});
 
 const props = defineProps<{
   themeId: ResolvedThemeId;
@@ -214,7 +218,7 @@ function isCancel(e: any): boolean {
           <div class="hero-text-col">
             <div class="hero-title-row">
               <span class="hero-title">打开 PVF 归档</span>
-              <span class="hero-kbd-badge">{{ isMac ? "⌘ O" : "Ctrl + O" }}</span>
+              <span v-if="openShortcut" class="hero-kbd-badge">{{ openShortcut }}</span>
             </div>
             <div class="hero-subtitle">
               点击浏览选择，或将 <code>.pvf</code> 文件直接拖拽至窗口任意位置

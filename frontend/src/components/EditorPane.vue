@@ -41,6 +41,7 @@ import { useExplorerStore } from "../stores/explorer";
 import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor, { type PlaceholderEditRequest } from "./CodeEditor.vue";
 import { useSettingsStore } from "../stores/settings";
+import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 import ImageThumbnail from "./ImageThumbnail.vue";
 import PreviewHost from "./previews/PreviewHost.vue";
 import FileGUIHost from "./gui/FileGUIHost.vue";
@@ -63,6 +64,10 @@ const archive = useArchiveStore();
 const explorer = useExplorerStore();
 const bookmarks = useBookmarkStore();
 const settings = useSettingsStore();
+function shortcutHint(command: ShortcutCommandId): string {
+  const binding = effectiveBinding(command, settings.shortcutOverrides);
+  return binding ? ` (${formatBinding(binding)})` : "";
+}
 const message = useMessage();
 const dialog = useDialog();
 const host = ref<HTMLDivElement | null>(null);
@@ -350,17 +355,17 @@ function onTabMouseDown(event: MouseEvent, index: number): void {
 
 const tabContextMenuOptions = computed(() => [
   {
-    label: "关闭当前",
+    label: `关闭当前${shortcutHint("workspace.close")}`,
     key: "close",
     disabled: tabContextMenu.value.index === null,
   },
   {
-    label: "关闭所有",
+    label: `关闭所有${shortcutHint("editor.closeAll")}`,
     key: "close-all",
     disabled: editor.tabs.length === 0,
   },
   {
-    label: "关闭其它",
+    label: `关闭其它${shortcutHint("editor.closeOthers")}`,
     key: "close-others",
     disabled: editor.tabs.length <= 1 || tabContextMenu.value.index === null,
   },
@@ -728,7 +733,7 @@ function onDrop(event: DragEvent): void {
                   <template #icon><NIcon :size="12"><Dismiss16Regular /></NIcon></template>
                 </NButton>
               </template>
-              关闭 (Cmd+W)
+              关闭{{ shortcutHint("workspace.close") }}
             </NTooltip>
           </span>
         </template>
@@ -768,7 +773,7 @@ function onDrop(event: DragEvent): void {
                   <template #icon><NIcon><Save24Regular /></NIcon></template>
                 </NButton>
               </template>
-              {{ activeTabDirty ? "保存当前文件 (Cmd+S)" : "当前文件没有待保存的修改" }}
+              {{ activeTabDirty ? `保存当前文件${shortcutHint("workspace.save")}` : "当前文件没有待保存的修改" }}
             </NTooltip>
             <NTooltip trigger="hover">
               <template #trigger>
@@ -829,7 +834,7 @@ function onDrop(event: DragEvent): void {
                   <template #icon><NIcon><SplitVertical24Regular /></NIcon></template>
                 </NButton>
               </template>
-              左右分屏 (Cmd/Ctrl+\)
+              左右分屏{{ shortcutHint("editor.splitColumns") }}
             </NTooltip>
 
             <NTooltip trigger="hover">
@@ -844,7 +849,7 @@ function onDrop(event: DragEvent): void {
                   <template #icon><NIcon><SplitHorizontal24Regular /></NIcon></template>
                 </NButton>
               </template>
-              上下分屏 (Cmd/Ctrl+Shift+\)
+              上下分屏{{ shortcutHint("editor.splitRows") }}
             </NTooltip>
 
             <NTooltip v-if="previewProviderFor(tab)" trigger="hover">

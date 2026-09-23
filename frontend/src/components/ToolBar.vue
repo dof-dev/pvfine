@@ -36,6 +36,7 @@ import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
 import { useDropRateStore } from "../stores/dropRate";
 import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
+import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 
 const archive = useArchiveStore();
 const editor = useEditorStore();
@@ -48,6 +49,11 @@ const dropRate = useDropRateStore();
 const message = useMessage();
 const dialog = useDialog();
 const hashRegistrationVisible = ref(false);
+
+function shortcutHint(command: ShortcutCommandId): string {
+  const binding = effectiveBinding(command, settings.shortcutOverrides);
+  return binding ? ` (${formatBinding(binding)})` : "";
+}
 
 const canSave = computed(() => archive.open && !editor.saving);
 const canSaveToSource = computed(() => archive.open && !!archive.info?.path && !editor.saving);
@@ -190,7 +196,7 @@ function isCancel(e: any): boolean {
             打开
           </NButton>
         </template>
-        打开 PVF 归档 (Cmd+O)
+        打开 PVF 归档{{ shortcutHint("archive.open") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -209,7 +215,7 @@ function isCancel(e: any): boolean {
             </NButton>
           </NBadge>
         </template>
-        {{ versionTooltip }}
+        {{ versionTooltip }}{{ shortcutHint("version.open") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -229,7 +235,7 @@ function isCancel(e: any): boolean {
             另存为
           </NButton>
         </template>
-        另存为新 PVF (Cmd+Shift+S)
+        另存为新 PVF{{ shortcutHint("archive.saveAs") }}
       </NTooltip>
 
       <NTooltip trigger="hover">
@@ -297,7 +303,7 @@ function isCancel(e: any): boolean {
             高级搜索
           </NButton>
         </template>
-        在当前归档中搜索二进制或字符串池
+        在当前归档中搜索二进制或字符串池{{ shortcutHint("search.advanced") }}
       </NTooltip>
     </div>
 
@@ -367,7 +373,7 @@ function isCancel(e: any): boolean {
           <template #icon><NIcon><Settings24Regular /></NIcon></template>
         </NButton>
       </template>
-      设置
+      设置{{ shortcutHint("settings.open") }}
     </NTooltip>
     <IndexHashRegistrationModal
       :show="hashRegistrationVisible"

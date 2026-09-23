@@ -11,6 +11,7 @@ import {
   DocumentSync24Regular,
   FolderOpen24Regular,
   Image24Regular,
+  Keyboard24Regular,
   Info24Regular,
   PaintBrush24Regular,
   Settings24Regular,
@@ -55,8 +56,9 @@ import { setDialogBusy } from "../dialogBusy";
 import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
 import { useImageStore } from "../stores/images";
+import ShortcutSettings from "./ShortcutSettings.vue";
 
-type TabKey = "general" | "editor" | "npk" | "system";
+type TabKey = "general" | "editor" | "npk" | "system" | "shortcuts";
 
 const settings = useSettingsStore();
 const autosave = useAutosaveStore();
@@ -126,6 +128,7 @@ const tabs = [
   { id: "editor" as const, label: "代码编辑器", icon: Code24Regular },
   { id: "npk" as const, label: "NPK 资源库", icon: Image24Regular },
   { id: "system" as const, label: "系统维护", icon: Wrench24Regular },
+  { id: "shortcuts" as const, label: "快捷键", icon: Keyboard24Regular },
 ];
 
 const npkProgressPercent = computed(() => {
@@ -437,7 +440,7 @@ function formatBytes(bytes: number): string {
     :mask-closable="!settings.saving"
     :close-on-esc="!settings.saving"
     class="settings-modal"
-    :style="{ width: 'min(680px, calc(100vw - 32px))' }"
+    :style="{ width: 'min(760px, calc(100vw - 32px))' }"
   >
     <template #header>
       <div class="settings-modal-header">
@@ -1156,6 +1159,9 @@ function formatBytes(bytes: number): string {
               <span class="about-pill">Naive UI</span>
             </div>
           </div>
+        </div>
+        <div v-show="activeTab === 'shortcuts'" class="settings-tab-panel">
+          <ShortcutSettings />
         </div>
       </div>
     </NSpin>

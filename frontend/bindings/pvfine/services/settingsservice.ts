@@ -24,3 +24,11 @@ export function SaveSettings(settings: $models.AppSettings): $CancellablePromise
 export function UpdateNPKDirectory(directory: string): $CancellablePromise<$models.AppSettings> {
     return $Call.ByID(2463267103, directory);
 }
+
+/**
+ * UpdateShortcutOverrides updates shortcuts without replacing settings that
+ * may have changed in another window since the caller last loaded them.
+ */
+export function UpdateShortcutOverrides(overrides: { [_ in string]?: string } | null): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(2454093076, overrides);
+}

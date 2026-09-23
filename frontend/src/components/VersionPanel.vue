@@ -1129,7 +1129,7 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
                 v-model:value="version.commitMessage"
                 placeholder="提交说明，例如：调整装备价格 (按 Enter 提交)"
                 :disabled="version.busy || !!confirmAction"
-                @keyup.enter="commit"
+                @keyup.enter.exact="commit"
               />
               <NButton
                 type="primary"

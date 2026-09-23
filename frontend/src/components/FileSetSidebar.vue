@@ -252,10 +252,10 @@ function isCancel(error: any): boolean {
   return String(error?.message ?? error).toLowerCase().includes("cancel");
 }
 
-/** 点击图标栏：收起时展开到目标面板，已展开时只切换面板。 */
+/** 点击图标栏：当前面板再次点击时收起侧栏，其余情况打开目标面板。 */
 function selectPanel(panel: SidebarPanel): void {
-  if (!sidebar.visible) sidebar.show(panel);
-  else sidebar.setPanel(panel);
+  if (sidebar.visible && sidebar.activePanel === panel) sidebar.close();
+  else sidebar.show(panel);
 }
 
 watch(

@@ -38,6 +38,9 @@ type AppSettings struct {
 	// cache directory resolved by DefaultAutosavePath.
 	AutosavePath            string `json:"autosavePath"`
 	AutosaveIntervalSeconds int    `json:"autosaveIntervalSeconds"`
+	// ShortcutOverrides stores only bindings changed by the user. An empty
+	// value explicitly disables a command's default binding.
+	ShortcutOverrides map[string]string `json:"shortcutOverrides"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -51,6 +54,7 @@ func DefaultAppSettings() AppSettings {
 		AutosaveEnabled:         false,
 		AutosavePath:            "",
 		AutosaveIntervalSeconds: DefaultAutosaveIntervalSeconds,
+		ShortcutOverrides:       map[string]string{},
 	}
 }
 
@@ -176,6 +180,22 @@ func (s *SettingsService) UpdateNPKDirectory(directory string) (AppSettings, err
 	return settings, nil
 }
 
+// UpdateShortcutOverrides updates shortcuts without replacing settings that
+// may have changed in another window since the caller last loaded them.
+func (s *SettingsService) UpdateShortcutOverrides(overrides map[string]string) (AppSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	settings, err := s.getSettingsLocked()
+	if err != nil {
+		return AppSettings{}, err
+	}
+	settings.ShortcutOverrides = overrides
+	if err := s.saveSettingsLocked(settings); err != nil {
+		return AppSettings{}, err
+	}
+	return settings, nil
+}
+
 // normalizeSettings trims typed paths and fills in the autosave interval for
 // callers that never set it (legacy settings files, partial API payloads).
 func normalizeSettings(settings AppSettings) AppSettings {
@@ -183,10 +203,31 @@ func normalizeSettings(settings AppSettings) AppSettings {
 	if settings.AutosaveIntervalSeconds <= 0 {
 		settings.AutosaveIntervalSeconds = DefaultAutosaveIntervalSeconds
 	}
+	if settings.ShortcutOverrides == nil {
+		settings.ShortcutOverrides = map[string]string{}
+	}
 	return settings
 }
 
 func validateSettings(settings AppSettings) error {
+	if len(settings.ShortcutOverrides) > 64 {
+		return fmt.Errorf("快捷键配置数量超出限制")
+	}
+	used := make(map[string]string, len(settings.ShortcutOverrides))
+	for command, binding := range settings.ShortcutOverrides {
+		if len(command) == 0 || len(command) > 64 || len(binding) > 80 {
+			return fmt.Errorf("无效的快捷键配置")
+		}
+		if binding != "" {
+			if err := validateShortcutBinding(binding); err != nil {
+				return fmt.Errorf("命令 %q: %w", command, err)
+			}
+			if previous, ok := used[binding]; ok {
+				return fmt.Errorf("快捷键 %q 同时分配给 %q 和 %q", binding, previous, command)
+			}
+			used[binding] = command
+		}
+	}
 	switch settings.AnnotationTagPlacement {
 	case AnnotationTagAfterTarget, AnnotationTagLineEnd, AnnotationTagHidden:
 	default:
@@ -213,6 +254,55 @@ func validateSettings(settings AppSettings) error {
 	}
 	if settings.AutosavePath != "" && !strings.EqualFold(filepath.Ext(settings.AutosavePath), ".pvf") {
 		return fmt.Errorf("定时缓存路径需要以 .pvf 结尾: %q", settings.AutosavePath)
+	}
+	return nil
+}
+
+func validateShortcutBinding(binding string) error {
+	parts := strings.Split(binding, "+")
+	if len(parts) == 0 {
+		return fmt.Errorf("无效的快捷键: %q", binding)
+	}
+	modifiers := map[string]bool{}
+	order := []string{"Mod", "Ctrl", "Meta", "Alt", "Shift"}
+	last := -1
+	for _, part := range parts[:len(parts)-1] {
+		index := -1
+		for i, modifier := range order {
+			if modifier == part {
+				index = i
+				break
+			}
+		}
+		if index <= last || modifiers[part] {
+			return fmt.Errorf("无效的快捷键: %q", binding)
+		}
+		modifiers[part] = true
+		last = index
+	}
+	code := parts[len(parts)-1]
+	validCode := false
+	if len(code) == 4 && strings.HasPrefix(code, "Key") && code[3] >= 'A' && code[3] <= 'Z' {
+		validCode = true
+	} else if len(code) == 6 && strings.HasPrefix(code, "Digit") && code[5] >= '0' && code[5] <= '9' {
+		validCode = true
+	} else {
+		for _, allowed := range []string{"Enter", "Backslash", "Slash", "BracketLeft", "BracketRight", "Minus", "Equal", "Comma", "Period", "Semicolon", "Quote", "Backquote", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "Backspace", "Space", "Tab", "Escape", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"} {
+			if code == allowed {
+				validCode = true
+				break
+			}
+		}
+	}
+	functionKey := len(code) >= 2 && code[0] == 'F' && code[1] >= '1' && code[1] <= '9'
+	hasNonShiftModifier := false
+	for _, part := range parts[:len(parts)-1] {
+		if part != "Shift" {
+			hasNonShiftModifier = true
+		}
+	}
+	if !validCode || code == "Tab" || code == "Escape" || (!functionKey && !hasNonShiftModifier) {
+		return fmt.Errorf("无效的快捷键: %q", binding)
 	}
 	return nil
 }

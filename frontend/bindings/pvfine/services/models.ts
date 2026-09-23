@@ -109,6 +109,12 @@ export interface AppSettings {
      */
     "autosavePath": string;
     "autosaveIntervalSeconds": number;
+
+    /**
+     * ShortcutOverrides stores only bindings changed by the user. An empty
+     * value explicitly disables a command's default binding.
+     */
+    "shortcutOverrides": { [_ in string]?: string } | null;
 }
 
 /**

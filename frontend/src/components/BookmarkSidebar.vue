@@ -119,6 +119,7 @@ const treeData = computed<BookmarkTreeNode[]>(() => {
   return result;
 });
 const treeExpandedKeys = ref<Array<string | number>>([]);
+const expandedKeysBeforeFilter = ref<Array<string | number>>([]);
 const treeSelectedKeys = computed(() => {
   if (bookmarks.selectedGroupId) return [`g:${bookmarks.selectedGroupId}`];
   return [];
@@ -133,21 +134,31 @@ const groupTitle = computed(() => (groupMode.value === "create" ? "新建分组"
 const entryTitle = "重命名书签";
 
 watch(
+  () => activeBook.value?.id,
   () => {
-    const book = activeBook.value;
-    return book ? `${book.id}:${groupStructureKey(book.groups)}:${filterText.value}` : "";
-  },
-  () => {
-    const next: Array<string | number> = [];
-    collectExpandedKeys(treeData.value, next);
-    treeExpandedKeys.value = next;
+    treeExpandedKeys.value = [];
+    expandedKeysBeforeFilter.value = [];
   },
   { immediate: true }
 );
 
-function groupStructureKey(groups: BookmarkGroup[]): string {
-  return groups.map((group) => `${group.id}[${groupStructureKey(group.groups)}]`).join("|");
-}
+watch(
+  () => filterText.value.trim(),
+  (query, previousQuery) => {
+    if (query && !previousQuery) expandedKeysBeforeFilter.value = [...treeExpandedKeys.value];
+    if (!query && previousQuery) treeExpandedKeys.value = expandedKeysBeforeFilter.value;
+  }
+);
+
+watch(
+  treeData,
+  (nodes) => {
+    if (!filterText.value.trim()) return;
+    const next: Array<string | number> = [];
+    collectExpandedKeys(nodes, next);
+    treeExpandedKeys.value = next;
+  }
+);
 
 function filterEntries(entries: BookmarkEntry[], query: string): BookmarkEntry[] {
   if (!query) return entries;

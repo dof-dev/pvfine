@@ -30,6 +30,8 @@ import { useSettingsStore } from "./stores/settings";
 import { useVersionStore } from "./stores/version";
 import { useImageStore } from "./stores/images";
 import { useScriptStore } from "./stores/script";
+import { useAdvancedSearchStore } from "./stores/advancedSearch";
+import { dispatchShortcut, type ShortcutCommandId } from "./shortcuts";
 import {
   applyTheme,
   getTheme,
@@ -46,6 +48,7 @@ const settings = useSettingsStore();
 const version = useVersionStore();
 const images = useImageStore();
 const script = useScriptStore();
+const advancedSearch = useAdvancedSearchStore();
 const isMac = /Macintosh|Mac OS X|MacIntel/i.test(
   `${navigator.platform} ${navigator.userAgent}`
 );
@@ -107,48 +110,86 @@ function onSystemThemeChange(event: MediaQueryListEvent): void {
   systemPrefersDark.value = event.matches;
 }
 
-async function onKeydown(e: KeyboardEvent) {
-  const mod = e.metaKey || e.ctrlKey;
-  if (!mod) return;
-  if (e.code === "Backslash") {
-    e.preventDefault();
-    if (e.shiftKey) {
-      editor.split("rows");
-    } else {
-      editor.split("columns");
-    }
-    return;
+function onKeydown(e: KeyboardEvent): void {
+  const overlayOpen = settings.visible || advancedSearch.visible || version.visible ||
+    !!document.querySelector(".n-modal-mask, .n-dialog-mask") ||
+    (e.target instanceof Element && !!e.target.closest(".n-modal, .n-dialog, [role='dialog']"));
+  dispatchShortcut(e, settings.shortcutOverrides, !!overlayOpen, executeShortcut, (command) =>
+    command === "workspace.execute" && version.visible && !settings.visible &&
+    !advancedSearch.visible && !document.querySelector(".n-dialog-mask") &&
+    e.target instanceof Element && !!e.target.closest(".version-modal"),
+    shortcutAvailable,
+  );
+}
+
+function shortcutAvailable(command: ShortcutCommandId): boolean {
+  switch (command) {
+    case "archive.open": return !archive.loading;
+    case "workspace.save": return script.workspaceVisible || archive.open;
+    case "archive.saveAs": return archive.open;
+    case "workspace.close": return editor.activeKey !== null;
+    case "editor.closeOthers": return archive.open && !script.workspaceVisible && editor.tabs.length > 1 && editor.activeKey !== null;
+    case "editor.closeAll": return archive.open && !script.workspaceVisible && editor.tabs.length > 0;
+    case "editor.splitColumns":
+    case "editor.splitRows": return archive.open && !script.workspaceVisible;
+    case "workspace.execute": return version.visible ? version.canCommit : script.workspaceVisible && script.canRun;
+    case "search.advanced":
+    case "version.open":
+    case "workspace.script": return archive.open;
+    case "settings.open": return true;
+    case "workspace.archive": return script.workspaceVisible;
   }
-  const key = e.key.toLowerCase();
-  if (key === "enter") {
-    if (script.workspaceVisible) {
-      if (script.canRun) {
-        e.preventDefault();
-        void script.run();
+}
+
+function executeShortcut(command: ShortcutCommandId): void {
+  switch (command) {
+    case "archive.open":
+      if (!archive.loading) void archive.openDialog();
+      break;
+    case "workspace.save":
+      if (script.workspaceVisible) {
+        void script.saveScript().catch(() => { /* 工作区显示具体错误。 */ });
+      } else if (archive.open) {
+        void editor.saveActiveTab();
       }
-    } else if (version.canCommit) {
-      e.preventDefault();
-      void version.commit();
-    }
-  } else if (key === "o") {
-    e.preventDefault();
-    if (!archive.loading) await archive.openDialog();
-  } else if (key === "s" && !e.shiftKey && script.workspaceVisible) {
-    e.preventDefault();
-    try {
-      await script.saveScript();
-    } catch {
-      // 工作区已经展示了具体错误。
-    }
-  } else if (key === "s" && !e.shiftKey) {
-    e.preventDefault();
-    if (archive.open) await editor.saveActiveTab();
-  } else if (key === "s" && e.shiftKey) {
-    e.preventDefault();
-    if (archive.open) await editor.saveAs();
-  } else if (key === "w") {
-    e.preventDefault();
-    if (editor.activeKey !== null) editor.requestCloseTab(editor.activeKey, editor.activePaneId);
+      break;
+    case "archive.saveAs":
+      if (archive.open) void editor.saveAs();
+      break;
+    case "workspace.close":
+      if (editor.activeKey !== null) editor.requestCloseTab(editor.activeKey, editor.activePaneId);
+      break;
+    case "editor.closeOthers":
+      if (editor.activeKey !== null) editor.requestCloseOthers(editor.activeKey);
+      break;
+    case "editor.closeAll":
+      editor.requestCloseAll();
+      break;
+    case "editor.splitColumns":
+      if (archive.open && !script.workspaceVisible) editor.split("columns");
+      break;
+    case "editor.splitRows":
+      if (archive.open && !script.workspaceVisible) editor.split("rows");
+      break;
+    case "workspace.execute":
+      if (version.visible && version.canCommit) void version.commit();
+      else if (script.workspaceVisible && script.canRun) void script.run();
+      break;
+    case "search.advanced":
+      if (archive.open) advancedSearch.open();
+      break;
+    case "version.open":
+      if (archive.open) version.open();
+      break;
+    case "settings.open":
+      settings.open();
+      break;
+    case "workspace.archive":
+      if (script.workspaceVisible) script.hideWorkspace();
+      break;
+    case "workspace.script":
+      if (archive.open) script.showWorkspace();
+      break;
   }
 }
 </script>

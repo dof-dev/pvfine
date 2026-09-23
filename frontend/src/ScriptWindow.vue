@@ -14,6 +14,7 @@ import { ScriptWindowService } from "../bindings/pvfine/services";
 import { useArchiveStore } from "./stores/archive";
 import { useScriptStore } from "./stores/script";
 import { useSettingsStore } from "./stores/settings";
+import { dispatchShortcut, type ShortcutCommandId } from "./shortcuts";
 import {
   applyTheme,
   getTheme,
@@ -100,31 +101,26 @@ function onCancelClose(): void {
   closing.value = false;
 }
 
-// 主窗口的快捷键挂在 App.vue 的 onKeydown 上，独立窗口没有那层，所以要自己
-// 提供脚本工作区相关的：运行、保存、关闭窗口。
 function onKeydown(e: KeyboardEvent): void {
-  if (!(e.metaKey || e.ctrlKey)) return;
-  if (e.key === "Enter") {
-    if (script.canRun) {
-      e.preventDefault();
-      void script.run().catch(() => {
-        // 工作区会展示具体错误。
-      });
-    }
-    return;
-  }
-  const key = e.key.toLowerCase();
-  if (key === "s" && !e.shiftKey) {
-    e.preventDefault();
-    void script.saveScript().catch(() => {
-      // 工作区会展示具体错误。
-    });
-    return;
-  }
-  if (key === "w") {
-    // 独立窗口里 Ctrl+W 的语义是关闭这个窗口，走与点标题栏关闭相同的确认流程。
-    e.preventDefault();
-    void closeNow();
+  const overlayOpen = confirmCloseVisible.value || !!document.querySelector(".n-modal-mask, .n-dialog-mask") ||
+    (e.target instanceof Element && !!e.target.closest(".n-modal, .n-dialog, [role='dialog']"));
+  dispatchShortcut(e, settings.shortcutOverrides, !!overlayOpen, executeShortcut, undefined, (command) => {
+    if (command === "workspace.execute") return script.canRun;
+    return command === "workspace.save" || command === "workspace.close";
+  });
+}
+
+function executeShortcut(command: ShortcutCommandId): void {
+  switch (command) {
+    case "workspace.execute":
+      if (script.canRun) void script.run().catch(() => { /* 工作区显示具体错误。 */ });
+      break;
+    case "workspace.save":
+      void script.saveScript().catch(() => { /* 工作区显示具体错误。 */ });
+      break;
+    case "workspace.close":
+      void closeNow();
+      break;
   }
 }
 

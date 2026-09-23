@@ -1,12 +1,14 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { SettingsService } from "../../bindings/pvfine/services";
+import { Events } from "@wailsio/runtime";
 import type { AppSettings } from "../../bindings/pvfine/services/models";
 import type { ThemeMode } from "../theme";
+import type { ShortcutOverrides } from "../shortcuts";
 
 export type AnnotationTagPlacement = "after-target" | "line-end" | "hidden";
 export type ExplorerOpenMode = "single-click" | "double-click";
-export type SettingsTab = "general" | "editor" | "npk" | "system";
+export type SettingsTab = "general" | "editor" | "npk" | "system" | "shortcuts";
 export type { ThemeMode } from "../theme";
 
 export const defaultAutosaveIntervalSeconds = 300;
@@ -23,6 +25,7 @@ const defaultSettings: AppSettings = {
   autosaveEnabled: false,
   autosavePath: "",
   autosaveIntervalSeconds: defaultAutosaveIntervalSeconds,
+  shortcutOverrides: {},
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -39,6 +42,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const autosaveEnabled = ref(false);
   const autosavePath = ref("");
   const autosaveIntervalSeconds = ref(defaultAutosaveIntervalSeconds);
+  const shortcutOverrides = ref<ShortcutOverrides>({});
 
   /** 当前设置的全量快照,避免每次保存都手写所有字段。 */
   function currentSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -52,6 +56,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosaveEnabled: autosaveEnabled.value,
       autosavePath: autosavePath.value,
       autosaveIntervalSeconds: autosaveIntervalSeconds.value,
+      shortcutOverrides: shortcutOverrides.value,
       ...overrides,
     };
   }
@@ -69,6 +74,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosaveEnabled.value = normalizeAutosaveEnabled(settings.autosaveEnabled);
       autosavePath.value = normalizeAutosavePath(settings.autosavePath);
       autosaveIntervalSeconds.value = normalizeAutosaveInterval(settings.autosaveIntervalSeconds);
+      shortcutOverrides.value = normalizeShortcutOverrides(settings.shortcutOverrides);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
@@ -80,6 +86,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosaveEnabled.value = false;
       autosavePath.value = "";
       autosaveIntervalSeconds.value = defaultAutosaveIntervalSeconds;
+      shortcutOverrides.value = {};
     } finally {
       loaded.value = true;
     }
@@ -117,6 +124,30 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveSettings(currentSettings({ autosaveIntervalSeconds: seconds }));
   }
 
+  async function updateShortcutOverrides(overrides: ShortcutOverrides) {
+    saving.value = true;
+    try {
+      const updated = await SettingsService.UpdateShortcutOverrides(overrides);
+      shortcutOverrides.value = normalizeShortcutOverrides(updated.shortcutOverrides);
+      await Events.Emit("settings:shortcuts-changed");
+    } finally {
+      saving.value = false;
+    }
+  }
+
+  async function reloadShortcuts() {
+    try {
+      const latest = await SettingsService.GetSettings();
+      shortcutOverrides.value = normalizeShortcutOverrides(latest.shortcutOverrides);
+    } catch (error) {
+      console.error("reload shortcuts failed", error);
+    }
+  }
+
+  Events.On("settings:shortcuts-changed", () => {
+    void reloadShortcuts();
+  });
+
   async function saveSettings(next: AppSettings) {
     const previousPlacement = annotationTagPlacement.value;
     const previousExplorerOpenMode = explorerOpenMode.value;
@@ -127,6 +158,7 @@ export const useSettingsStore = defineStore("settings", () => {
     const previousAutosaveEnabled = autosaveEnabled.value;
     const previousAutosavePath = autosavePath.value;
     const previousAutosaveInterval = autosaveIntervalSeconds.value;
+    const previousShortcutOverrides = shortcutOverrides.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
     vimMode.value = normalizeVimMode(next.vimMode);
@@ -136,6 +168,7 @@ export const useSettingsStore = defineStore("settings", () => {
     autosaveEnabled.value = normalizeAutosaveEnabled(next.autosaveEnabled);
     autosavePath.value = normalizeAutosavePath(next.autosavePath);
     autosaveIntervalSeconds.value = normalizeAutosaveInterval(next.autosaveIntervalSeconds);
+    shortcutOverrides.value = normalizeShortcutOverrides(next.shortcutOverrides);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -152,6 +185,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosaveEnabled.value = previousAutosaveEnabled;
       autosavePath.value = previousAutosavePath;
       autosaveIntervalSeconds.value = previousAutosaveInterval;
+      shortcutOverrides.value = previousShortcutOverrides;
       throw error;
     } finally {
       saving.value = false;
@@ -182,6 +216,7 @@ export const useSettingsStore = defineStore("settings", () => {
     autosaveEnabled,
     autosavePath,
     autosaveIntervalSeconds,
+    shortcutOverrides,
     load,
     savePlacement,
     saveExplorerOpenMode,
@@ -191,6 +226,7 @@ export const useSettingsStore = defineStore("settings", () => {
     saveAutosaveEnabled,
     saveAutosavePath,
     saveAutosaveInterval,
+    updateShortcutOverrides,
     open,
   };
 });
@@ -235,4 +271,13 @@ function normalizeAutosaveInterval(value: number | null | undefined): number {
   const min = minAutosaveIntervalMinutes * 60;
   const max = maxAutosaveIntervalMinutes * 60;
   return Math.min(max, Math.max(min, Math.round(seconds)));
+}
+
+function normalizeShortcutOverrides(value: Record<string, string | undefined> | null | undefined): ShortcutOverrides {
+  if (!value || typeof value !== "object") return {};
+  const result: ShortcutOverrides = {};
+  for (const [command, binding] of Object.entries(value)) {
+    if (typeof binding === "string") result[command] = binding;
+  }
+  return result;
 }
