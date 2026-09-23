@@ -248,8 +248,16 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 		c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "sqlite", OpenDurationMs: c.indexStatus.OpenDurationMs}
 		status := c.indexStatus
 		c.mu.Unlock()
+		finishTask := c.archiveTasks.begin()
+		if !c.indexCurrent(a, gen, ctx) {
+			finishTask()
+			return
+		}
 		emitEvent("archive:index-progress", status)
-		go c.buildSearchIndexSQLite(ctx, gen, a, index, startedAt, force)
+		go func() {
+			defer finishTask()
+			c.buildSearchIndexSQLite(ctx, gen, a, index, startedAt, force)
+		}()
 		return
 	}
 	openDurationMs := c.indexStatus.OpenDurationMs
@@ -284,12 +292,23 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 	status := c.indexStatus
 	c.mu.Unlock()
 
-	emitEvent("archive:index-progress", status)
-	if delta {
-		go c.buildSearchIndexDelta(ctx, gen, a, startedAt, listIndexes)
+	finishTask := c.archiveTasks.begin()
+	if !c.indexCurrent(a, gen, ctx) {
+		finishTask()
 		return
 	}
-	go c.buildSearchIndex(ctx, gen, a, startedAt, force, cacheEligible)
+	emitEvent("archive:index-progress", status)
+	if delta {
+		go func() {
+			defer finishTask()
+			c.buildSearchIndexDelta(ctx, gen, a, startedAt, listIndexes)
+		}()
+		return
+	}
+	go func() {
+		defer finishTask()
+		c.buildSearchIndex(ctx, gen, a, startedAt, force, cacheEligible)
+	}()
 }
 
 func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Archive, index *sqliteArchiveIndex, startedAt time.Time, force bool) {

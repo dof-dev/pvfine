@@ -259,6 +259,26 @@ func TestPaged110Keys(t *testing.T) {
 	}
 }
 
+func TestPaged110EmbeddedSealedKeyTable(t *testing.T) {
+	if got, want := len(paged110EmbeddedSealedPageKeys), 1920; got != want {
+		t.Fatalf("embedded sk.dat = %d bytes, want %d", got, want)
+	}
+	sealed, err := loadPaged110SealedPageKeys(t.TempDir())
+	if err != nil {
+		t.Fatalf("load embedded sk.dat: %v", err)
+	}
+	if !bytes.Equal(sealed, paged110EmbeddedSealedPageKeys) {
+		t.Fatal("missing sidecar did not select the embedded sk.dat")
+	}
+	table, err := unsealPageKeyTable(sealed)
+	if err != nil {
+		t.Fatalf("unseal embedded sk.dat: %v", err)
+	}
+	if want := 52 * paged110PageKeySize; len(table) != want {
+		t.Fatalf("page key table = %d bytes, want %d", len(table), want)
+	}
+}
+
 // TestPaged110SaveEditRoundTrip edits a string-table payload in place, writes
 // the container back (page guards re-encrypted) and reopens it: the edit
 // survives, the container is still a valid Paged110 archive, and untouched

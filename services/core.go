@@ -6,6 +6,8 @@ package services
 import (
 	"context"
 	"errors"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -135,6 +137,7 @@ type core struct {
 	binaryCache          map[binarySearchKey][]advancedFileMatch
 	unpackCancel         atomic.Bool
 	unpackRunning        atomic.Bool
+	archiveTasks         archiveTaskGate
 	// autosave mirrors unsaved edits into a backup cache. It is attached once
 	// during startup (nil in tests) so save/close handlers can drop a backup
 	// that no longer protects anything.
@@ -168,6 +171,7 @@ func makeCore() *core {
 		renderingEngine:  renderingEngine,
 		renderingErr:     renderingErr,
 		visualsByFile:    make(map[int32]fileVisuals),
+		archiveTasks:     newArchiveTaskGate(),
 	}
 }
 
@@ -520,20 +524,39 @@ func (c *core) bindRenderingEngineLocked(a *pvf.Archive) {
 }
 
 func (c *core) closeArchive() {
+	waitFor := c.archiveTasks.beginClose()
+	archives := make(map[*pvf.Archive]struct{})
+	addArchive := func(a *pvf.Archive) {
+		if a != nil {
+			archives[a] = struct{}{}
+		}
+	}
+	var diskIndex *sqliteArchiveIndex
+	var advancedDisk *advancedSQLite
+
 	c.mu.Lock()
+	addArchive(c.archive)
+	addArchive(c.versionBaseArchive)
+	if c.batchPlan != nil {
+		addArchive(c.batchPlan.archive)
+		addArchive(c.batchPlan.staged)
+	}
+	if c.scriptPlan != nil {
+		addArchive(c.scriptPlan.archive)
+	}
 	c.detachVersionLocked()
 	if c.indexCancel != nil {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
-	c.invalidateAdvancedSearchLocked()
+	advancedDisk = c.detachAdvancedSearchLocked()
 	c.indexGen++
 	c.batchRevision++
 	c.batchPlan = nil
 	c.invalidateScriptLocked()
 	c.archive = nil
 	if c.diskIndex != nil {
-		c.diskIndex.close()
+		diskIndex = c.diskIndex
 		c.diskIndex = nil
 	}
 	c.annotationRelations = nil
@@ -558,9 +581,28 @@ func (c *core) closeArchive() {
 	c.indexRefreshPendingForce = false
 	c.advancedStatus = AdvancedSearchIndexStatus{State: AdvancedIndexStateIdle}
 	c.binaryCache = nil
-	c.unpackCancel.Store(false)
+	c.unpackCancel.Store(true)
 	c.unpackRunning.Store(false)
 	c.mu.Unlock()
+
+	for _, done := range waitFor {
+		<-done
+	}
+	if diskIndex != nil {
+		diskIndex.close()
+	}
+	if advancedDisk != nil {
+		advancedDisk.close()
+	}
+	released := int64(0)
+	for a := range archives {
+		released += a.Release()
+	}
+	if released >= 8<<20 {
+		runtime.GC()
+		debug.FreeOSMemory()
+	}
+	c.archiveTasks.endClose()
 }
 
 // withArchive runs fn with the loaded archive under read lock.

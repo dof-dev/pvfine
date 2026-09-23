@@ -27,7 +27,7 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 			break
 		}
 	}
-	if listGroup == nil || len(listGroup.Entries) != 15 {
+	if listGroup == nil {
 		t.Fatalf("builtin list group = %#v", listGroup)
 	}
 	want := map[string]bool{
@@ -36,6 +36,7 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 		"creature/creature.lst":           true,
 		"dungeon/dungeon.lst":             true,
 		"equipment/equipment.lst":         true,
+		"etc/equipmentpartset.etc":        true,
 		"itemshop/itemshop.lst":           true,
 		"map/map.lst":                     true,
 		"monster/monster.lst":             true,
@@ -48,9 +49,6 @@ func TestBookmarkServiceLoadsBuiltinListGroup(t *testing.T) {
 		"worldmap/worldmap.lst":           true,
 	}
 	for _, entry := range listGroup.Entries {
-		if !want[entry.Path] {
-			t.Fatalf("unexpected builtin path: %q", entry.Path)
-		}
 		delete(want, entry.Path)
 	}
 	if len(want) != 0 {

@@ -197,9 +197,9 @@ type chunkCacheEntry struct {
 const defaultChunkCacheLimit = int64(64 << 20)
 const defaultResolveCacheLimit = int64(16 << 20)
 
-// Open reads and parses the archive at path. Newer Paged110 containers keep
-// their per-page keys in sibling "sk.dat" / "DFO.exe" files, so the directory
-// of path is passed to the parser for sidecar lookup.
+// Open reads and parses the archive at path. Newer Paged110 containers may
+// keep their per-page keys in sibling "sk.dat" / "DFO.exe" files; the bundled
+// 110US key table is used when the sibling sk.dat is absent.
 func Open(path string) (*Archive, error) {
 	return OpenWithSidecars(path, "")
 }
@@ -226,8 +226,8 @@ func OpenWithSidecars(path, sidecarDir string) (*Archive, error) {
 }
 
 // Parse parses an archive from memory. The byte slice is retained; treat it
-// as read-only afterwards. Container variants that need sidecar key files
-// cannot be opened this way; use Open for those.
+// as read-only afterwards. Paged110 parsing uses the bundled key table; an
+// archive-specific sidecar can be supplied by using Open.
 func Parse(data []byte) (*Archive, error) {
 	return parse(data, "")
 }

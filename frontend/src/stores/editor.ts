@@ -887,6 +887,11 @@ export const useEditorStore = defineStore("editor", () => {
   Events.On("archive:reloaded", () => {
     void refreshAfterArchiveChange(tabs.value.map((tab) => tab.path), true);
   });
+  Events.On("archive:closed", () => {
+    pendingClose.value = null;
+    draggingTab.value = null;
+    closeAllTabs();
+  });
   // 脚本或批处理在别的窗口应用了变更时，本窗口的标签不会自己更新。事件是
   // 广播的，所以这里同时覆盖同窗口（发起方已自行刷新，重复刷新是幂等的）
   // 和独立脚本窗口发起的情况。

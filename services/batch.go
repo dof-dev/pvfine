@@ -131,6 +131,8 @@ func (s *BatchService) Preview(request BatchRequest) (*BatchPreviewPage, error) 
 		return nil, err
 	}
 
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {

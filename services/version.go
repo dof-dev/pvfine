@@ -451,6 +451,8 @@ func (c *core) recordVersionMutationLocked(label string, before, after pvfversio
 
 // Initialize creates the sidecar repository for the currently opened PVF.
 func (s *VersionService) Initialize() (*VersionStatus, error) {
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.c.mu.RLock()
 	a := s.c.archive
 	if a == nil {
@@ -1283,7 +1285,17 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 	c.versionLoadError = ""
 	c.mu.Unlock()
 
+	finishTask := c.archiveTasks.begin()
+	c.mu.RLock()
+	current := c.versionLoadCurrentLocked(archive, loadID)
+	c.mu.RUnlock()
+	if !current {
+		finishTask()
+		return
+	}
+
 	go func() {
+		defer finishTask()
 		session, err := prepareVersionedSession(path, archive)
 		if err != nil {
 			c.finishVersionLoad(archive, loadID, err)

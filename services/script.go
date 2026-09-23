@@ -299,6 +299,8 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 		ctx = context.Background()
 	}
 	runCtx, cancel := context.WithTimeout(ctx, scriptRunTimeout)
+	finishTask := s.c.archiveTasks.begin()
+	defer finishTask()
 	s.mu.Lock()
 	s.cancel = cancel
 	s.mu.Unlock()
