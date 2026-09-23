@@ -162,7 +162,11 @@
         },
         {
           "path": "etc/worlddrop.etc",
-          "name": "worlddrop.etc"
+          "name": "全局掉率"
+        },
+        {
+          "path": "etc/independent_drop.etc",
+          "name": "independent_drop.etc"
         }
       ]
     },

@@ -163,6 +163,10 @@
         {
           "path": "etc/worlddrop.etc",
           "name": "全局掉率"
+        },
+        {
+          "path": "etc/independent_drop.etc",
+          "name": "独立掉落"
         }
       ]
     },
