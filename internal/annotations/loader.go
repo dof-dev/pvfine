@@ -351,12 +351,13 @@ func Validate(document Document) error {
 			problems = append(problems, prefix+".target.kind 必须是 path、section 或 token")
 		}
 
-		if strings.TrimSpace(rule.Annotation.Title) == "" {
-			problems = append(problems, prefix+".annotation.title 不能为空")
-		}
 		switch rule.Annotation.Type {
 		case "text":
 		case "image":
+		case "path":
+			if root := strings.TrimSpace(strings.ReplaceAll(rule.Annotation.PathRoot, "\\", "/")); root != "" && (strings.HasPrefix(root, "/") || root == ".." || strings.HasPrefix(root, "../") || strings.Contains(root, "/../")) {
+				problems = append(problems, prefix+".annotation.pathRoot 必须是归档内的相对目录")
+			}
 		case "enum":
 			if len(rule.Annotation.Values) == 0 {
 				problems = append(problems, prefix+".annotation.values 不能为空")
@@ -378,7 +379,10 @@ func Validate(document Document) error {
 				}
 			}
 		default:
-			problems = append(problems, prefix+".annotation.type 必须是 text、image、enum 或 reference")
+			problems = append(problems, prefix+".annotation.type 必须是 text、image、enum、reference 或 path")
+		}
+		if rule.Annotation.Type != "path" && rule.Annotation.PathRoot != "" {
+			problems = append(problems, prefix+".annotation.pathRoot 只允许用于 path 标注")
 		}
 		if rule.Annotation.InlineImage && rule.Annotation.Type != "image" {
 			problems = append(problems, prefix+".annotation.inlineImage 只允许用于 image 标注")

@@ -29,6 +29,17 @@ func TestValidateRejectsDuplicateRuleID(t *testing.T) {
 	}
 }
 
+func TestValidatePathAnnotationRoot(t *testing.T) {
+	rule := Rule{ID: "path", Target: TargetSpec{Kind: "token", Section: "file", Index: intPtr(0)}, Annotation: AnnotationSpec{Title: "文件", Type: "path", PathRoot: "equipment/character"}}
+	if err := Validate(Document{Version: 1, Rules: []Rule{rule}}); err != nil {
+		t.Fatal(err)
+	}
+	rule.Annotation.PathRoot = "../outside"
+	if err := Validate(Document{Version: 1, Rules: []Rule{rule}}); err == nil || !strings.Contains(err.Error(), "pathRoot") {
+		t.Fatalf("invalid root error = %v", err)
+	}
+}
+
 func TestAnnotateDuplicateSectionsAndConflict(t *testing.T) {
 	first := Rule{
 		ID: "first", Match: MatchSpec{Extensions: []string{".equ"}},

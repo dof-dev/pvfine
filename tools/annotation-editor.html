@@ -334,8 +334,11 @@
           </div>
         </div>
         <div class="section"><div class="section-title">标注内容</div>
-          ${field("Tag 标题", input("annotation-title", annotation.title || ""))}
-          ${field("标注类型", select("annotation-type", annotation.type, [["text","文本"],["image","图片"],["enum","枚举"],["reference","关联 ID"]]))}
+          ${field("Tag 标题", input("annotation-title", annotation.title || ""), "可留空；留空时不显示 Tag，路径等跳转仍可通过 Cmd/Ctrl+单击正文使用")}
+          ${field("标注类型", select("annotation-type", annotation.type, [["text","文本"],["image","图片"],["enum","枚举"],["reference","关联 ID"],["path","路径"]]))}
+          <div id="pathFields" class="${annotation.type === "path" ? "" : "hidden"}">
+            ${field("路径根目录", input("annotation-path-root", annotation.pathRoot || ""), "可选；填写归档内目录，例如 equipment/character。留空时从归档根目录查找")}
+          </div>
           <div id="inlineImageField" class="${annotation.type === "image" ? "" : "hidden"}">
             ${field("正文显示图片", `<label class="checkbox-control" for="annotation-inline-image"><input id="annotation-inline-image" type="checkbox" ${annotation.inlineImage ? "checked" : ""} />在标注 Tag 中显示图片</label>`, "关闭时仅在悬浮提示中异步加载图片")}
           </div>
@@ -397,16 +400,17 @@
       bind("annotation-content", "input", (value) => rule.annotation.content = value);
       bind("annotation-values", "input", (value) => rule.annotation.values = textToValues(value));
       bind("annotation-relation", "change", (value) => rule.annotation.relation = value);
+      bind("annotation-path-root", "input", (value) => { if (value.trim()) rule.annotation.pathRoot = value; else delete rule.annotation.pathRoot; });
       bind("target-kind", "change", (value) => {
         rule.target.kind = value;
-        if (value === "path") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; rule.annotation.type = "text"; }
-        if (value === "section") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; rule.annotation.type = "text"; }
+        if (value === "path") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; delete rule.annotation.pathRoot; rule.annotation.type = "text"; }
+        if (value === "section") { delete rule.target.index; delete rule.target.range; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; delete rule.annotation.pathRoot; rule.annotation.type = "text"; }
         if (value === "token" && rule.target.index == null && !rule.target.range) rule.target.index = rule.annotation.type === "image" ? 1 : 0;
         if (value === "token" && rule.annotation.type === "image") { rule.target.recordTokens ||= 2; rule.target.imagePathToken ??= 0; }
         renderAll(); scheduleSave();
       });
       bind("token-mode", "change", (value) => {
-        if (value === "range") { delete rule.target.index; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; rule.target.range = { start: 0, endExclusive: 1 }; rule.annotation.type = "text"; }
+        if (value === "range") { delete rule.target.index; delete rule.target.recordTokens; delete rule.target.contextIndex; delete rule.target.imagePathToken; delete rule.annotation.inlineImage; delete rule.annotation.pathRoot; rule.target.range = { start: 0, endExclusive: 1 }; rule.annotation.type = "text"; }
         else {
           rule.target.index = 0;
           delete rule.target.range;
@@ -434,6 +438,7 @@
         }
         if (rule.annotation.type !== "image") delete rule.target.imagePathToken;
         if (rule.annotation.type !== "image") delete rule.annotation.inlineImage;
+        if (rule.annotation.type !== "path") delete rule.annotation.pathRoot;
         if ((rule.target.kind !== "token" || rule.target.range) && rule.annotation.type !== "text") rule.annotation.type = "text";
         renderAll(); scheduleSave();
       });
@@ -485,8 +490,11 @@
           </div>
         </div>
         <div class="section"><div class="section-title">标注元数据</div>
-          ${field("标题", input("field-annotation-title", annotation.title || ""))}
-          ${field("标注类型", select("field-annotation-type", annotation.type, [["text","文本"],["image","图片"],["enum","枚举"],["reference","关联 ID"]]))}
+          ${field("Tag 标题", input("field-annotation-title", annotation.title || ""), "可留空；留空时不显示 Tag")}
+          ${field("标注类型", select("field-annotation-type", annotation.type, [["text","文本"],["image","图片"],["enum","枚举"],["reference","关联 ID"],["path","路径"]]))}
+          <div id="fieldPathFields" class="${annotation.type === "path" ? "" : "hidden"}">
+            ${field("路径根目录", input("field-annotation-path-root", annotation.pathRoot || ""), "可选；填写归档内目录，例如 equipment/character。留空时从归档根目录查找")}
+          </div>
           <div id="fieldInlineImageField" class="${annotation.type === "image" ? "" : "hidden"}">
             ${field("正文显示图片", `<label class="checkbox-control" for="field-annotation-inline-image"><input id="field-annotation-inline-image" type="checkbox" ${annotation.inlineImage ? "checked" : ""} />在标注 Tag 中显示图片</label>`)}
           </div>
@@ -536,6 +544,7 @@
       bind("field-annotation-content", "input", (value) => annotation().content = value);
       bind("field-annotation-values", "input", (value) => annotation().values = textToValues(value));
       bind("field-annotation-relation", "change", (value) => annotation().relation = value);
+      bind("field-annotation-path-root", "input", (value) => { if (value.trim()) annotation().pathRoot = value; else delete annotation().pathRoot; });
       bind("field-preview-provider", "input", (value) => setPreviewProviders(ensureFieldPreview(fieldDefinition), value));
       bind("field-preview-role", "input", (value) => ensureFieldPreview(fieldDefinition).role = value);
       bind("field-preview-group", "input", (value) => ensureFieldPreview(fieldDefinition).group = value);
@@ -558,6 +567,7 @@
           delete target().recordTokens; delete target().tokensPerLineIndex;
           delete target().contextIndex; delete target().imagePathToken;
           if (annotation().type !== "text") annotation().type = "text";
+          delete annotation().pathRoot;
         }
         if (value === "token" && target().index == null && !target().range) target().index = annotation().type === "image" ? 1 : 0;
         renderAll();
@@ -568,6 +578,7 @@
           delete target().tokensPerLineIndex; delete target().contextIndex; delete target().imagePathToken;
           target().range = { start: 0, endExclusive: 1 };
           annotation().type = "text";
+          delete annotation().pathRoot;
         } else {
           target().index = 0; delete target().range;
           if (annotation().type === "image") { target().recordTokens ||= 2; target().imagePathToken ??= 0; }
@@ -584,6 +595,7 @@
         }
         if (value === "image") { target().index ??= 1; target().recordTokens ||= 2; target().imagePathToken ??= target().index === 0 ? 1 : 0; }
         if (value !== "image") { delete target().imagePathToken; delete annotation().inlineImage; }
+        if (value !== "path") delete annotation().pathRoot;
         renderAll();
       });
     }
@@ -782,6 +794,7 @@
       const container = $("previewPathTags");
       container.replaceChildren();
       annotations.forEach((annotation) => {
+        if (!annotation.title?.trim()) return;
         const tag = document.createElement("span");
         tag.className = `annotation-tag ${annotation.type || "text"}`;
         tag.textContent = annotation.title;
@@ -805,12 +818,14 @@
       annotations.slice().sort((a, b) => a.end - b.end).forEach((annotation) => {
         const end = Math.max(cursor, Math.min(text.length, annotation.end));
         container.append(document.createTextNode(text.slice(cursor, end)));
-        const tag = document.createElement("span");
-        tag.className = `annotation-tag ${annotation.type || "text"}`;
-        tag.textContent = annotation.title;
-        tag.title = annotation.content;
-        tag.setAttribute("aria-label", annotation.content || annotation.title);
-        container.append(tag);
+        if (annotation.title?.trim()) {
+          const tag = document.createElement("span");
+          tag.className = `annotation-tag ${annotation.type || "text"}`;
+          tag.textContent = annotation.title;
+          tag.title = annotation.content;
+          tag.setAttribute("aria-label", annotation.content || annotation.title);
+          container.append(tag);
+        }
         cursor = end;
       });
       container.append(document.createTextNode(text.slice(cursor)));

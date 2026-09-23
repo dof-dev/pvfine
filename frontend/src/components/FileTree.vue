@@ -271,6 +271,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
     h("span", { class: "tree-item-name", style: { color: changeColor } }, item.label),
   );
   for (const annotation of item.annotations) {
+    if (!annotation.title.trim()) continue;
     children.push(
       h(
         NTag,

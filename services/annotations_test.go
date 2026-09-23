@@ -78,6 +78,48 @@ func TestAnnotationServiceReloadRulesKeepsOldEngineOnFailure(t *testing.T) {
 	}
 }
 
+func TestPathTokenAnnotationOpensArchiveFile(t *testing.T) {
+	index := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Rules: []annotationrules.Rule{
+			{ID: "root", Target: annotationrules.TargetSpec{Kind: "token", Section: "root", Index: &index}, Annotation: annotationrules.AnnotationSpec{Title: "根目录路径", Type: "path"}},
+			{ID: "relative", Target: annotationrules.TargetSpec{Kind: "token", Section: "relative", Index: &index}, Annotation: annotationrules.AnnotationSpec{Title: "", Type: "path", PathRoot: "equipment/character"}},
+			{ID: "missing", Target: annotationrules.TargetSpec{Kind: "token", Section: "missing", Index: &index}, Annotation: annotationrules.AnnotationSpec{Title: "不存在", Type: "path", PathRoot: "equipment"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	targetIndex := mustAddText(t, a, "equipment/character/item.equ", "[name]\n`目标`", pvf.TypeScript)
+	sourceIndex := mustAddText(t, a, "source.equ", "[root]\n`equipment\\character\\item.equ`\n[relative]\n`ITEM.EQU`\n[missing]\n`none.equ`", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	meta, err := NewEditorService(c).GetFile(sourceIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Annotations) != 3 {
+		t.Fatalf("path annotations = %#v", meta.Annotations)
+	}
+	for _, annotation := range meta.Annotations {
+		want := int32(-1)
+		if annotation.RuleIDs[0] != "missing" {
+			want = targetIndex
+		}
+		if annotation.Type != "path" || annotation.TargetFileIndex != want {
+			t.Fatalf("path annotation = %#v, want index %d", annotation, want)
+		}
+		if annotation.RuleIDs[0] == "relative" && (annotation.Title != "" || !strings.HasPrefix(annotation.Content, "路径: ITEM.EQU")) {
+			t.Fatalf("empty title path annotation = %#v", annotation)
+		}
+	}
+}
+
 func TestAnnotationServicesAndCacheInvalidation(t *testing.T) {
 	index := 0
 	engine, err := annotationrules.Compile(annotationrules.Document{

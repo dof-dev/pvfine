@@ -28,6 +28,9 @@ type ContextResolver func(relation, id, context string) (Reference, bool)
 // navigate to the file represented by that particular row.
 type ListResolver func(relation, id, context, listPath, relativePath string) (Reference, bool)
 
+// PathResolver looks up a token path in the archive, using an optional rule root.
+type PathResolver func(root, value string) (int32, bool)
+
 type compiledRule struct {
 	rule       Rule
 	extensions map[string]struct{}
@@ -100,7 +103,7 @@ func compileValidated(document Document) *Engine {
 
 func annotationRuleCoversField(rule, field Rule) bool {
 	if rule.Annotation.Type != field.Annotation.Type || rule.Annotation.Title != field.Annotation.Title ||
-		rule.Annotation.Relation != field.Annotation.Relation || !sameTarget(rule.Target, field.Target) {
+		rule.Annotation.Relation != field.Annotation.Relation || rule.Annotation.PathRoot != field.Annotation.PathRoot || !sameTarget(rule.Target, field.Target) {
 		return false
 	}
 	return len(rule.Match.Extensions) == 0 && strings.TrimSpace(rule.Match.Glob) == "" || sameMatch(rule.Match, field.Match)
@@ -160,21 +163,24 @@ func (e *Engine) Annotate(filePath string, view pvf.ScriptView, resolver Resolve
 			return Reference{}, false
 		}
 		return resolver(relation, id)
-	}, nil)
+	}, nil, nil)
 }
 
 func (e *Engine) AnnotateWithContextResolver(filePath string, view pvf.ScriptView, resolver ContextResolver) []Result {
-	return e.annotate(filePath, view, resolver, nil)
+	return e.annotate(filePath, view, resolver, nil, nil)
 }
 
-// AnnotateWithContextAndListResolver is the context-aware annotation entry
-// point used by the application. List annotations use listResolver when it is
-// available, while ordinary rules continue to use resolver.
+// AnnotateWithContextAndListResolver resolves ID and list annotations.
 func (e *Engine) AnnotateWithContextAndListResolver(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver) []Result {
-	return e.annotate(filePath, view, resolver, listResolver)
+	return e.annotate(filePath, view, resolver, listResolver, nil)
 }
 
-func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver) []Result {
+// AnnotateWithResolvers also resolves path tokens to archive file indexes.
+func (e *Engine) AnnotateWithResolvers(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver, pathResolver PathResolver) []Result {
+	return e.annotate(filePath, view, resolver, listResolver, pathResolver)
+}
+
+func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver ContextResolver, listResolver ListResolver, pathResolver PathResolver) []Result {
 	results := make([]Result, 0)
 	resultByAnchor := make(map[string]int)
 	appendResult := func(anchor editorAnchor, item matchedItem) {
@@ -218,7 +224,7 @@ func (e *Engine) annotate(filePath string, view pvf.ScriptView, resolver Context
 			if rule.Annotation.Type == "image" {
 				value = anchor.imagePathValue
 			}
-			item := annotationItem(rule, value, anchor.imageIndexValue, anchor.context, resolver)
+			item := annotationItem(rule, value, anchor.imageIndexValue, anchor.context, resolver, pathResolver)
 			appendResult(anchor, item)
 		}
 	}
@@ -376,7 +382,7 @@ func (e *Engine) AnnotatePath(filePath string, isDir bool) []Result {
 		if compiled.rule.Target.Kind != "path" || !compiled.matches(filePath, isDir) {
 			continue
 		}
-		items = append(items, annotationItem(compiled.rule, "", "", "", nil))
+		items = append(items, annotationItem(compiled.rule, "", "", "", nil, nil))
 	}
 	if len(items) == 0 {
 		return nil
@@ -561,7 +567,7 @@ func repeatedRecordTokens(target TargetSpec, tokens []pvf.ScriptElement) int {
 	return value
 }
 
-func annotationItem(rule Rule, value, imageIndexValue, context string, resolver ContextResolver) matchedItem {
+func annotationItem(rule Rule, value, imageIndexValue, context string, resolver ContextResolver, pathResolver PathResolver) matchedItem {
 	item := matchedItem{
 		ruleID:          rule.ID,
 		title:           rule.Annotation.Title,
@@ -571,6 +577,13 @@ func annotationItem(rule Rule, value, imageIndexValue, context string, resolver 
 		inlineImage:     rule.Annotation.InlineImage,
 	}
 	switch rule.Annotation.Type {
+	case "path":
+		item.content = joinContent(item.content, "路径: "+strings.TrimSpace(value))
+		if pathResolver != nil {
+			if index, ok := pathResolver(rule.Annotation.PathRoot, value); ok {
+				item.targetFileIndex = index
+			}
+		}
 	case "image":
 		imageIndex, err := strconv.ParseInt(strings.TrimSpace(imageIndexValue), 10, 32)
 		item.content = joinContent(item.content, fmt.Sprintf("图片: %s[%s]", value, strings.TrimSpace(imageIndexValue)))
@@ -620,9 +633,12 @@ func annotationItem(rule Rule, value, imageIndexValue, context string, resolver 
 }
 
 func appendTooltip(current, title, content string) string {
-	item := title
-	if strings.TrimSpace(content) != "" {
-		item += "\n" + strings.TrimSpace(content)
+	item := strings.TrimSpace(title)
+	if detail := strings.TrimSpace(content); detail != "" {
+		item = joinContent(item, detail)
+	}
+	if item == "" {
+		return current
 	}
 	if current == "" {
 		return item

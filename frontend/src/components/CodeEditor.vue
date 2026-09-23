@@ -156,7 +156,7 @@ class AnnotationWidget extends WidgetType {
       if (color) tag.style.color = color;
     }
     const hints = [
-      this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开来源字符串表" : "",
+      this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开目标文件" : "",
       placeholder ? "单击修改译文" : "",
     ].filter(Boolean);
     const tooltip = hintText(this.annotation, hints);

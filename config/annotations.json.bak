@@ -1371,10 +1371,26 @@
         "section": "name"
       },
       "annotation": {
-        "title": "深渊diao'l",
+        "title": "深渊掉落",
         "type": "text"
       },
       "group": "path"
+    },
+    {
+      "id": "rule.25",
+      "description": "套装效果路径",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "equipment part set",
+        "index": 1
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "path",
+        "pathRoot": "equipment/"
+      },
+      "group": "equ"
     }
   ]
 }

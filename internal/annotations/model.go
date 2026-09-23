@@ -131,6 +131,7 @@ type AnnotationSpec struct {
 	Type        string            `json:"type"`
 	Values      map[string]string `json:"values,omitempty"`
 	Relation    string            `json:"relation,omitempty"`
+	PathRoot    string            `json:"pathRoot,omitempty"`
 	InlineImage bool              `json:"inlineImage,omitempty"`
 }
 

@@ -52,7 +52,7 @@ func resolveFieldRule(rule Rule, fields []FieldDefinition) (Rule, error) {
 		}
 		if rule.Annotation.Title != "" || rule.Annotation.Type != "" ||
 			rule.Annotation.Content != "" || len(rule.Annotation.Values) > 0 ||
-			rule.Annotation.Relation != "" || rule.Annotation.InlineImage {
+			rule.Annotation.Relation != "" || rule.Annotation.PathRoot != "" || rule.Annotation.InlineImage {
 			resolved.Annotation = rule.Annotation
 		}
 		return resolved, nil

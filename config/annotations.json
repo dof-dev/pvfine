@@ -1375,6 +1375,22 @@
         "type": "text"
       },
       "group": "path"
+    },
+    {
+      "id": "rule.25",
+      "description": "套装效果路径",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "equipment part set",
+        "index": 1
+      },
+      "annotation": {
+        "title": "",
+        "type": "path",
+        "pathRoot": "equipment/"
+      },
+      "group": "equ"
     }
   ]
 }

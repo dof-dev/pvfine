@@ -55,7 +55,7 @@ func TestValidateRejectsInvalidRuleFields(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	for _, want := range []string{"以点开头", "不能为负数", "title 不能为空", "不存在的 relation"} {
+	for _, want := range []string{"以点开头", "不能为负数", "不存在的 relation"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %v, want %q", err, want)
 		}

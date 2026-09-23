@@ -130,8 +130,16 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	}
 	filePath := c.archive.Path(index)
 	view := pvf.ParseScriptView(text)
-	results := c.annotationEngine.AnnotateWithContextAndListResolver(
+	results := c.annotationEngine.AnnotateWithResolvers(
 		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
+		func(root, value string) (int32, bool) {
+			value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+			if value == "" {
+				return -1, false
+			}
+			root = strings.Trim(strings.TrimSpace(strings.ReplaceAll(root, "\\", "/")), "/")
+			return c.archive.Find(path.Clean(path.Join(root, strings.TrimLeft(value, "/"))))
+		},
 	)
 	annotations := make([]EditorAnnotation, 0, len(results))
 	for _, result := range results {
