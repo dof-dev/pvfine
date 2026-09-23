@@ -308,6 +308,7 @@ type scriptFormatRule struct {
 	// tokensPerLineIndex is resolved during the raw token pre-scan and is nil
 	// once the frame is ready for rendering.
 	tokensPerLineIndex *int
+	standaloneValues   []int32
 }
 
 // decodeScript decompiles a TypeScript payload back to readable form.
@@ -478,14 +479,47 @@ func (a *Archive) decodeScriptForPathWithRenderer(raw []byte, path string, rende
 		markSectionValue()
 	}
 
+	// Standalone integer values break the current row and restart grouping.
+	isStandaloneValue := func(value int32) bool {
+		values := fileRule.standaloneValues
+		if frame := currentSectionFrame(); frame != nil && frame.format.tokensPerLine > 0 {
+			values = frame.format.standaloneValues
+		}
+		for _, standalone := range values {
+			if value == standalone {
+				return true
+			}
+		}
+		return false
+	}
+	resetTokensOnLine := func() {
+		if frame := currentSectionFrame(); frame != nil && frame.format.tokensPerLine > 0 {
+			frame.tokensOnLine = 0
+		} else {
+			fileTokensOnLine = 0
+		}
+	}
 	for i := 0; i < n; i++ {
 		base := i * 5
 		typ := raw[base]
 		v := int32(binary.LittleEndian.Uint32(raw[base+1:]))
 		switch typ {
 		case 0:
+			standalone := isStandaloneValue(v)
+			if standalone {
+				if !atLineStart {
+					sb.WriteByte('\n')
+					atLineStart = true
+				}
+				resetTokensOnLine()
+			}
 			writeValuePrefix()
 			sb.WriteString(strconv.FormatInt(int64(v), 10))
+			if standalone {
+				sb.WriteByte('\n')
+				atLineStart = true
+				resetTokensOnLine()
+			}
 		case 2:
 			writeValuePrefix()
 			f := math.Float32frombits(uint32(v))
@@ -579,6 +613,7 @@ func scriptFormatRuleFromSpec(spec rendering.FormatSpec) scriptFormatRule {
 		offset:             spec.Offset,
 		tokensPerLine:      spec.TokensPerLine,
 		tokensPerLineIndex: spec.TokensPerLineIndex,
+		standaloneValues:   spec.StandaloneValues,
 	}
 }
 

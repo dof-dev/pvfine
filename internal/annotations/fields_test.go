@@ -41,6 +41,35 @@ func TestExtractPreviewFieldsUsesSharedTargets(t *testing.T) {
 	}
 }
 
+func TestPreviewFieldsUseStandaloneGroupsAndGroupOffset(t *testing.T) {
+	engine := testEngine(t)
+	engine, err := Compile(Document{
+		Version: 1,
+		Fields: []FieldDefinition{{
+			ID: "world.drop", Match: MatchSpec{Extensions: []string{".etc"}},
+			Target: TargetSpec{
+				Kind: "token", Section: "world drop", Index: intPtr(0), RecordTokens: 2,
+				Offset: 1, GroupOffset: 1, StandaloneValues: []int32{-1},
+			},
+			Annotation: AnnotationSpec{Title: "掉落", Type: "text"},
+			Preview:    &PreviewSpec{Provider: "etc", Role: "drop", Group: "drops", Format: "text"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := pvf.ParseScriptView("[world drop]\n999 10 100 200 -1 20 300 400 -1 30 500 600")
+	values := engine.ExtractPreviewFields("item/a.etc", view, "etc")
+	if len(values) != 3 {
+		t.Fatalf("values = %#v", values)
+	}
+	for i, want := range []string{"100", "300", "500"} {
+		if values[i].Values[0] != want || len(values[i].Values) != 2 {
+			t.Fatalf("values[%d] = %#v, want %s", i, values[i], want)
+		}
+	}
+}
+
 func TestFieldRuleReferencesSharedDefinition(t *testing.T) {
 	engine, err := Compile(Document{
 		Version: 1,

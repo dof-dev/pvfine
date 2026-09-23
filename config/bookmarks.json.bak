@@ -136,7 +136,7 @@
         },
         {
           "path": "etc/equipmentpartset.etc",
-          "name": "equipmentpartset.etc"
+          "name": "套装"
         }
       ]
     },
@@ -159,6 +159,10 @@
         {
           "path": "etc/itemdropinfo_monseter_extra.etc",
           "name": "精英掉落"
+        },
+        {
+          "path": "etc/worlddrop.etc",
+          "name": "worlddrop.etc"
         }
       ]
     },

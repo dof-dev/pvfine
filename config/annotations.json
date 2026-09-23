@@ -1391,6 +1391,24 @@
         "pathRoot": "equipment/"
       },
       "group": "equ"
+    },
+    {
+      "id": "world drop",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "world drop",
+        "index": 0,
+        "recordTokens": 2,
+        "groupOffset": 2,
+        "standaloneValues": [-1]
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "etc"
     }
   ]
 }

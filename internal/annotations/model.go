@@ -108,6 +108,10 @@ type TargetSpec struct {
 	// section header is kept outside the repeated token groups.
 	Offset       int `json:"offset,omitempty"`
 	RecordTokens int `json:"recordTokens,omitempty"`
+	// GroupOffset skips this many tokens at the start of every delimiter-separated group.
+	GroupOffset int `json:"groupOffset,omitempty"`
+	// StandaloneValues are integer delimiters, excluded from repeated records.
+	StandaloneValues []int32 `json:"standaloneValues,omitempty"`
 	// TokensPerLineIndex is a zero-based direct token index whose positive
 	// integer value overrides RecordTokens for that section. RecordTokens is
 	// retained as the fallback when the token is missing or invalid.

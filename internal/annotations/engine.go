@@ -132,7 +132,7 @@ func sameMatch(left, right MatchSpec) bool {
 
 func sameTarget(left, right TargetSpec) bool {
 	if left.Kind != right.Kind || !strings.EqualFold(left.Section, right.Section) || left.Offset != right.Offset ||
-		left.RecordTokens != right.RecordTokens || !sameIntPtr(left.Index, right.Index) ||
+		left.RecordTokens != right.RecordTokens || left.GroupOffset != right.GroupOffset || !sameInt32Slice(left.StandaloneValues, right.StandaloneValues) || !sameIntPtr(left.Index, right.Index) ||
 		!sameIntPtr(left.TokensPerLineIndex, right.TokensPerLineIndex) || !sameIntPtr(left.ContextIndex, right.ContextIndex) ||
 		!sameIntPtr(left.ImagePathToken, right.ImagePathToken) {
 		return false
@@ -141,6 +141,18 @@ func sameTarget(left, right TargetSpec) bool {
 		return false
 	}
 	return left.Range == nil || (left.Range.Start == right.Range.Start && left.Range.EndExclusive == right.Range.EndExclusive)
+}
+
+func sameInt32Slice(left, right []int32) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func sameIntPtr(left, right *int) bool {
@@ -513,39 +525,66 @@ func repeatedTokenAnchors(rule Rule, view pvf.ScriptView, contextIndex *int) []e
 		if recordTokens <= 0 {
 			continue
 		}
-		for start := rule.Target.Offset; start <= len(tokens); {
-			if recordTokens > len(tokens)-start {
-				break
-			}
-			targetOffset := *rule.Target.Index
-			if targetOffset < 0 || targetOffset >= recordTokens || targetOffset >= len(tokens)-start {
-				start += recordTokens
-				continue
-			}
-			target := tokens[start+targetOffset]
-			anchor := editorAnchor{start: target.Start, end: target.End, value: target.Value}
-			if rule.Annotation.Type == "image" && rule.Target.ImagePathToken != nil {
-				imagePathOffset := *rule.Target.ImagePathToken
-				if imagePathOffset < 0 || imagePathOffset >= recordTokens || imagePathOffset >= len(tokens)-start {
-					start += recordTokens
+		for _, group := range repeatedTokenGroups(rule.Target, tokens) {
+			for start := group.start; start+recordTokens <= group.end; start += recordTokens {
+				targetOffset := *rule.Target.Index
+				if targetOffset < 0 || targetOffset >= recordTokens {
 					continue
 				}
-				anchor.imagePathValue = tokens[start+imagePathOffset].Value
-				anchor.imageIndexValue = target.Value
-			}
-			if contextIndex != nil {
-				contextOffset := *contextIndex
-				if contextOffset < 0 || contextOffset >= recordTokens || contextOffset >= len(tokens)-start {
-					start += recordTokens
-					continue
+				target := tokens[start+targetOffset]
+				anchor := editorAnchor{start: target.Start, end: target.End, value: target.Value}
+				if rule.Annotation.Type == "image" && rule.Target.ImagePathToken != nil {
+					imagePathOffset := *rule.Target.ImagePathToken
+					if imagePathOffset < 0 || imagePathOffset >= recordTokens {
+						continue
+					}
+					anchor.imagePathValue = tokens[start+imagePathOffset].Value
+					anchor.imageIndexValue = target.Value
 				}
-				anchor.context = tokens[start+contextOffset].Value
+				if contextIndex != nil {
+					contextOffset := *contextIndex
+					if contextOffset < 0 || contextOffset >= recordTokens {
+						continue
+					}
+					anchor.context = tokens[start+contextOffset].Value
+				}
+				anchors = append(anchors, anchor)
 			}
-			anchors = append(anchors, anchor)
-			start += recordTokens
 		}
 	}
 	return anchors
+}
+
+type tokenGroup struct{ start, end int }
+
+// repeatedTokenGroups applies the section-wide offset once, then splits at
+// standalone integer tokens. Each group's own offset is applied independently.
+func repeatedTokenGroups(target TargetSpec, tokens []pvf.ScriptElement) []tokenGroup {
+	begin := min(target.Offset, len(tokens))
+	groups := make([]tokenGroup, 0, 1)
+	appendGroup := func(end int) {
+		start := min(begin+target.GroupOffset, end)
+		groups = append(groups, tokenGroup{start: start, end: end})
+	}
+	for index := begin; index < len(tokens); index++ {
+		token := tokens[index]
+		if token.TokenType != 0 {
+			continue
+		}
+		value, err := strconv.ParseInt(strings.TrimSpace(token.Value), 10, 32)
+		if err != nil {
+			continue
+		}
+		for _, delimiter := range target.StandaloneValues {
+			if int32(value) == delimiter {
+				appendGroup(index)
+				begin = index + 1
+				break
+			}
+		}
+	}
+	appendGroup(len(tokens))
+	return groups
 }
 
 // repeatedRecordTokens returns the fixed record width unless a section token

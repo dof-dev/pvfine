@@ -159,6 +159,10 @@
         {
           "path": "etc/itemdropinfo_monseter_extra.etc",
           "name": "精英掉落"
+        },
+        {
+          "path": "etc/worlddrop.etc",
+          "name": "全局掉率"
         }
       ]
     },

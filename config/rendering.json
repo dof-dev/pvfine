@@ -17,6 +17,18 @@
       }
     },
     {
+      "id": "section.world-drop",
+      "match": {},
+      "target": {
+        "kind": "section",
+        "section": "world drop"
+      },
+      "format": {
+        "tokensPerLine": 2,
+        "standaloneValues": [-1]
+      }
+    },
+    {
       "id": "section.skill-data-up",
       "match": {},
       "target": {

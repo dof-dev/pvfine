@@ -147,6 +147,39 @@ func TestScriptRenderingUsesTokenValueForTokensPerLine(t *testing.T) {
 	}
 }
 
+func TestScriptRenderingStandaloneValuesResetGrouping(t *testing.T) {
+	a := New()
+	engine, err := rendering.Parse([]byte(`{
+  "version": 1,
+  "rules": [{
+    "id": "world.drop",
+    "target": {"kind": "section", "section": "world drop"},
+    "format": {"tokensPerLine": 2, "standaloneValues": [-1]}
+  }]
+}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetScriptRenderer(engine)
+	for _, tt := range []struct {
+		name, input, want string
+	}{
+		{"partial row", "[world drop]\n100 200 300 -1 400 500 -1 600 700\n[next]", "[world drop]\n\t100\t200\n\t300\n\t-1\n\t400\t500\n\t-1\n\t600\t700\n\n[next]\n"},
+		{"leading and consecutive", "[world drop]\n-1 -1 1 2 -1 3\n[next]", "[world drop]\n\t-1\n\t-1\n\t1\t2\n\t-1\n\t3\n\n[next]\n"},
+		{"no sentinel", "[world drop]\n1 2 3\n[next]", "[world drop]\n\t1\t2\n\t3\n\n[next]\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := a.encodeScript(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := a.decodeScriptForPath(encoded, "item.equ"); got != tt.want {
+				t.Fatalf("rendering = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCanonicalTextIgnoresUserRenderingOverride(t *testing.T) {
 	a := New()
 	index, err := a.AddFileText("skills/test.skl", "[records]\n1 2 3 4 5\n[/records]", TypeScript)

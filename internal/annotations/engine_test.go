@@ -234,6 +234,49 @@ func TestAnnotateRepeatedTokenUsesDynamicRecordWidth(t *testing.T) {
 	}
 }
 
+func TestAnnotateStandaloneGroupsWithGroupOffset(t *testing.T) {
+	engine := testEngine(t, Rule{
+		ID: "world.drop",
+		Target: TargetSpec{
+			Kind: "token", Section: "world drop", Index: intPtr(0),
+			Offset: 1, GroupOffset: 1, RecordTokens: 2,
+			StandaloneValues: []int32{-1},
+		},
+		Annotation: AnnotationSpec{Title: "掉落", Type: "text"},
+	})
+	// Offset applies only once; groupOffset skips the first token of every
+	// group. Trailing incomplete records and the delimiters are not annotated.
+	text := "[world drop]\n999 10 100 200 300 -1 20 400 500 -1 -1 30 600 700 800\n[next]"
+	results := engine.Annotate("a.etc", pvf.ParseScriptView(text), nil)
+	for i, want := range []string{"100", "400", "600"} {
+		if i >= len(results) {
+			t.Fatalf("results = %#v", results)
+		}
+		if got := text[results[i].Start:results[i].End]; got != want {
+			t.Fatalf("result[%d] = %q, want %q", i, got, want)
+		}
+	}
+	if len(results) != 3 {
+		t.Fatalf("results = %#v", results)
+	}
+}
+
+func TestAnnotateStandaloneGroupsDoNotMatchQuotedSentinel(t *testing.T) {
+	engine := testEngine(t, Rule{
+		ID: "records", Target: TargetSpec{
+			Kind: "token", Section: "records", Index: intPtr(0),
+			RecordTokens: 2, StandaloneValues: []int32{-1},
+		},
+		Annotation: AnnotationSpec{Title: "record", Type: "text"},
+	})
+	text := "[records]\n`-1` 5 -1 10 20"
+	results := engine.Annotate("a.etc", pvf.ParseScriptView(text), nil)
+	if len(results) != 2 || text[results[0].Start:results[0].End] != "`-1`" ||
+		text[results[1].Start:results[1].End] != "10" {
+		t.Fatalf("results = %#v", results)
+	}
+}
+
 func TestAnnotatePathSupportsRecursiveGlobAndDirectories(t *testing.T) {
 	engine := testEngine(t, Rule{
 		ID: "path", Match: MatchSpec{Glob: "equipment/**"}, Target: TargetSpec{Kind: "path"},

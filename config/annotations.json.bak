@@ -1386,11 +1386,26 @@
         "index": 1
       },
       "annotation": {
-        "title": "新标注",
+        "title": "",
         "type": "path",
         "pathRoot": "equipment/"
       },
       "group": "equ"
+    },
+    {
+      "id": "world drop",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "world drop",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "新标注",
+        "type": "text"
+      },
+      "group": "etc"
     }
   ]
 }

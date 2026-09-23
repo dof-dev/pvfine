@@ -87,12 +87,27 @@ func TestValidateTokenGroupingFields(t *testing.T) {
 			want: "offset 不能为负数",
 		},
 		{
+			name: "negative group offset",
+			edit: func(rule *Rule) { rule.Target.GroupOffset = -1 },
+			want: "groupOffset 不能为负数",
+		},
+		{
 			name: "negative dynamic index",
 			edit: func(rule *Rule) {
 				index := -1
 				rule.Target.TokensPerLineIndex = &index
 			},
 			want: "tokensPerLineIndex 不能为负数",
+		},
+		{
+			name: "standalone values need record width",
+			edit: func(rule *Rule) {
+				rule.Target.Offset = 0
+				rule.Target.TokensPerLineIndex = nil
+				rule.Target.RecordTokens = 0
+				rule.Target.StandaloneValues = []int32{-1}
+			},
+			want: "需要配置正数 recordTokens",
 		},
 		{
 			name: "missing fallback",
