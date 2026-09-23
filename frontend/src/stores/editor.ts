@@ -24,6 +24,7 @@ export interface EditorTab {
   text: string; // 当前编辑器内容
   modified: boolean; // 后端 overlay 状态
   annotations: EditorAnnotation[];
+  annotationsHidden: boolean; // 当前打开期间临时隐藏此文件的标注
   icon: ImageReference | null;
   fieldImage: ImageReference | null;
   loading: boolean;
@@ -197,6 +198,7 @@ export const useEditorStore = defineStore("editor", () => {
       text: "",
       modified: false,
       annotations: [],
+      annotationsHidden: false,
       icon: null,
       fieldImage: null,
       loading: true,
@@ -519,6 +521,11 @@ export const useEditorStore = defineStore("editor", () => {
     const tab = tabs.value.find((item) => item.index === index);
     if (!tab || !tab.editable) return;
     tab.text = text;
+  }
+
+  function toggleAnnotationsHidden(index: number): void {
+    const tab = tabs.value.find((item) => item.index === index);
+    if (tab) tab.annotationsHidden = !tab.annotationsHidden;
   }
 
   function isDirty(tab: EditorTab): boolean {
@@ -946,6 +953,7 @@ export const useEditorStore = defineStore("editor", () => {
     closeSplit,
     setSplitRatio,
     updateContent,
+    toggleAnnotationsHidden,
     setPlaceholderText,
     saveTab,
     saveActiveTab,

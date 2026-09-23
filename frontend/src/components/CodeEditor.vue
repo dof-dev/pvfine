@@ -44,7 +44,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
-import { indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
+import { annotationAt, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import { pvfSectionFolding } from "../pvfSectionFolding";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
@@ -357,6 +357,12 @@ function cancelTooltipHide(): void {
   clearTooltipHideTimer();
 }
 
+function hiddenAnnotationTarget(event: Event, currentView: EditorView): HTMLElement | null {
+  if (!(event.target instanceof HTMLElement)) return null;
+  const target = event.target.closest<HTMLElement>(".cm-annotation-hover");
+  return target && currentView.dom.contains(target) ? target : null;
+}
+
 watch(
   () => images.revision,
   () => {
@@ -394,9 +400,13 @@ function annotationDecorations(
     const targetStart = cursor.from;
     const targetEnd = cursor.to;
 
-    if (annotation.targetFileIndex >= 0 && targetStart < targetEnd) {
+    if (targetStart < targetEnd && (annotation.targetFileIndex >= 0 || display.placement === "hidden")) {
+      const classes = [
+        annotation.targetFileIndex >= 0 ? "cm-annotation-link" : "",
+        display.placement === "hidden" ? "cm-annotation-hover" : "",
+      ].filter(Boolean).join(" ");
       ranges.push(
-        Decoration.mark({ class: "cm-annotation-link" }).range(targetStart, targetEnd)
+        Decoration.mark({ class: classes }).range(targetStart, targetEnd)
       );
     }
 
@@ -530,6 +540,22 @@ function makeExtensions(themeId: ResolvedThemeId) {
       { key: "Tab", run: insertTab, shift: indentLess },
     ]),
     EditorView.domEventHandlers({
+      mouseover(event, currentView) {
+        const display = currentView.state.field(annotationDisplayField, false);
+        if (display?.placement !== "hidden") return false;
+        const target = hiddenAnnotationTarget(event, currentView);
+        if (!target) return false;
+        const annotation = annotationAt(display.annotations, currentView.posAtDOM(target, 0));
+        if (annotation) showAnnotationTooltip(annotation, target);
+        return false;
+      },
+      mouseout(event, currentView) {
+        const target = hiddenAnnotationTarget(event, currentView);
+        if (target && !(event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
+          scheduleHideTooltip();
+        }
+        return false;
+      },
       click(event, currentView) {
         const mouseEvent = event as MouseEvent;
         if (!mouseEvent.metaKey && !mouseEvent.ctrlKey) return false;
@@ -687,7 +713,10 @@ watch(
 );
 watch(
   () => props.tagPlacement,
-  (placement) => view?.dispatch({ effects: setAnnotationPlacement.of(placement ?? "after-target") })
+  (placement) => {
+    hideAnnotationTooltip();
+    view?.dispatch({ effects: setAnnotationPlacement.of(placement ?? "after-target") });
+  }
 );
 
 watch(

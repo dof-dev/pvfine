@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { ChangeSet } from "@codemirror/state";
-import { indexAnnotations, referenceAt } from "../src/editorAnnotations";
+import { annotationAt, indexAnnotations, referenceAt } from "../src/editorAnnotations";
 import type { EditorAnnotation } from "../bindings/pvfine/services/models";
 
 function annotation(start: number, end: number, targetFileIndex = 7): EditorAnnotation {
@@ -30,6 +30,15 @@ test("非链接和越界范围不会误触发跳转", () => {
   const ranges = indexAnnotations([annotation(-20, 2, -1), annotation(200, 300)], 100);
   expect(referenceAt(ranges, 0)).toBeUndefined();
   expect(referenceAt(ranges, 100)).toBeUndefined();
+});
+
+test("隐藏标注时仍能按文本范围定位非链接标注", () => {
+  const item = annotation(10, 20, -1);
+  const ranges = indexAnnotations([item], 100).map(ChangeSet.of({ from: 0, insert: "abc" }, 100));
+  expect(annotationAt(ranges, 12)).toBeUndefined();
+  expect(annotationAt(ranges, 13)).toBe(item);
+  expect(annotationAt(ranges, 22)).toBe(item);
+  expect(annotationAt(ranges, 23)).toBeUndefined();
 });
 
 test("五万条标注编辑后仍正确定位远端链接并共享对象", () => {

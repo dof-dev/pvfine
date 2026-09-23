@@ -88,6 +88,27 @@ test("分屏共享加载结果，关闭其中一处不会丢失文件", async ()
   expect(store.activeTab?.loading).toBe(false);
 });
 
+test("临时隐藏标注只作用于当前文件，分屏共享，关闭后重开恢复", async () => {
+  api.GetFile.mockImplementation((index) => Promise.resolve(meta(index)));
+  const store = useEditorStore();
+  await store.openFile(1);
+  await store.openFile(2);
+
+  store.toggleAnnotationsHidden(1);
+  expect(store.tabs.find((tab) => tab.index === 1)?.annotationsHidden).toBe(true);
+  expect(store.activeTab?.annotationsHidden).toBe(false);
+
+  store.activateTab("pane-1", 1);
+  store.split("columns");
+  expect(store.activeTab?.annotationsHidden).toBe(true);
+  store.closeTab(1, "pane-2");
+  expect(store.tabs.find((tab) => tab.index === 1)?.annotationsHidden).toBe(true);
+
+  store.closeTab(1, "pane-1");
+  await store.openFile(1);
+  expect(store.activeTab?.annotationsHidden).toBe(false);
+});
+
 test("加载中的标签也受数量上限约束", async () => {
   api.GetFile.mockResolvedValue(meta(1));
   const store = useEditorStore();

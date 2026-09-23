@@ -30,3 +30,14 @@ export function referenceAt(ranges: RangeSet<AnnotationRange>, position: number)
   });
   return result;
 }
+
+export function annotationAt(ranges: RangeSet<AnnotationRange>, position: number): EditorAnnotation | undefined {
+  let result: EditorAnnotation | undefined;
+  ranges.between(position, position, (from, to, value) => {
+    if (from <= position && position < to) {
+      result = value.annotation;
+      return false;
+    }
+  });
+  return result;
+}

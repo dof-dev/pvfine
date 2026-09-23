@@ -881,6 +881,26 @@ function onDrop(event: DragEvent): void {
               </template>
               在光标处插入 {8=`&lt;表号::键名&gt;`}，并创建/更新字符串表条目
             </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :type="tab.annotationsHidden ? 'primary' : 'default'"
+                  :disabled="tab.loading || !!tab.loadError || settings.annotationTagPlacement === 'hidden'"
+                  :aria-pressed="tab.annotationsHidden"
+                  :aria-label="tab.annotationsHidden ? '显示当前文件标注' : '隐藏当前文件标注'"
+                  @click="editor.toggleAnnotationsHidden(tab.index)"
+                >
+                  <template #icon>
+                    <NIcon><EyeOff24Regular v-if="tab.annotationsHidden" /><Eye24Regular v-else /></NIcon>
+                  </template>
+                </NButton>
+              </template>
+              {{ settings.annotationTagPlacement === 'hidden'
+                ? '设置中已全局隐藏标注'
+                : tab.annotationsHidden ? '显示当前文件标注' : '临时隐藏当前文件标注' }}
+            </NTooltip>
             <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
               <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
                 :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">DSL</NButton>
@@ -911,7 +931,7 @@ function onDrop(event: DragEvent): void {
               :doc="tab.text"
               :read-only="!tab.editable || editor.guiApplying"
               :annotations="tab.annotations"
-              :tag-placement="settings.annotationTagPlacement"
+              :tag-placement="tab.annotationsHidden ? 'hidden' : settings.annotationTagPlacement"
               :vim-mode="settings.vimMode"
               :theme-id="props.themeId"
               @change="(text: string) => editor.updateContent(tab.index, text)"
