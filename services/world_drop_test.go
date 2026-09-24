@@ -1,6 +1,7 @@
 package services
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -78,6 +79,10 @@ func TestWorldDropUnknownLegacyIDs(t *testing.T) {
 }
 
 func worldDropFixture(t *testing.T) (*core, *FileGUIService, int32, string) {
+	return worldDropFixtureAtPath(t, worldDropPath)
+}
+
+func worldDropFixtureAtPath(t *testing.T, filePath string) (*core, *FileGUIService, int32, string) {
 	t.Helper()
 	a := pvf.New()
 	for path, text := range map[string]string{
@@ -89,7 +94,7 @@ func worldDropFixture(t *testing.T) (*core, *FileGUIService, int32, string) {
 		}
 	}
 	text := "[world drop]\n1 0 3176 0 -1\n2 0 -1\n"
-	index, err := a.AddFileText(worldDropPath, text, pvf.TypeScript)
+	index, err := a.AddFileText(filePath, text, pvf.TypeScript)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +104,59 @@ func worldDropFixture(t *testing.T) (*core, *FileGUIService, int32, string) {
 	}
 	t.Cleanup(c.closeArchive)
 	return c, NewFileGUIService(c), index, text
+}
+
+func TestRegionalWorldDropReadAndApply(t *testing.T) {
+	c, service, index, text := worldDropFixtureAtPath(t, regionalWorldDropPath)
+	doc, err := service.ReadWorldDrop(index, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Levels) != 2 || doc.Levels[0].Items[0].Name != "测试物品" {
+		t.Fatalf("document = %#v", doc)
+	}
+	doc.Levels[0].Items[0].Weight = 5
+	result, err := service.ApplyWorldDropEdit(WorldDropEditRequest{
+		FileIndex: index, Path: regionalWorldDropPath, Text: text, Revision: c.batchRevision, Levels: doc.Levels,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 1 || result.Files[0].Path != regionalWorldDropPath {
+		t.Fatalf("result = %#v", result)
+	}
+	if _, err := service.ReadWorldDrop(index, result.Files[0].Text); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRegionalWorldDropReal90US(t *testing.T) {
+	filename := os.Getenv("PVF_TESTFILE")
+	if filename == "" {
+		t.Skip("PVF_TESTFILE 未设置")
+	}
+	a, err := pvf.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.ClientVersion() != "90US" {
+		t.Skip("仅验证 90US 归档")
+	}
+	index, ok := a.Find(regionalWorldDropPath)
+	if !ok {
+		t.Fatal("缺少区域全局掉率文件")
+	}
+	text, err := a.Text(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorldDropFile(a, index, regionalWorldDropPath); err != nil {
+		t.Fatal(err)
+	}
+	levels, err := parseWorldDrop(text)
+	if err != nil || len(levels) == 0 {
+		t.Fatalf("读取 90US 全局掉率失败：levels=%d, err=%v", len(levels), err)
+	}
 }
 
 func TestWorldDropReadAndApply(t *testing.T) {

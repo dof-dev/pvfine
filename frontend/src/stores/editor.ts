@@ -665,10 +665,10 @@ export const useEditorStore = defineStore("editor", () => {
   /** 通过工具菜单或快捷入口打开全局掉率文件并切换到 GUI 模式 */
   async function openWorldDrop(requestedPaneId?: EditorPaneId): Promise<boolean> {
     const targetPaneId = resolvePaneId(requestedPaneId);
-    const nodes = await ArchiveService.ResolveFiles(["etc/worlddrop.etc"]);
+    const nodes = await ArchiveService.ResolveFiles(["etc/worlddrop.etc", "etc/(r)worlddrop.etc"]);
     const target = nodes?.find((n) => n && !n.isDir && n.fileIndex >= 0);
     if (!target) {
-      throw new Error("归档中未找到全局掉率文件 etc/worlddrop.etc");
+      throw new Error("归档中未找到全局掉率文件 etc/worlddrop.etc 或 etc/(r)worlddrop.etc");
     }
     await openFile(target.fileIndex, targetPaneId);
     const tab = tabs.value.find((t) => t.index === target.fileIndex);

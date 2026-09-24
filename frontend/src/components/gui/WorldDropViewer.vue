@@ -686,7 +686,7 @@ function clearFilter(): void {
       <div class="header-left">
         <NIcon size="20" class="header-icon"><Globe24Regular /></NIcon>
         <h2 class="header-title">全局掉率</h2>
-        <span class="file-path-badge">etc/worlddrop.etc</span>
+        <span class="file-path-badge">{{ file.path }}</span>
         <NTag v-if="isDirty" size="small" type="warning" round class="dirty-tag">未应用修改</NTag>
         <NTag v-if="!file.editable" size="small" type="default" round>只读</NTag>
       </div>

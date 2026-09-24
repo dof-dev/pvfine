@@ -17,7 +17,7 @@ const providers: GUIProvider[] = [
     id: "world-drop",
     label: "全局掉率",
     readOnly: false,
-    matches: (file) => normalizePath(file.path) === "etc/worlddrop.etc",
+    matches: (file) => ["etc/worlddrop.etc", "etc/(r)worlddrop.etc"].includes(normalizePath(file.path)),
     component: defineAsyncComponent(() => import("../components/gui/WorldDropViewer.vue")),
   },
 ];

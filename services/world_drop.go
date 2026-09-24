@@ -11,7 +11,10 @@ import (
 	pvfversion "pvfine/internal/version"
 )
 
-const worldDropPath = "etc/worlddrop.etc"
+const (
+	worldDropPath         = "etc/worlddrop.etc"
+	regionalWorldDropPath = "etc/(r)worlddrop.etc"
+)
 
 type WorldDropItem struct {
 	ID     int32  `json:"id"`
@@ -47,7 +50,9 @@ func validateWorldDropFile(a *pvf.Archive, index int32, path string) error {
 	if err := validateAnnotationIndex(a, index); err != nil {
 		return err
 	}
-	if !sameSearchPath(a.Path(index), worldDropPath) || (path != "" && !sameSearchPath(path, a.Path(index))) {
+	filePath := a.Path(index)
+	if (!sameSearchPath(filePath, worldDropPath) && !sameSearchPath(filePath, regionalWorldDropPath)) ||
+		(path != "" && !sameSearchPath(path, filePath)) {
 		return fmt.Errorf("全局掉率文件已变化")
 	}
 	if a.File(index).DataType != pvf.TypeScript {
