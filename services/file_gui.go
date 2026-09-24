@@ -83,19 +83,12 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 			doc.Name = resolvePreviewText(s.c.archive, ref.Name)
 		}
 	}
-	jobs := map[string]string{"1": "附魔师", "0": "炼金术师", "3": "分解师", "2": "控偶师"}
-	for i := range doc.Categories {
-		category := &doc.Categories[i]
-		switch doc.CategoryType {
-		case "basic job":
-			if ref, ok := s.c.resolveAnnotationReferenceLocked("职业", category.ID); ok {
-				category.Name = ref.Name
-			}
-		case "expert job", "expert job non filter":
-			category.Name = jobs[category.ID]
-		}
-		if category.Name == "" {
-			category.Name = "分类 " + category.ID
+	if doc.CategoryType != "" {
+		categories, err := readShopCategories(s.c.archive, doc.CategoryType)
+		if err != nil {
+			shopIssue(doc, "use category", err.Error())
+		} else {
+			doc.Categories = categories
 		}
 	}
 	// Metadata and complete items are separate caches: materials need no costs,
@@ -169,6 +162,77 @@ func shopIssue(doc *ShopDocument, section, message string) {
 	doc.Issues = append(doc.Issues, PreviewIssue{Severity: "warning", Section: section, Message: message})
 }
 
+const shopCategoryPath = "etc/itemshop/itemshopcategory.etc"
+
+// readShopCategories keeps the order and IDs defined by the active archive.
+func readShopCategories(a *pvf.Archive, categoryType string) ([]ShopCategory, error) {
+	index, ok := a.Find(shopCategoryPath)
+	if !ok {
+		return nil, fmt.Errorf("找不到商店分类文件：%s", shopCategoryPath)
+	}
+	text, err := a.Text(index)
+	if err != nil {
+		return nil, fmt.Errorf("读取商店分类文件失败：%w", err)
+	}
+	view := pvf.ParseScriptView(text)
+	values := make(map[int]string)
+	for _, e := range view.Elements {
+		if e.Kind == pvf.ScriptElementToken && e.Index == 0 {
+			values[e.SectionID] = e.Value
+		}
+	}
+	type categoryBlock struct {
+		name    string
+		entries []ShopCategory
+	}
+	blocks := []categoryBlock{}
+	block, entry := -1, -1
+	for _, e := range view.Elements {
+		if e.Kind != pvf.ScriptElementSection {
+			continue
+		}
+		switch strings.Join(e.SectionPath, "/") {
+		case "itemshop category":
+			blocks = append(blocks, categoryBlock{entries: []ShopCategory{}})
+			block, entry = len(blocks)-1, -1
+		case "itemshop category/category name":
+			if block >= 0 {
+				blocks[block].name = values[e.SectionID]
+			}
+		case "itemshop category/category entry":
+			if block >= 0 {
+				blocks[block].entries = append(blocks[block].entries, ShopCategory{})
+				entry = len(blocks[block].entries) - 1
+			}
+		case "itemshop category/category entry/id":
+			if block >= 0 && entry >= 0 {
+				blocks[block].entries[entry].ID = values[e.SectionID]
+			}
+		case "itemshop category/category entry/text":
+			if block >= 0 && entry >= 0 {
+				blocks[block].entries[entry].Name = resolvePreviewText(a, values[e.SectionID])
+			}
+		}
+	}
+	for _, block := range blocks {
+		if block.name != categoryType {
+			continue
+		}
+		categories := make([]ShopCategory, 0, len(block.entries))
+		for _, category := range block.entries {
+			if _, err := strconv.ParseInt(category.ID, 10, 32); err != nil {
+				continue
+			}
+			if category.Name == "" {
+				category.Name = "分类 " + category.ID
+			}
+			categories = append(categories, category)
+		}
+		return categories, nil
+	}
+	return nil, fmt.Errorf("商店分类文件中找不到大分类：%s", categoryType)
+}
+
 // parseShop uses semantic section paths and IDs rather than whitespace or
 // line-based records, so repeated blocks retain their order and source range.
 func parseShop(text string) *ShopDocument {
@@ -195,9 +259,6 @@ func parseShop(text string) *ShopDocument {
 		switch p {
 		case "sell info/use category":
 			doc.CategoryType = first
-			if first != "basic job" && first != "expert job" && first != "expert job non filter" {
-				shopIssue(doc, e.Section, "未知大分类类型："+first)
-			}
 		case "sell info/tab":
 			if first == "" {
 				first = fmt.Sprintf("分页 %d", len(doc.Tabs)+1)

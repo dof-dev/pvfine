@@ -13,6 +13,7 @@ func shopFixture(t *testing.T) (*core, int32) {
 	t.Helper()
 	a := pvf.New()
 	for p, text := range map[string]string{
+		shopCategoryPath:          "[itemshop category]\n[category name]\n`basic job`\n[category entry]\n[id]\n0\n[text]\n`男鬼剑士`\n[/category entry]\n[category entry]\n[id]\n1\n[text]\n`女格斗家`\n[/category entry]\n[/itemshop category]\n[itemshop category]\n[category name]\n`expert job`\n[category entry]\n[id]\n0\n[text]\n`炼金术师`\n[/category entry]\n[category entry]\n[id]\n1\n[text]\n`附魔师`\n[/category entry]\n[category entry]\n[id]\n2\n[text]\n`控偶师`\n[/category entry]\n[category entry]\n[id]\n3\n[text]\n`分解师`\n[/category entry]\n[/itemshop category]\n[itemshop category]\n[category name]\n`expert job non filter`\n[category entry]\n[id]\n0\n[text]\n`炼金术师`\n[/category entry]\n[category entry]\n[id]\n1\n[text]\n`附魔师`\n[/category entry]\n[category entry]\n[id]\n2\n[text]\n`控偶师`\n[/category entry]\n[category entry]\n[id]\n3\n[text]\n`分解师`\n[/category entry]\n[/itemshop category]",
 		"stackable/stackable.lst": "1 `one.stk` 2 `two.stk` 3 `three.stk`",
 		"stackable/one.stk":       "[name]\n`长名称药剂`\n[icon]\n`item/test.img` 7\n[price]\n100000\n[need material]\n2 10 3 20\n[/need material]",
 		"stackable/two.stk":       "[name]\n`材料甲`\n[icon]\n`item/test.img` 8",
@@ -80,7 +81,7 @@ func TestShopDraftCostsAndReadOnly(t *testing.T) {
 func TestShopCategoryKinds(t *testing.T) {
 	c, i := shopFixture(t)
 	for _, tc := range []struct{ kind, id, want string }{
-		{"basic job", "0", "鬼剑士"}, {"basic job", "1", "格斗家"}, {"expert job", "1", "附魔师"}, {"expert job", "0", "炼金术师"}, {"expert job", "3", "分解师"}, {"expert job", "2", "控偶师"}, {"basic job", "99", "分类 99"},
+		{"basic job", "0", "男鬼剑士"}, {"basic job", "1", "女格斗家"}, {"expert job", "1", "附魔师"}, {"expert job", "0", "炼金术师"}, {"expert job", "3", "分解师"}, {"expert job", "2", "控偶师"},
 		{"expert job non filter", "1", "附魔师"}, {"expert job non filter", "0", "炼金术师"}, {"expert job non filter", "3", "分解师"}, {"expert job non filter", "2", "控偶师"},
 	} {
 		t.Run(tc.kind+tc.id, func(t *testing.T) {
@@ -89,7 +90,13 @@ func TestShopCategoryKinds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(doc.Categories) != 1 || doc.Categories[0].Name != tc.want || doc.Tabs[0].Groups[0].CategoryID != tc.id || len(doc.Tabs[0].Groups[0].Items) != 2 {
+			name := ""
+			for _, category := range doc.Categories {
+				if category.ID == tc.id {
+					name = category.Name
+				}
+			}
+			if name != tc.want || doc.Tabs[0].Groups[0].CategoryID != tc.id || len(doc.Tabs[0].Groups[0].Items) != 2 {
 				t.Fatalf("document = %#v", doc)
 			}
 			if doc.CategoryType != tc.kind || len(doc.Issues) != 0 {
@@ -159,7 +166,7 @@ func TestShopReal90CN(t *testing.T) {
 				t.Fatalf("joann cost=%#v", cost)
 			}
 		} else {
-			if len(doc.Tabs) != 4 || len(doc.Categories) != 16 || doc.Categories[0].Name != "鬼剑士" {
+			if len(doc.Tabs) != 4 || len(doc.Categories) != 16 || doc.Categories[0].Name != "鬼剑士(男)" {
 				t.Fatalf("equipment categories=%#v tabs=%d", doc.Categories, len(doc.Tabs))
 			}
 			if doc.Tabs[0].Groups[0].Items[0].Item.Costs[0].Quantity != "10" {
@@ -172,5 +179,40 @@ func TestShopReal90CN(t *testing.T) {
 	}
 	if a.ModifiedCount() != before {
 		t.Fatal("real archive mutated")
+	}
+}
+
+func TestShopCategoryRealArchive(t *testing.T) {
+	filename := os.Getenv("PVF_TESTFILE")
+	if filename == "" {
+		t.Skip("PVF_TESTFILE 未设置")
+	}
+	a, err := pvf.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		kind string
+		firstID string
+		count int
+	}{
+		{"job", "0", 0},
+		{"expert job", "0", 4},
+		{"expert job non filter", "0", 4},
+		{"basic job", "0", 16},
+	} {
+		categories, err := readShopCategories(a, tc.kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(categories) < tc.count || categories[0].ID != tc.firstID || categories[0].Name == "" || strings.Contains(categories[0].Name, "<4::") {
+			t.Fatalf("%s categories = %#v", tc.kind, categories)
+		}
+	}
+	if a.ClientVersion() == "110US" {
+		categories, err := readShopCategories(a, "basic job")
+		if err != nil || len(categories) != 17 || categories[16].ID != "16" {
+			t.Fatalf("110US basic job = %#v, %v", categories, err)
+		}
 	}
 }

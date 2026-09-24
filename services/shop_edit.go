@@ -167,6 +167,13 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 	if len(parsed.Issues) > 0 && !(req.Action == "add-tab" && len(parsed.Tabs) == 0 && len(parsed.Issues) == 1) {
 		return fail(fmt.Errorf("商店结构异常，请先在文本模式修正：%s", parsed.Issues[0].Message))
 	}
+	if parsed.CategoryType != "" {
+		categories, categoryErr := readShopCategories(a, parsed.CategoryType)
+		if categoryErr != nil {
+			return fail(categoryErr)
+		}
+		parsed.Categories = categories
+	}
 	stage := a.CloneForBatch()
 	drafts := make(map[int32]ShopDraft)
 	for _, d := range req.Drafts {
@@ -251,24 +258,7 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 					_, err = tab.AppendSection("item list", nil, true)
 				} else {
 					if len(parsed.Categories) == 0 {
-						if parsed.CategoryType == "basic job" {
-							if index, ok := a.Find("character/character.lst"); ok {
-								pairs, e := a.ScriptListPairs(index)
-								if e != nil {
-									return fail(e)
-								}
-								for _, pair := range pairs {
-									parsed.Categories = append(parsed.Categories, ShopCategory{ID: pair.ID})
-								}
-							}
-						} else {
-							for _, id := range []string{"0", "1", "2", "3"} {
-								parsed.Categories = append(parsed.Categories, ShopCategory{ID: id})
-							}
-						}
-						if len(parsed.Categories) == 0 {
-							return fail(fmt.Errorf("商店没有可用分类，请先配置职业列表"))
-						}
+						return fail(fmt.Errorf("商店没有可用分类，请检查商店分类文件"))
 					}
 					for _, category := range parsed.Categories {
 						group, e := tab.AppendSection("category entry", nil, true)

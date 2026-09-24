@@ -128,7 +128,7 @@ onBeforeUnmount(() => session.invalidate(true));
             class="shop-category-select"
             :aria-label="document.categoryType === 'basic job' ? '职业分类' : '商品分类'"
           >
-            <option v-for="category in document.categories" :key="category.id" :value="category.id">
+            <option v-for="(category, i) in document.categories" :key="i" :value="category.id">
               {{ category.name }}
             </option>
           </select>
