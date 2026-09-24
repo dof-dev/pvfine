@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   dateZhCN,
   NConfigProvider,
   NDialogProvider,
   NMessageProvider,
+  useMessage,
   zhCN,
 } from "naive-ui";
 import ToolBar from "./components/ToolBar.vue";
@@ -141,6 +142,16 @@ function shortcutAvailable(command: ShortcutCommandId): boolean {
   }
 }
 
+let messageApi: ReturnType<typeof useMessage> | null = null;
+
+const MessageBridge = defineComponent({
+  name: "MessageBridge",
+  setup() {
+    messageApi = useMessage();
+    return () => null;
+  },
+});
+
 function executeShortcut(command: ShortcutCommandId): void {
   switch (command) {
     case "archive.open":
@@ -150,11 +161,20 @@ function executeShortcut(command: ShortcutCommandId): void {
       if (script.workspaceVisible) {
         void script.saveScript().catch(() => { /* 工作区显示具体错误。 */ });
       } else if (archive.open) {
-        void editor.saveActiveTab();
+        editor.saveActiveTab().catch((err: any) => {
+          messageApi?.error(err?.message ?? String(err));
+        });
       }
       break;
     case "archive.saveAs":
-      if (archive.open) void editor.saveAs();
+      if (archive.open) {
+        editor.saveAs().catch((err: any) => {
+          const msg = String(err?.message ?? err);
+          if (!msg.includes("cancel")) {
+            messageApi?.error(err?.message ?? msg);
+          }
+        });
+      }
       break;
     case "workspace.close":
       if (editor.activeKey !== null) editor.requestCloseTab(editor.activeKey, editor.activePaneId);
@@ -198,6 +218,7 @@ function executeShortcut(command: ShortcutCommandId): void {
   <NConfigProvider :theme="activeTheme.naiveTheme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <NMessageProvider placement="bottom-right">
       <NDialogProvider>
+        <MessageBridge />
         <CloseGuard />
         <EditorCloseGuard />
         <RecoveryPrompt />

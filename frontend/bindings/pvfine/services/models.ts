@@ -1015,3 +1015,33 @@ export interface VersionStatus {
     "viewCommitId": string;
     "error": string;
 }
+
+export interface WorldDropDocument {
+    "revision": number;
+    "levels": WorldDropLevel[] | null;
+}
+
+export interface WorldDropEditRequest {
+    "fileIndex": number;
+    "path": string;
+    "text": string;
+    "revision": number;
+    "levels": WorldDropLevel[] | null;
+}
+
+export interface WorldDropEditResult {
+    "revision": number;
+    "files": ShopEditedFile[] | null;
+    "modifiedCount": number;
+}
+
+export interface WorldDropItem {
+    "id": number;
+    "weight": number;
+    "name": string;
+}
+
+export interface WorldDropLevel {
+    "level": number;
+    "items": WorldDropItem[] | null;
+}

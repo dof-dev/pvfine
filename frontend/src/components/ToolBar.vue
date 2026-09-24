@@ -14,6 +14,7 @@ import {
   DocumentSync24Regular,
   Dismiss24Regular,
   Drop24Regular,
+  Globe24Regular,
   Key24Regular,
   Settings24Regular,
   Toolbox24Regular,
@@ -109,6 +110,12 @@ const toolOptions = computed(() => [
     key: "drop-rate",
     disabled: !dropRate.supported,
     icon: () => h(NIcon, null, { default: () => h(Drop24Regular) }),
+  },
+  {
+    label: "全局掉率",
+    key: "world-drop",
+    disabled: !archive.open,
+    icon: () => h(NIcon, null, { default: () => h(Globe24Regular) }),
   },
 ]);
 watch(
@@ -238,10 +245,24 @@ function onCancelUnpack() {
 }
 
 async function onToolSelect(key: string): Promise<void> {
-  if (key !== "drop-rate") return;
-  const opened = await dropRate.open();
-  if (!opened) {
-    message.error(dropRate.error || "无法打开基础掉率编辑器");
+  if (key === "drop-rate") {
+    const opened = await dropRate.open();
+    if (!opened) {
+      message.error(dropRate.error || "无法打开基础掉率编辑器");
+    }
+    return;
+  }
+  if (key === "world-drop") {
+    if (!archive.open) {
+      message.warning("需先打开 PVF 归档");
+      return;
+    }
+    try {
+      await editor.openWorldDrop();
+    } catch (err: any) {
+      message.error(`打开全局掉率失败: ${err?.message ?? err}`);
+    }
+    return;
   }
 }
 
@@ -431,7 +452,7 @@ function isCancel(e: any): boolean {
     <div class="tb-sep" />
 
     <div class="tb-group" role="group" aria-label="工具">
-      <NTooltip trigger="hover" :disabled="dropRate.supported">
+      <NTooltip trigger="hover" :disabled="archive.open">
         <template #trigger>
           <NDropdown :options="toolOptions" @select="onToolSelect">
             <NButton quaternary>
@@ -440,7 +461,7 @@ function isCancel(e: any): boolean {
             </NButton>
           </NDropdown>
         </template>
-        {{ archive.open ? "仅支持 90US/90CN 归档" : "需先打开 PVF 归档" }}
+        需先打开 PVF 归档
       </NTooltip>
     </div>
 

@@ -3,7 +3,7 @@ import { computed } from "vue";
 import { getGUIProvider } from "../../gui/registry";
 import type { GUIFile } from "../../gui/types";
 
-const props = defineProps<{ file: GUIFile; active: boolean }>();
+const props = defineProps<{ file: GUIFile; active: boolean; paneId?: string }>();
 const emit = defineEmits<{ (e: "close"): void }>();
 const provider = computed(() => getGUIProvider(props.file));
 </script>
@@ -16,9 +16,10 @@ const provider = computed(() => getGUIProvider(props.file));
         :is="provider.component"
         :file="file"
         :active="active"
+        :pane-id="paneId"
         @close="emit('close')"
       />
-      <template #fallback><div class="gui-opening" role="status">正在加载商店…</div></template>
+      <template #fallback><div class="gui-opening" role="status">正在加载{{ provider?.label ?? '界面' }}…</div></template>
     </Suspense>
   </div>
 </template>

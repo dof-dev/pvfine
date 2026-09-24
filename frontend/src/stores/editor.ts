@@ -2,8 +2,9 @@ import { defineStore } from "pinia";
 import { computed, markRaw, nextTick, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService, FileGUIService } from "../../bindings/pvfine/services";
-import type { ShopEditRequest, ShopEditResult } from "../../bindings/pvfine/services/models";
+import type { ShopEditRequest, ShopEditResult, WorldDropEditRequest, WorldDropEditResult } from "../../bindings/pvfine/services/models";
 import { useFileGUIStore } from "./fileGUI";
+import { createGUIModes } from "../gui/state";
 import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
@@ -114,7 +115,50 @@ export const useEditorStore = defineStore("editor", () => {
   const activeTab = computed(
     () => tabs.value.find((tab) => tab.index === activePane.value.activeKey) ?? null
   );
-  const dirtyCount = computed(() => tabs.value.filter((tab) => tab.text !== tab.original).length);
+
+  const guiDirtyCheckers = reactive(new Map<number, Set<() => boolean>>());
+
+  function registerGUIDirtyChecker(index: number, checker: () => boolean) {
+    let set = guiDirtyCheckers.get(index);
+    if (!set) {
+      set = new Set();
+      guiDirtyCheckers.set(index, set);
+    }
+    set.add(checker);
+    return () => {
+      const current = guiDirtyCheckers.get(index);
+      if (current) {
+        current.delete(checker);
+        if (current.size === 0) {
+          guiDirtyCheckers.delete(index);
+        }
+      }
+    };
+  }
+
+  function hasGUIDirty(index: number): boolean {
+    const checkers = guiDirtyCheckers.get(index);
+    if (!checkers || checkers.size === 0) return false;
+    for (const check of checkers) {
+      if (check()) return true;
+    }
+    return false;
+  }
+
+  function isTextDirty(tab: EditorTab): boolean {
+    return tab.editable && tab.text !== tab.original;
+  }
+
+  function isDirty(tab: EditorTab): boolean {
+    if (!tab.editable) return false;
+    return isTextDirty(tab) || hasGUIDirty(tab.index);
+  }
+
+  function hasGUIOnlyDirty(tab: EditorTab): boolean {
+    return tab.editable && !isTextDirty(tab) && hasGUIDirty(tab.index);
+  }
+
+  const dirtyCount = computed(() => tabs.value.filter(isDirty).length);
   const pendingClose = ref<PendingTabClose | null>(null);
 
   function collectPaneIds(node: EditorLayoutNode, result: EditorPaneId[]): void {
@@ -500,6 +544,7 @@ export const useEditorStore = defineStore("editor", () => {
     mergePaneTabs(currentPaneId, destinationPaneId);
     layout.value = result.node;
     delete paneStates[currentPaneId];
+    delete paneGUIModes[currentPaneId];
     activePaneId.value = destinationPaneId;
   }
 
@@ -528,8 +573,19 @@ export const useEditorStore = defineStore("editor", () => {
     if (tab) tab.annotationsHidden = !tab.annotationsHidden;
   }
 
-  function isDirty(tab: EditorTab): boolean {
-    return tab.editable && tab.text !== tab.original;
+  const paneGUIModes = reactive<Record<EditorPaneId, ReturnType<typeof createGUIModes>>>({});
+
+  function getGUIModes(paneId: EditorPaneId) {
+    if (!paneGUIModes[paneId]) {
+      paneGUIModes[paneId] = createGUIModes();
+    }
+    return paneGUIModes[paneId];
+  }
+
+  function setGUIMode(index: number, mode: "text" | "gui", requestedPaneId: EditorPaneId = activePaneId.value): void {
+    const paneId = resolvePaneId(requestedPaneId);
+    const modes = getGUIModes(paneId);
+    modes.set(index, mode);
   }
 
   /** 提交商店 GUI 编辑:校验草稿一致性与归档代次,成功后同步受影响标签的文本。 */
@@ -568,10 +624,65 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  /** 提交全局掉率 GUI 编辑:校验草稿一致性与归档代次,成功后同步受影响标签的文本。 */
+  async function applyWorldDropEdit(request: WorldDropEditRequest): Promise<WorldDropEditResult> {
+    if (saving.value) throw new Error("正在保存，请稍后再试");
+    const source = tabs.value.find((tab) => tab.index === request.fileIndex && tab.path === request.path);
+    if (!source || source.text !== request.text) throw new Error("全局掉率草稿已变化，请重新加载数据");
+    const gui = useFileGUIStore();
+    const epoch = gui.epoch;
+    saving.value = true;
+    guiApplying.value = true;
+    guiRefreshWarning.value = "";
+    try {
+      await nextTick();
+      const result = await FileGUIService.ApplyWorldDropEdit(request);
+      if (!result) throw new Error("未收到全局掉率编辑结果");
+      if (gui.epoch !== epoch) throw new Error("归档已切换，已忽略旧界面的编辑结果");
+      for (const file of result.files ?? []) {
+        const tab = tabs.value.find((item) => item.index === file.fileIndex && item.path === file.path);
+        if (!tab) continue;
+        if (tab.text === file.beforeText || tab.text === file.text) {
+          tab.text = file.text;
+          tab.original = file.text;
+          tab.modified = true;
+        }
+      }
+      const refreshes = await Promise.allSettled([
+        refreshBatchFiles((result.files ?? []).map((file) => file.fileIndex)),
+        useArchiveStore().refreshInfo(),
+      ]);
+      if (refreshes.some((refresh) => refresh.status === "rejected")) {
+        guiRefreshWarning.value = "修改已应用，部分标签信息刷新失败，可重新打开相关文件";
+      }
+      return result;
+    } finally {
+      saving.value = false;
+      guiApplying.value = false;
+    }
+  }
+
+  /** 通过工具菜单或快捷入口打开全局掉率文件并切换到 GUI 模式 */
+  async function openWorldDrop(requestedPaneId?: EditorPaneId): Promise<boolean> {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const nodes = await ArchiveService.ResolveFiles(["etc/worlddrop.etc"]);
+    const target = nodes?.find((n) => n && !n.isDir && n.fileIndex >= 0);
+    if (!target) {
+      throw new Error("归档中未找到全局掉率文件 etc/worlddrop.etc");
+    }
+    await openFile(target.fileIndex, targetPaneId);
+    const tab = tabs.value.find((t) => t.index === target.fileIndex);
+    if (tab?.loadError) {
+      throw new Error(tab.loadError);
+    }
+    setGUIMode(target.fileIndex, "gui", targetPaneId);
+    return true;
+  }
+
   /** 把单个标签的本地文本写入后端 overlay,成功后重置脏基线。 */
   async function saveTab(index: number): Promise<boolean> {
     const tab = tabs.value.find((item) => item.index === index);
-    if (!tab || !isDirty(tab)) return false;
+    if (!tab || !isTextDirty(tab)) return false;
     const text = tab.text;
     await EditorService.SetText(tab.index, text);
     const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
@@ -591,6 +702,10 @@ export const useEditorStore = defineStore("editor", () => {
     const paneId = resolvePaneId(requestedPaneId);
     const index = paneStates[paneId]?.activeKey ?? null;
     if (index === null || saving.value) return false;
+    const tab = tabs.value.find((item) => item.index === index);
+    if (tab && tab.editable && hasGUIDirty(tab.index)) {
+      throw new Error(`当前文件存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
+    }
     saving.value = true;
     try {
       const saved = await saveTab(index);
@@ -603,7 +718,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 把所有本地有修改的标签写入 overlay(PVF 写盘前调用)。 */
   async function saveAllDirty(): Promise<number> {
-    const indexes = tabs.value.filter((tab) => isDirty(tab)).map((tab) => tab.index);
+    const indexes = tabs.value.filter((tab) => isTextDirty(tab)).map((tab) => tab.index);
     let saved = 0;
     for (const index of indexes) {
       if (await saveTab(index)) saved += 1;
@@ -636,6 +751,10 @@ export const useEditorStore = defineStore("editor", () => {
   /** 保存到源文件 */
   async function save() {
     const archive = useArchiveStore();
+    const guiDirtyTab = tabs.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
+    if (guiDirtyTab) {
+      throw new Error(`文件 ${guiDirtyTab.title || guiDirtyTab.path} 存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
+    }
     saving.value = true;
     try {
       await saveAllDirty();
@@ -655,6 +774,10 @@ export const useEditorStore = defineStore("editor", () => {
   /** 另存为新 PVF,返回保存路径(取消返回 null) */
   async function saveAs() {
     const archive = useArchiveStore();
+    const guiDirtyTab = tabs.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
+    if (guiDirtyTab) {
+      throw new Error(`文件 ${guiDirtyTab.title || guiDirtyTab.path} 存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
+    }
     saving.value = true;
     try {
       await saveAllDirty();
@@ -890,6 +1013,8 @@ export const useEditorStore = defineStore("editor", () => {
   Events.On("archive:closed", () => {
     pendingClose.value = null;
     draggingTab.value = null;
+    guiDirtyCheckers.clear();
+    for (const modes of Object.values(paneGUIModes)) modes.reset();
     closeAllTabs();
   });
   // 脚本或批处理在别的窗口应用了变更时，本窗口的标签不会自己更新。事件是
@@ -937,6 +1062,15 @@ export const useEditorStore = defineStore("editor", () => {
     guiApplying,
     guiRefreshWarning,
     applyShopEdit,
+    applyWorldDropEdit,
+    openWorldDrop,
+    getGUIModes,
+    setGUIMode,
+    registerGUIDirtyChecker,
+    hasGUIDirty,
+    isTextDirty,
+    isDirty,
+    hasGUIOnlyDirty,
     pendingClose,
     openFile,
     retryOpenFile,

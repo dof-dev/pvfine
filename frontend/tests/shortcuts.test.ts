@@ -91,4 +91,45 @@ describe("应用快捷键", () => {
     expect(dispatchShortcut(keyEvent("KeyW", { ctrlKey: true, altKey: true }), {}, false, execute, undefined, undefined, false)).toBe("editor.closeAll");
     expect(execute.mock.calls.map(([command]) => command)).toEqual(["editor.closeOthers", "editor.closeAll"]);
   });
+
+  it("workspace.save 快捷键异常拦截：saveActiveTab 抛出错误时捕获并路由至消息提示", async () => {
+    const errorMessages: string[] = [];
+    const mockMessageApi = {
+      error: (msg: string) => errorMessages.push(msg),
+    };
+
+    // 模拟 saveActiveTab 抛出 GUI 未应用修改错误
+    const saveActiveTab = vi.fn().mockRejectedValue(
+      new Error("当前文件存在未应用的界面修改，请先在界面中点击【应用修改】后再保存"),
+    );
+
+    function executeSaveShortcut() {
+      saveActiveTab().catch((err: any) => {
+        mockMessageApi.error(err?.message ?? String(err));
+      });
+    }
+
+    const event = keyEvent("KeyS", { ctrlKey: true });
+    const dispatched = dispatchShortcut(
+      event,
+      {},
+      false,
+      (cmd) => {
+        if (cmd === "workspace.save") executeSaveShortcut();
+      },
+      undefined,
+      () => true,
+      false,
+    );
+
+    expect(dispatched).toBe("workspace.save");
+    expect(saveActiveTab).toHaveBeenCalledOnce();
+
+    // 等待微任务异步捕获完成
+    await Promise.resolve();
+
+    expect(errorMessages).toEqual([
+      "当前文件存在未应用的界面修改，请先在界面中点击【应用修改】后再保存",
+    ]);
+  });
 });

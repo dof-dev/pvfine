@@ -24,6 +24,14 @@ export function ApplyShopEdit(req: $models.ShopEditRequest): $CancellablePromise
 }
 
 /**
+ * ApplyWorldDropEdit publishes one complete validated snapshot to the archive
+ * overlay. Like shop edits, a stale revision or changed editor draft is rejected.
+ */
+export function ApplyWorldDropEdit(req: $models.WorldDropEditRequest): $CancellablePromise<$models.WorldDropEditResult | null> {
+    return $Call.ByID(237649473, req);
+}
+
+/**
  * ReadItem resolves the same item union used by shop lists and search pickers.
  */
 export function ReadItem(id: string, drafts: $models.ShopDraft[] | null): $CancellablePromise<$models.ShopItem | null> {
@@ -36,4 +44,12 @@ export function ReadItem(id: string, drafts: $models.ShopDraft[] | null): $Cance
  */
 export function ReadShop(fileIndex: number, text: string): $CancellablePromise<$models.ShopDocument | null> {
     return $Call.ByID(603302160, fileIndex, text);
+}
+
+/**
+ * ReadWorldDrop parses the caller's current editor draft, then resolves names
+ * against the archive's item relation index. Unknown IDs remain editable.
+ */
+export function ReadWorldDrop(fileIndex: number, text: string): $CancellablePromise<$models.WorldDropDocument | null> {
+    return $Call.ByID(3120791685, fileIndex, text);
 }

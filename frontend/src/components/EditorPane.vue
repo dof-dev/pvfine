@@ -78,7 +78,7 @@ const dragOver = ref(false);
 const dragOverEdge = ref<DropEdge | null>(null);
 const previewVisibility = reactive(new Map<number, boolean>());
 const gui = useFileGUIStore();
-const guiModes = createGUIModes();
+const guiModes = editor.getGUIModes(paneId);
 function isGUI(index: number): boolean { return guiModes.entries.get(index)?.mode === "gui"; }
 watch(() => gui.epoch, () => guiModes.reset(), { flush: "sync" });
 const tabContextMenu = ref({
@@ -906,10 +906,10 @@ function onDrop(event: DragEvent): void {
             </NTooltip>
             <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
               <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
-                :aria-pressed="!isGUI(tab.index)" @click="guiModes.set(tab.index, 'text')">DSL</NButton>
+                :aria-pressed="!isGUI(tab.index)" @click="guiModes.requestMode(tab.index, 'text')">DSL</NButton>
               <NButton size="tiny" :type="isGUI(tab.index) ? 'primary' : 'default'"
                 :disabled="tab.loading || !!tab.loadError" :aria-pressed="isGUI(tab.index)"
-                @click="guiModes.set(tab.index, 'gui')">GUI</NButton>
+                @click="guiModes.requestMode(tab.index, 'gui')">GUI</NButton>
             </div>
           </div>
         </div>
@@ -953,9 +953,10 @@ function onDrop(event: DragEvent): void {
             v-if="!tab.loading && !tab.loadError && guiModes.entries.get(tab.index)?.opened"
             v-show="isGUI(tab.index)"
             :key="`${gui.epoch}:${tab.index}`"
+            :pane-id="paneId"
             :file="previewFile(tab)"
             :active="isGUI(tab.index) && activeTab?.index === tab.index"
-            @close="guiModes.set(tab.index, 'text')"
+            @close="guiModes.requestMode(tab.index, 'text')"
           />
         </div>
       </NTabPane>

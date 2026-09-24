@@ -131,5 +131,10 @@ export type {
     VersionCommit,
     VersionFileDiff,
     VersionHistoryPage,
-    VersionStatus
+    VersionStatus,
+    WorldDropDocument,
+    WorldDropEditRequest,
+    WorldDropEditResult,
+    WorldDropItem,
+    WorldDropLevel
 } from "./models.js";
