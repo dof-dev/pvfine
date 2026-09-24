@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,12 +31,13 @@ type advancedQueryKey struct {
 	regex        bool
 }
 type advancedDiskQuery struct {
-	id    uint64
-	key   advancedQueryKey
-	path  string
-	count int
-	bytes int64
-	used  uint64
+	id             uint64
+	key            advancedQueryKey
+	path           string
+	count          int
+	bytes          int64
+	used           uint64
+	nameIndexReady bool
 }
 
 // A session owns an immutable reverse index and at most eight disk result sets.
@@ -52,6 +53,7 @@ type advancedSQLite struct {
 	cachePath   string
 	queryBudget int64 // zero uses the default; injectable for storage-failure tests
 	db          *sql.DB
+	shards      int
 	ready       bool
 	queries     map[uint64]*advancedDiskQuery
 	clock       uint64
@@ -167,13 +169,21 @@ func (s *ArchiveService) searchAdvancedStringSQLite(query, scope string, regex b
 	} else {
 		for _, existing := range d.queries {
 			if existing.key == key {
+				c.mu.RLock()
+				nameIndexReady := c.indexStatus.State == IndexStateReady
+				c.mu.RUnlock()
+				if nameIndexReady && !existing.nameIndexReady {
+					delete(d.queries, existing.id)
+					_ = os.Remove(existing.path)
+					continue
+				}
 				q = existing
 				break
 			}
 		}
 		if q == nil {
 			var err error
-			q, err = d.query(key, match)
+			q, err = d.query(c, key, match)
 			if err != nil {
 				return nil, err
 			}
@@ -242,7 +252,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 	if clean {
 		// Schema/rule version is part of the filename; modified archives only use
 		// session files and can never be published as a clean cached index.
-		d.cachePath = filepath.Join(root, "refs-v1-"+digest+".db")
+		d.cachePath = filepath.Join(root, "refs-v3-"+digest)
 		if d.restoreCache() {
 			d.ready = true
 			d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "ready-cache", Done: totalFiles, Total: totalFiles})
@@ -254,9 +264,8 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.db.ExecContext(d.ctx, `CREATE TABLE meta(version INTEGER); CREATE TABLE pool(offset INTEGER PRIMARY KEY,pool TEXT NOT NULL,value TEXT NOT NULL);
- CREATE TABLE files(file_index INTEGER PRIMARY KEY,path TEXT NOT NULL,lower_path TEXT NOT NULL,size INTEGER,data_type INTEGER);
- CREATE TABLE refs(file_index INTEGER,offset INTEGER,occurrences INTEGER,types INTEGER,fields INTEGER,PRIMARY KEY(file_index,offset)) WITHOUT ROWID;`)
+	_, err = d.db.ExecContext(d.ctx, `CREATE TABLE meta(version INTEGER,shards INTEGER); CREATE TABLE pool(offset INTEGER PRIMARY KEY,pool TEXT NOT NULL,value TEXT NOT NULL,resolved TEXT NOT NULL);
+ CREATE TABLE files(file_index INTEGER PRIMARY KEY,path TEXT NOT NULL,lower_path TEXT NOT NULL,size INTEGER,data_type INTEGER);`)
 	if err != nil {
 		return err
 	}
@@ -283,18 +292,14 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		}
 	}()
 	entries, refs, files, pending := 0, 0, 0, 0
-	var poolStmt, fileStmt, refStmt *sql.Stmt
+	var poolStmt, fileStmt *sql.Stmt
 	prepare := func() error {
 		var e error
-		poolStmt, e = tx.PrepareContext(d.ctx, `INSERT INTO pool VALUES(?,?,?)`)
+		poolStmt, e = tx.PrepareContext(d.ctx, `INSERT INTO pool VALUES(?,?,?,?)`)
 		if e != nil {
 			return e
 		}
 		fileStmt, e = tx.PrepareContext(d.ctx, `INSERT INTO files VALUES(?,?,?,?,?)`)
-		if e != nil {
-			return e
-		}
-		refStmt, e = tx.PrepareContext(d.ctx, `INSERT INTO refs VALUES(?,?,?,?,?)`)
 		return e
 	}
 	closeStatements := func() {
@@ -303,9 +308,6 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		}
 		if fileStmt != nil {
 			fileStmt.Close()
-		}
-		if refStmt != nil {
-			refStmt.Close()
 		}
 	}
 	defer closeStatements()
@@ -335,6 +337,13 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 			return context.Canceled
 		}
 		entry, ok, e := pools.Next(d.ctx)
+		resolved := ""
+		if ok && e == nil && strings.Contains(entry.Value, "<") && strings.Contains(entry.Value, "::") {
+			resolved = a.ResolvePlaceholders(entry.Value)
+			if resolved == entry.Value {
+				resolved = ""
+			}
+		}
 		c.mu.RUnlock()
 		if e != nil {
 			return e
@@ -342,7 +351,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		if !ok {
 			break
 		}
-		if _, e = poolStmt.ExecContext(d.ctx, entry.Offset, entry.Pool, entry.Value); e != nil {
+		if _, e = poolStmt.ExecContext(d.ctx, entry.Offset, entry.Pool, entry.Value, resolved); e != nil {
 			return e
 		}
 		entries++
@@ -352,69 +361,65 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		}
 	}
 	log.Printf("[pvfine:advanced] sqlite strings=%d elapsed=%s", entries, time.Since(started).Round(time.Millisecond))
+	referencesStarted := time.Now()
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "references", Total: total})
-	for {
-		c.mu.RLock()
-		if c.advancedDisk != d || c.archive != a || d.ctx.Err() != nil {
-			c.mu.RUnlock()
-			return context.Canceled
+	workers := max(1, min(advancedMaxShards, runtime.GOMAXPROCS(0)-1, total))
+	d.shards = workers
+	writers := make([]*advancedReferenceWriter, 0, workers)
+	defer func() {
+		for _, writer := range writers {
+			writer.close()
 		}
-		index, references, ok, e := scanner.Next(d.ctx)
-		var path string
-		var file pvf.File
-		if ok && e == nil {
-			path = a.Path(index)
-			file = a.File(index)
-		}
-		c.mu.RUnlock()
+	}()
+	for shard := 0; shard < workers; shard++ {
+		writer, e := newAdvancedReferenceWriter(d.ctx, d.dir, shard)
 		if e != nil {
 			return e
 		}
-		if !ok {
-			break
-		}
+		writers = append(writers, writer)
+	}
+	pipeline := d.startReferencePipeline(c, a, scanner, workers, func(ctx context.Context, shard int, result advancedReferenceResult) error {
+		return writers[shard].add(ctx, result.index, result.refs)
+	})
+	defer pipeline.close()
+	for result := range pipeline.results {
+		index, path, file := result.index, result.path, result.file
+		var e error
 		if _, e = fileStmt.ExecContext(d.ctx, index, path, strings.ToLower(path), file.DataSize, file.DataType); e != nil {
 			return e
 		}
 		pending++
-		for _, ref := range references {
-			types := 0
-			for n, t := range ref.TokenTypes {
-				types |= int(t) << (n * 4)
-			}
-			fields := 0
-			for _, f := range ref.FileFields {
-				if f == "name" {
-					fields |= 1
-				} else if f == "path" {
-					fields |= 2
-				}
-			}
-			if _, e = refStmt.ExecContext(d.ctx, index, ref.Offset, ref.Occurrences, types, fields); e != nil {
-				return e
-			}
-			refs++
-			pending++
-			if e = flush(); e != nil {
-				return e
-			}
+		refs += len(result.refs)
+		if e = flush(); e != nil {
+			return e
 		}
 		files++
 		if files%16384 == 0 {
 			d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "references", Done: files, Total: total})
 		}
 	}
+	if err = pipeline.err(); err != nil {
+		return err
+	}
 	closeStatements()
 	if err = tx.Commit(); err != nil {
 		return err
 	}
+	log.Printf("[pvfine:advanced] sqlite references=%d files=%d workers=%d elapsed=%s", refs, files, workers, time.Since(referencesStarted).Round(time.Millisecond))
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "indexes", Done: files, Total: total})
-	_, err = d.db.ExecContext(d.ctx, `CREATE INDEX refs_offset ON refs(offset,file_index); CREATE INDEX files_path ON files(path,file_index);`)
+	if err = finishAdvancedShards(d.ctx, writers); err != nil {
+		return err
+	}
+	for _, writer := range writers {
+		writer.close()
+	}
+	writers = nil
+	_, err = d.db.ExecContext(d.ctx, `CREATE INDEX files_path ON files(path,file_index);`)
 	if err != nil {
 		return err
 	}
 
-	if _, err = d.db.ExecContext(d.ctx, `INSERT INTO meta VALUES(1)`); err != nil {
+	if _, err = d.db.ExecContext(d.ctx, `INSERT INTO meta VALUES(3,?)`, d.shards); err != nil {
 		return err
 	}
 	if err = d.db.Close(); err != nil {
@@ -425,20 +430,14 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		return err
 	}
 	if d.cachePath != "" && d.ctx.Err() == nil {
-		// Hard links publish atomically without duplicating a gigabyte or exposing
-		// a partially built cache. If unavailable, keep the working session index.
-		if e := os.Link(filepath.Join(d.dir, "index.db"), d.cachePath); e != nil && !os.IsExist(e) {
+		if e := d.publishCache(root); e != nil && !os.IsExist(e) {
 			log.Printf("[pvfine:advanced] cache publication unavailable; using session index")
 		}
 		pruneAdvancedCaches(root)
 	}
 	d.ready = true
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "ready-sqlite", Done: files, Total: total})
-	info, _ := os.Stat(filepath.Join(d.dir, "index.db"))
-	var size int64
-	if info != nil {
-		size = info.Size()
-	}
+	size := advancedIndexDirectorySize(d.dir)
 	log.Printf("[pvfine:advanced] sqlite build finished: strings=%d references=%d files=%d bytes=%d elapsed=%s", entries, refs, files, size, time.Since(started).Round(time.Millisecond))
 	return nil
 }
@@ -493,7 +492,7 @@ func (d *advancedSQLite) evictOldest() error {
 	return nil
 }
 
-func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*advancedDiskQuery, error) {
+func (d *advancedSQLite) query(c *core, key advancedQueryKey, match func(string) bool) (*advancedDiskQuery, error) {
 	started := time.Now()
 	budget := d.queryBudget
 	if budget == 0 {
@@ -519,6 +518,9 @@ func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*
 		return nil, errors.New("高级搜索会话编号已耗尽，请重启应用")
 	}
 	q := &advancedDiskQuery{id: id, key: key, path: filepath.Join(d.dir, fmt.Sprintf("query-%d.db", id))}
+	c.mu.RLock()
+	q.nameIndexReady = c.indexStatus.State == IndexStateReady
+	c.mu.RUnlock()
 	db, err := openAdvancedDB(q.path)
 	if err != nil {
 		_ = os.Remove(q.path)
@@ -541,7 +543,10 @@ func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*
 	if err = attachAdvancedSource(d.ctx, db, filepath.Join(d.dir, "index.db")); err != nil {
 		return nil, err
 	}
-	if _, err = db.ExecContext(d.ctx, `CREATE TABLE matches(offset INTEGER PRIMARY KEY); CREATE TABLE hits(seq INTEGER PRIMARY KEY,file_index INTEGER NOT NULL);`); err != nil {
+	if err = d.attachShards(d.ctx, db); err != nil {
+		return nil, err
+	}
+	if _, err = db.ExecContext(d.ctx, `CREATE TABLE matches(offset INTEGER PRIMARY KEY); CREATE TABLE name_matches(file_index INTEGER NOT NULL,value TEXT NOT NULL,PRIMARY KEY(file_index,value)) WITHOUT ROWID; CREATE TABLE hits(seq INTEGER PRIMARY KEY,file_index INTEGER NOT NULL);`); err != nil {
 		return nil, err
 	}
 	tx, err := db.BeginTx(d.ctx, nil)
@@ -554,7 +559,7 @@ func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*
 		return nil, err
 	}
 	defer stmt.Close()
-	rows, err := d.db.QueryContext(d.ctx, `SELECT offset,value FROM pool ORDER BY offset`)
+	rows, err := d.db.QueryContext(d.ctx, `SELECT offset,value,resolved FROM pool ORDER BY offset`)
 	if err != nil {
 		return nil, err
 	}
@@ -563,11 +568,12 @@ func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*
 	for rows.Next() {
 		var offset int32
 		var value string
-		if err = rows.Scan(&offset, &value); err != nil {
+		var resolved string
+		if err = rows.Scan(&offset, &value, &resolved); err != nil {
 			return nil, err
 		}
 		scanned++
-		if match(value) {
+		if match(value) || (resolved != "" && match(resolved)) {
 			if _, err = stmt.ExecContext(d.ctx, offset); err != nil {
 				return nil, err
 			}
@@ -581,10 +587,18 @@ func (d *advancedSQLite) query(key advancedQueryKey, match func(string) bool) (*
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
+	if err = d.addAdvancedNameMatches(c, db, key, match); err != nil {
+		return nil, err
+	}
 	// Materialize only ordered file identities. Details remain normalized in the
 	// reverse index and are fetched for the current page, without duplicating text.
+	var candidates []string
+	for shard := 0; shard < d.shards; shard++ {
+		candidates = append(candidates, fmt.Sprintf(`SELECT r.file_index FROM matches m CROSS JOIN refs%d.refs r INDEXED BY refs_offset ON r.offset=m.offset`, shard))
+	}
+	candidates = append(candidates, `SELECT file_index FROM name_matches`)
 	_, err = db.ExecContext(d.ctx, `INSERT INTO hits(file_index)
- SELECT r.file_index FROM matches m CROSS JOIN source.refs r INDEXED BY refs_offset ON r.offset=m.offset
+ SELECT r.file_index FROM (`+strings.Join(candidates, " UNION ALL ")+`) r
  JOIN source.files f ON f.file_index=r.file_index
  WHERE ?='' OR f.lower_path=? OR substr(f.lower_path,1,length(?)+1)=?||'/'
  GROUP BY r.file_index ORDER BY f.path,r.file_index`, key.scope, key.scope, key.scope, key.scope)
@@ -616,6 +630,9 @@ func (d *advancedSQLite) page(q *advancedDiskQuery, after, limit int) (*Advanced
 	if err = attachAdvancedSource(d.ctx, db, filepath.Join(d.dir, "index.db")); err != nil {
 		return nil, err
 	}
+	if err = d.attachShards(d.ctx, db); err != nil {
+		return nil, err
+	}
 	rows, err := db.QueryContext(d.ctx, `SELECT h.seq,f.file_index,f.path,f.size,f.data_type FROM hits h JOIN source.files f ON f.file_index=h.file_index WHERE h.seq>? ORDER BY h.seq LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, err
@@ -636,7 +653,8 @@ func (d *advancedSQLite) page(q *advancedDiskQuery, after, limit int) (*Advanced
 		return nil, err
 	}
 	for _, hit := range result.Hits {
-		details, e := db.QueryContext(d.ctx, `SELECT p.pool,p.offset,p.value,r.occurrences,r.types,r.fields FROM source.refs r JOIN matches m ON m.offset=r.offset JOIN source.pool p ON p.offset=r.offset WHERE r.file_index=? ORDER BY r.offset`, hit.FileIndex)
+		detailsSQL := fmt.Sprintf(`SELECT p.pool,p.offset,CASE WHEN p.resolved<>'' THEN p.resolved ELSE p.value END,r.occurrences,r.types,r.fields FROM refs%d.refs r JOIN matches m ON m.offset=r.offset JOIN source.pool p ON p.offset=r.offset WHERE r.file_index=? ORDER BY r.offset`, int(hit.FileIndex)%d.shards)
+		details, e := db.QueryContext(d.ctx, detailsSQL, hit.FileIndex)
 		if e != nil {
 			return nil, e
 		}
@@ -664,6 +682,23 @@ func (d *advancedSQLite) page(q *advancedDiskQuery, after, limit int) (*Advanced
 		if e != nil {
 			return nil, e
 		}
+		nameRows, e := db.QueryContext(d.ctx, `SELECT value FROM name_matches WHERE file_index=? ORDER BY value`, hit.FileIndex)
+		if e != nil {
+			return nil, e
+		}
+		for nameRows.Next() {
+			detail := &AdvancedSearchDetail{Kind: "name", Occurrences: 1}
+			if e = nameRows.Scan(&detail.Value); e != nil {
+				nameRows.Close()
+				return nil, e
+			}
+			hit.Details = append(hit.Details, detail)
+		}
+		e = nameRows.Err()
+		nameRows.Close()
+		if e != nil {
+			return nil, e
+		}
 	}
 	if last < q.count {
 		result.NextCursor = int(q.id*advancedCursorStride + uint64(last))
@@ -685,69 +720,4 @@ func openAdvancedReadDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-func (d *advancedSQLite) restoreCache() bool {
-	sessionPath := filepath.Join(d.dir, "index.db")
-	// An active session holds its own link, so LRU eviction cannot remove a
-	// database used by this or another process/window.
-	if err := os.Link(d.cachePath, sessionPath); err != nil {
-		return false
-	}
-	db, err := openAdvancedReadDB(sessionPath)
-	valid := false
-	if err == nil {
-		var version int
-		var check string
-		valid = db.QueryRowContext(d.ctx, `SELECT version FROM meta`).Scan(&version) == nil && version == 1 &&
-			db.QueryRowContext(d.ctx, `PRAGMA quick_check`).Scan(&check) == nil && check == "ok"
-	}
-	if !valid {
-		if db != nil {
-			db.Close()
-		}
-		os.Remove(sessionPath)
-		if d.ctx.Err() == nil {
-			os.Remove(d.cachePath)
-		}
-		return false
-	}
-	d.db = db
-	now := time.Now()
-	_ = os.Chtimes(d.cachePath, now, now)
-	return true
-}
-
-func pruneAdvancedCaches(root string) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-	type cached struct {
-		path string
-		size int64
-		used time.Time
-	}
-	var files []cached
-	var total int64
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "refs-v1-") || !strings.HasSuffix(entry.Name(), ".db") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		files = append(files, cached{filepath.Join(root, entry.Name()), info.Size(), info.ModTime()})
-		total += info.Size()
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].used.Before(files[j].used) })
-	for _, file := range files {
-		if total <= 2<<30 {
-			break
-		}
-		if os.Remove(file.path) == nil {
-			total -= file.size
-		}
-	}
 }

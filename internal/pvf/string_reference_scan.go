@@ -67,34 +67,85 @@ type StringReference struct {
 	FileFields  []string
 }
 
-// StringReferenceScanner retains only the current decompressed chunk and one
-// file's references. It never populates the interactive decompression cache.
+// StringReferenceScanner visits files in chunk order, retaining a compact file
+// index list, the current decompressed chunk and one file's references. Each
+// chunk is decoded at most once, without populating the interactive cache.
 type StringReferenceScanner struct {
 	a          *Archive
 	next       int32
+	order      []int32
 	chunkIndex int32
 	chunk      []byte
 }
 
 func (a *Archive) NewStringReferenceScanner() *StringReferenceScanner {
-	return &StringReferenceScanner{a: a, chunkIndex: -1}
+	// Counting sort costs O(files + chunks) and four bytes per file. Detached
+	// files follow the chunks; returned file identities remain archive indexes.
+	bucket := func(item fileItem) int {
+		if item.chunk >= 0 && int(item.chunk) < len(a.groups) {
+			return int(item.chunk)
+		}
+		return len(a.groups)
+	}
+	starts := make([]int, len(a.groups)+1)
+	for _, item := range a.items {
+		starts[bucket(item)]++
+	}
+	total := 0
+	for i, count := range starts {
+		starts[i] = total
+		total += count
+	}
+	order := make([]int32, len(a.items))
+	for index, item := range a.items {
+		group := bucket(item)
+		order[starts[group]] = int32(index)
+		starts[group]++
+	}
+	return &StringReferenceScanner{a: a, order: order, chunkIndex: -1}
 }
 
 func (s *StringReferenceScanner) Next(ctx context.Context) (int32, []StringReference, bool, error) {
+	index, input, ok, err := s.NextInput(ctx)
+	if err != nil || !ok {
+		return index, nil, ok, err
+	}
+	refs, err := input.References(ctx)
+	return index, refs, err == nil, err
+}
+
+// StringReferenceInput is an immutable file snapshot. References can run on
+// different inputs concurrently, without holding the archive's read lock.
+// Retaining an input can retain its decompressed chunk; callers must bound
+// queued inputs instead of collecting snapshots for the entire archive.
+type StringReferenceInput struct {
+	raw              []byte
+	nameOff, pathOff int32
+}
+
+// NextInput reads/decompresses a file without parsing its token references.
+// Like Next, it requires external synchronization with archive edits. Inputs
+// remain valid after subsequent NextInput calls and after archive edits.
+func (s *StringReferenceScanner) NextInput(ctx context.Context) (int32, StringReferenceInput, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, nil, false, err
+		return 0, StringReferenceInput{}, false, err
 	}
-	if s.next >= int32(len(s.a.items)) {
+	if s.next >= int32(len(s.order)) {
 		s.chunk = nil
-		return 0, nil, false, nil
+		return 0, StringReferenceInput{}, false, nil
 	}
-	index := s.next
+	index := s.order[s.next]
 	s.next++
 	item := s.a.items[index]
 	var raw []byte
 	if item.typ == TypeScript {
 		var ok bool
 		raw, ok = s.a.overlay[index]
+		if ok {
+			// Overlay storage is exposed by RawBytes; isolate worker reads from
+			// edits even if a caller modifies an existing payload in place.
+			raw = bytes.Clone(raw)
+		}
 		if !ok && item.chunk >= 0 {
 			if s.chunkIndex != item.chunk {
 				// Release the previous buffer before decoding the next chunk.
@@ -102,7 +153,7 @@ func (s *StringReferenceScanner) Next(ctx context.Context) (int32, []StringRefer
 				var err error
 				s.chunk, err = s.a.decompressChunk(item.chunk)
 				if err != nil {
-					return 0, nil, false, err
+					return 0, StringReferenceInput{}, false, err
 				}
 				s.chunkIndex = item.chunk
 			}
@@ -110,6 +161,14 @@ func (s *StringReferenceScanner) Next(ctx context.Context) (int32, []StringRefer
 				raw = s.chunk[item.off : item.off+item.size]
 			}
 		}
+	}
+	return index, StringReferenceInput{raw: raw, nameOff: item.nameOff, pathOff: item.pathOff}, true, nil
+}
+
+// References parses only snapshot-owned data and does not access the Archive.
+func (input StringReferenceInput) References(ctx context.Context) ([]StringReference, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	refs := make(map[int32]*StringReference)
 	add := func(offset int32) *StringReference {
@@ -121,20 +180,20 @@ func (s *StringReferenceScanner) Next(ctx context.Context) (int32, []StringRefer
 		r.Occurrences++
 		return r
 	}
-	r := add(item.nameOff)
+	r := add(input.nameOff)
 	r.FileFields = appendUniqueString(r.FileFields, "name")
-	r = add(item.pathOff)
+	r = add(input.pathOff)
 	r.FileFields = appendUniqueString(r.FileFields, "path")
-	for pos := 0; pos+5 <= len(raw); pos += 5 {
+	for pos := 0; pos+5 <= len(input.raw); pos += 5 {
 		if pos%40960 == 0 {
 			if err := ctx.Err(); err != nil {
-				return 0, nil, false, err
+				return nil, err
 			}
 		}
-		switch raw[pos] {
-		case 3, 5, 6, 7:
-			r = add(int32(binary.LittleEndian.Uint32(raw[pos+1:])))
-			r.TokenTypes = appendUniqueInt32(r.TokenTypes, int32(raw[pos]))
+		switch input.raw[pos] {
+		case 3, 5, 6, 7, 8, 10:
+			r = add(int32(binary.LittleEndian.Uint32(input.raw[pos+1:])))
+			r.TokenTypes = appendUniqueInt32(r.TokenTypes, int32(input.raw[pos]))
 		}
 	}
 	result := make([]StringReference, 0, len(refs))
@@ -142,7 +201,7 @@ func (s *StringReferenceScanner) Next(ctx context.Context) (int32, []StringRefer
 		result = append(result, *ref)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Offset < result[j].Offset })
-	return index, result, true, nil
+	return result, nil
 }
 
 // SavedContentHash identifies the exact loaded bytes only when there are no

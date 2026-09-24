@@ -148,7 +148,7 @@ const queryPlaceholder = computed(() =>
     ? "输入脚本片段，例如 [name]\\n`alpha`"
     : search.regexEnabled
       ? "输入 RE2 正则，例如 ^烈火.*项链$"
-      : "输入字符串池关键词"
+      : "输入脚本内容，例如 技能伤害"
 );
 
 watch(
@@ -203,6 +203,13 @@ function renderDetails(row: AdvancedSearchItem): VNodeChild {
 }
 
 function renderDetail(detail: AdvancedSearchDetail, index: number): VNodeChild {
+  if (detail.kind === "name") {
+    return h("div", { class: "advanced-search-detail" }, [
+      h("span", { class: "advanced-search-detail-label" }, `第 ${index + 1} 项`),
+      h("span", { class: "advanced-search-detail-hit advanced-search-detail-value" }, `「${detail.value ?? ""}」`),
+      h("span", { class: "advanced-search-detail-muted" }, "解析后的名称"),
+    ]);
+  }
   if (detail.kind === "binary") {
     const lines: VNodeChild[] = [
       h("span", { class: "advanced-search-detail-label" }, `第 ${index + 1} 项`),

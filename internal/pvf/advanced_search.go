@@ -151,7 +151,7 @@ func (a *Archive) BuildStringPoolIndex(ctx context.Context) (*StringPoolIndex, e
 		if item.typ == TypeScript {
 			for pos := 0; pos+5 <= len(raw); pos += 5 {
 				switch raw[pos] {
-				case 3, 5, 6, 7:
+				case 3, 5, 6, 7, 8, 10:
 					offset := int32(binary.LittleEndian.Uint32(raw[pos+1:]))
 					if ref := addReference(offset); ref != nil {
 						ref.TokenTypes = appendUniqueInt32(ref.TokenTypes, int32(raw[pos]))
