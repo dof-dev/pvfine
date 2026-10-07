@@ -7,10 +7,7 @@ import (
 )
 
 func TestProbe110StringTableCost(t *testing.T) {
-	a, err := Open("../../testdata/110US.pvf")
-	if err != nil {
-		t.Fatal(err)
-	}
+	a := openReal(t)
 	defer a.Release()
 
 	fileIndex, ok := a.Find("equipment/character/common/amulet/100300877.equ")

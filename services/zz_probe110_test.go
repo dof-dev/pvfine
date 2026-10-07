@@ -11,7 +11,11 @@ import (
 
 func TestProbe110FirstFileLoad(t *testing.T) {
 	started := time.Now()
-	archivePath, err := filepath.Abs("../testdata/110US.pvf")
+	filename := os.Getenv("PVF_TESTFILE")
+	if filename == "" {
+		t.Skip("PVF_TESTFILE not set; skipping real-archive probe")
+	}
+	archivePath, err := filepath.Abs(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +64,11 @@ func TestProbe110FirstFileLoad(t *testing.T) {
 }
 
 func TestProbe110AsyncOpenBasicFile(t *testing.T) {
-	archivePath, err := filepath.Abs("../testdata/110US.pvf")
+	filename := os.Getenv("PVF_TESTFILE")
+	if filename == "" {
+		t.Skip("PVF_TESTFILE not set; skipping real-archive probe")
+	}
+	archivePath, err := filepath.Abs(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
