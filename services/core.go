@@ -72,6 +72,8 @@ type core struct {
 	mu                  sync.RWMutex
 	archive             *pvf.Archive
 	diskIndex           *sqliteArchiveIndex
+	archiveGeneration   uint64
+	fileIndexCancel     context.CancelFunc
 	annotationEngine    *annotationrules.Engine
 	annotationErr       error
 	renderingEngine     *renderingrules.Engine
@@ -194,6 +196,7 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	if c.renderingErr != nil {
 		return c.renderingErr
 	}
+	c.cancelPendingFileIndexBuild()
 	// Archives constructed in tests/import pipelines may have mutations from
 	// their preparation phase. They are the clean baseline once installed.
 	a.ClearMutations()
@@ -227,15 +230,113 @@ func (c *core) setArchive(a *pvf.Archive) error {
 	return nil
 }
 
+func (c *core) setArchiveWithDeferredDiskIndex(a *pvf.Archive) (uint64, context.Context, error) {
+	if c.annotationErr != nil {
+		return 0, nil, c.annotationErr
+	}
+	if c.renderingErr != nil {
+		return 0, nil, c.renderingErr
+	}
+	if a == nil || a.FileCount() < largeArchiveIndexThreshold {
+		return 0, nil, errors.New("异步磁盘索引仅适用于大型归档")
+	}
+
+	c.cancelPendingFileIndexBuild()
+	a.ClearMutations()
+	c.mu.Lock()
+	c.detachVersionLocked()
+	if c.fileIndexCancel != nil {
+		c.fileIndexCancel()
+		c.fileIndexCancel = nil
+	}
+	if c.diskIndex != nil {
+		c.diskIndex.close()
+		c.diskIndex = nil
+	}
+	c.installDiskArchiveIndexesLocked(a)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.fileIndexCancel = cancel
+	c.indexStatus = IndexStatus{State: IndexStateBuilding, Stage: "file-index", Total: int(a.FileCount())}
+	generation := c.archiveGeneration
+	c.mu.Unlock()
+	return generation, ctx, nil
+}
+
+func (c *core) cancelPendingFileIndexBuild() {
+	c.mu.RLock()
+	cancel := c.fileIndexCancel
+	c.mu.RUnlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (c *core) buildInitialDiskIndexAsync(a *pvf.Archive, generation uint64, ctx context.Context) {
+	finishTask := c.archiveTasks.begin()
+	go func() {
+		taskFinished := false
+		defer func() {
+			if !taskFinished {
+				finishTask()
+			}
+		}()
+		startedAt := time.Now()
+		c.mu.RLock()
+		if c.archive != a || c.archiveGeneration != generation || ctx.Err() != nil {
+			c.mu.RUnlock()
+			return
+		}
+		index, _, err := openSQLiteArchiveIndexContext(ctx, a)
+		c.mu.RUnlock()
+
+		c.mu.Lock()
+		if c.archive != a || c.archiveGeneration != generation || ctx.Err() != nil {
+			c.mu.Unlock()
+			if index != nil {
+				index.close()
+			}
+			return
+		}
+		c.fileIndexCancel = nil
+		if err != nil {
+			c.indexStatus = IndexStatus{
+				State: IndexStateError, Stage: "file-index", Error: err.Error(),
+				OpenDurationMs:  c.indexStatus.OpenDurationMs,
+				BuildDurationMs: elapsedMilliseconds(startedAt),
+			}
+			status := c.indexStatus
+			c.mu.Unlock()
+			emitEvent("archive:index-error", status)
+			return
+		}
+		c.diskIndex = index
+		c.indexStatus = IndexStatus{
+			State: IndexStateBuilding, Stage: "sqlite",
+			OpenDurationMs: c.indexStatus.OpenDurationMs,
+		}
+		c.mu.Unlock()
+
+		emitEvent("archive:file-index-ready")
+		finishTask()
+		taskFinished = true
+		c.startSearchIndex()
+	}()
+}
+
 func (c *core) installDiskArchiveIndexesLocked(a *pvf.Archive) {
 	if c.indexCancel != nil {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	if c.fileIndexCancel != nil {
+		c.fileIndexCancel()
+		c.fileIndexCancel = nil
+	}
 	c.indexRefreshPending = false
 	c.indexRefreshPendingForce = false
 	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
+	c.archiveGeneration++
 	c.batchRevision++
 	c.batchPlan = nil
 	c.invalidateScriptLocked()
@@ -466,10 +567,15 @@ func (c *core) installArchiveIndexesLockedWithSearch(a *pvf.Archive, children ma
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	if c.fileIndexCancel != nil {
+		c.fileIndexCancel()
+		c.fileIndexCancel = nil
+	}
 	c.indexRefreshPending = false
 	c.indexRefreshPendingForce = false
 	c.invalidateAdvancedSearchLocked()
 	c.indexGen++
+	c.archiveGeneration++
 	c.batchRevision++
 	c.batchPlan = nil
 	c.invalidateScriptLocked()
@@ -525,6 +631,12 @@ func (c *core) bindRenderingEngineLocked(a *pvf.Archive) {
 
 func (c *core) closeArchive() {
 	waitFor := c.archiveTasks.beginClose()
+	c.mu.RLock()
+	fileIndexCancel := c.fileIndexCancel
+	c.mu.RUnlock()
+	if fileIndexCancel != nil {
+		fileIndexCancel()
+	}
 	archives := make(map[*pvf.Archive]struct{})
 	addArchive := func(a *pvf.Archive) {
 		if a != nil {
@@ -549,8 +661,13 @@ func (c *core) closeArchive() {
 		c.indexCancel()
 		c.indexCancel = nil
 	}
+	if c.fileIndexCancel != nil {
+		c.fileIndexCancel()
+		c.fileIndexCancel = nil
+	}
 	advancedDisk = c.detachAdvancedSearchLocked()
 	c.indexGen++
+	c.archiveGeneration++
 	c.batchRevision++
 	c.batchPlan = nil
 	c.invalidateScriptLocked()

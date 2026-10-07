@@ -2,6 +2,7 @@ package pvf
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -138,6 +139,100 @@ func TestStringTablePrecedence(t *testing.T) {
 	}
 	if got := a.ResolvePlaceholders("<3::name_2>"); got != "포니 비즈 뱅글" {
 		t.Errorf("plain resolution = %q", got)
+	}
+}
+
+func TestTargetedStringTableLookup(t *testing.T) {
+	raw := append([]byte{0xff, 0xfe}, utf16LEBytes("name_1>old\r\nname_1>new\r\nname_2>last")...)
+
+	if got, ok := findStringTableValue(raw, "name_1"); !ok || got != "new" {
+		t.Fatalf("duplicate lookup = %q, %v", got, ok)
+	}
+	if got, ok := findStringTableValue(raw, "name_2"); !ok || got != "last" {
+		t.Fatalf("unterminated lookup = %q, %v", got, ok)
+	}
+	if got, ok := findStringTableValue(raw, "missing"); ok || got != "" {
+		t.Fatalf("missing lookup = %q, %v", got, ok)
+	}
+}
+
+func TestTargetedStringTableReusesIndexForMultipleKeys(t *testing.T) {
+	a := New()
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Equipment.str`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Equipment.str", utf16LEBytes("name_1>old\r\nname_2>second\r\nname_1>new\r\n"), TypeScript)
+
+	for _, tc := range []struct {
+		key, want string
+	}{
+		{"name_1", "new"},
+		{"name_2", "second"},
+		{"missing", ""},
+		{"name_1", "new"},
+	} {
+		got, ok := a.LookupStringTable(3, tc.key)
+		if tc.want == "" {
+			if ok {
+				t.Errorf("%s unexpectedly resolved to %q", tc.key, got)
+			}
+		} else if !ok || got != tc.want {
+			t.Errorf("%s = %q, %v; want %q", tc.key, got, ok, tc.want)
+		}
+	}
+
+	st := a.ensureStringTables()
+	index := st.valueIndexes["string/equipment.str"]
+	if index == nil || !index.valid || len(index.values) != 3 {
+		t.Fatalf("cached table index = %#v", index)
+	}
+}
+
+func TestTargetedStringTableSiblingFallback(t *testing.T) {
+	a := New()
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Equipment.str`", TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	a.AddFile("String/Equipment.str", utf16LEBytes("this is not a string table"), TypeScript)
+	a.AddFile("String/Equipment.kor.str", utf16LEBytes("name_1>overlay\r\n"), TypeScript)
+
+	if got, ok := a.LookupStringTable(3, "name_1"); !ok || got != "overlay" {
+		t.Fatalf("malformed primary did not fall back: %q, %v", got, ok)
+	}
+
+	// A valid primary table that lacks the key must keep the old loader's
+	// behavior: sibling fallback is only for missing or malformed payloads.
+	a.AddFile("String/Equipment.str", utf16LEBytes("name_2>base\r\n"), TypeScript)
+	a.InvalidateStringTables()
+	if got, ok := a.LookupStringTable(3, "name_1"); ok {
+		t.Fatalf("valid primary unexpectedly used sibling: %q", got)
+	}
+}
+
+func BenchmarkStringTableValueIndex(b *testing.B) {
+	const entries = 622000
+	var text strings.Builder
+	text.Grow(entries * 32)
+	for i := 0; i < entries; i++ {
+		fmt.Fprintf(&text, "equip_name_%d>display name %d\r\n", i, i)
+	}
+	raw := utf16LEBytes(text.String())
+	keys := []string{"equip_name_1", "equip_name_155500", "equip_name_311000", "equip_name_466500", "equip_name_621999"}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(raw)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		values, valid := indexStringTableValues(raw)
+		if !valid || len(values) != entries {
+			b.Fatalf("indexed %d keys, valid=%v", len(values), valid)
+		}
+		for _, key := range keys {
+			valueRange, ok := lookupStringTableValueRange(raw, values, key)
+			if !ok || len(raw[valueRange.start:valueRange.end]) == 0 {
+				b.Fatalf("missing %s", key)
+			}
+		}
 	}
 }
 

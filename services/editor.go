@@ -47,6 +47,49 @@ type FileMeta struct {
 
 // GetFile 返回文件的反编译文本(内存编辑视图)。
 func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
+	return s.getFile(index)
+}
+
+// GetFileBasic returns the rendered file body without annotations or indexed
+// metadata so the editor can display useful content before enrichment loads.
+func (s *EditorService) GetFileBasic(index int32) (*FileMeta, error) {
+	s.c.mu.RLock()
+	defer s.c.mu.RUnlock()
+	a := s.c.archive
+	if a == nil {
+		return nil, ErrNoArchive
+	}
+	if err := validateAnnotationIndex(a, index); err != nil {
+		return nil, err
+	}
+	file := a.File(index)
+	meta := &FileMeta{
+		Index: index, Path: a.Path(index), DataType: file.DataType,
+		Size: file.DataSize, Editable: false, Modified: a.IsModified(index),
+	}
+	switch file.DataType {
+	case pvf.TypeScript, pvf.TypeUnicode:
+		if file.DataSize > maxEditableBytes {
+			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节", file.DataSize, maxEditableBytes)
+			return meta, nil
+		}
+		text, ok := s.c.editorText[index]
+		if !ok {
+			var err error
+			text, err = a.Text(index)
+			if err != nil {
+				return nil, err
+			}
+		}
+		meta.Editable = true
+		meta.Text = text
+	default:
+		meta.Text = fmt.Sprintf("; 不支持的类型 %d(v1 仅支持脚本/文本编辑)", file.DataType)
+	}
+	return meta, nil
+}
+
+func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 	s.c.mu.Lock()
 	defer s.c.mu.Unlock()
 	a := s.c.archive
@@ -62,9 +105,9 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 		Path:     a.Path(index),
 		DataType: f.DataType,
 		Size:     f.DataSize,
-		Tags:     cloneTreeTags(s.c.treeTagsByFile[index]),
 		Editable: false,
 	}
+	meta.Tags = cloneTreeTags(s.c.treeTagsByFile[index])
 	if s.c.diskIndex != nil {
 		meta.Tags, _ = s.c.diskIndex.tags(index)
 	}

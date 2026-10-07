@@ -360,6 +360,9 @@ export const useExplorerStore = defineStore("explorer", () => {
       void search(query.value);
     }
   });
+  Events.On("archive:file-index-ready", () => {
+    if (archive.open) void loadRoots().catch(() => {});
+  });
   Events.On("archive:reloaded", () => {
     reset();
     void loadRoots();

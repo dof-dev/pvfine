@@ -44,6 +44,14 @@ export function GetFile(index: number): $CancellablePromise<$models.FileMeta | n
 }
 
 /**
+ * GetFileBasic returns the rendered file body without annotations or indexed
+ * metadata so the editor can display useful content before enrichment loads.
+ */
+export function GetFileBasic(index: number): $CancellablePromise<$models.FileMeta | null> {
+    return $Call.ByID(1614034244, index);
+}
+
+/**
  * IsUnpacking 报告解包是否进行中。
  */
 export function IsUnpacking(): $CancellablePromise<boolean> {

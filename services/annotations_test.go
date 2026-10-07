@@ -62,6 +62,18 @@ func TestAnnotationServiceReloadRulesKeepsOldEngineOnFailure(t *testing.T) {
 	if len(meta.Annotations) != 1 || meta.Annotations[0].Title != "史诗" {
 		t.Fatalf("editor annotations = %#v", meta.Annotations)
 	}
+	var basic *FileMeta
+	var basicErr error
+	c.mu.RLock()
+	basic, basicErr = NewEditorService(c).GetFileBasic(fileIndex)
+	c.mu.RUnlock()
+	err = basicErr
+	if err != nil {
+		t.Fatal(err)
+	}
+	if basic.Text != meta.Text || len(basic.Annotations) != 0 {
+		t.Fatalf("basic editor file = text %q, annotations %#v", basic.Text, basic.Annotations)
+	}
 
 	if err := os.WriteFile(rulesPath, []byte(`{"version":2,"relations":{},"rules":[]}`), 0o600); err != nil {
 		t.Fatal(err)

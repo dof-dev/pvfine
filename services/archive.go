@@ -74,6 +74,22 @@ func (c *core) openArchive(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
+	if a.FileCount() >= largeArchiveIndexThreshold {
+		generation, ctx, err := c.setArchiveWithDeferredDiskIndex(a)
+		if err != nil {
+			return ArchiveInfo{}, err
+		}
+		c.recordOpenDuration(time.Since(startedAt))
+		info := a.Info()
+		emitEvent("archive:opened", info)
+		c.startVersionLoad(path, a)
+		c.mu.RLock()
+		status := c.indexStatus
+		c.mu.RUnlock()
+		emitEvent("archive:index-progress", status)
+		c.buildInitialDiskIndexAsync(a, generation, ctx)
+		return info, nil
+	}
 	if err := c.setArchive(a); err != nil {
 		return ArchiveInfo{}, err
 	}
@@ -321,6 +337,31 @@ func (s *ArchiveService) ResolveFiles(paths []string) ([]*TreeNode, error) {
 			node.Icon = cloneImageReference(visuals.icon)
 			node.FieldImage = cloneImageReference(visuals.fieldImage)
 			result = append(result, node)
+		}
+		return result, nil
+	}
+	if s.c.indexStatus.Stage == "file-index" {
+		result := make([]*TreeNode, 0, len(paths))
+		seen := make(map[string]struct{}, len(paths))
+		for _, rawPath := range paths {
+			filePath := strings.Trim(strings.ReplaceAll(rawPath, "\\", "/"), "/")
+			if filePath == "" {
+				continue
+			}
+			if _, ok := seen[filePath]; ok {
+				continue
+			}
+			seen[filePath] = struct{}{}
+			index, ok := s.c.archive.Find(filePath)
+			if !ok {
+				continue
+			}
+			file := s.c.archive.File(index)
+			result = append(result, &TreeNode{
+				Name: pathBase(filePath), Path: filePath, FileIndex: index,
+				Size: file.DataSize, DataType: file.DataType,
+				ChangeKind: archiveChangeKind(s.c.archive, index),
+			})
 		}
 		return result, nil
 	}

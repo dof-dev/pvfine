@@ -342,6 +342,13 @@ func archiveIndexCachePath(a *pvf.Archive) (string, string, error) {
 }
 
 func openSQLiteArchiveIndex(a *pvf.Archive) (*sqliteArchiveIndex, bool, error) {
+	return openSQLiteArchiveIndexContext(context.Background(), a)
+}
+
+func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqliteArchiveIndex, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	tempDir := ""
 	path, identity, err := archiveIndexCachePath(a)
 	if err != nil {
@@ -359,9 +366,13 @@ func openSQLiteArchiveIndex(a *pvf.Archive) (*sqliteArchiveIndex, bool, error) {
 	if !a.Modified() {
 		if db, openErr := sql.Open("sqlite", path); openErr == nil {
 			if configureArchiveIndex(db, false) == nil && sqliteIndexComplete(db, identity) {
+				if err := ctx.Err(); err != nil {
+					_ = db.Close()
+					return nil, false, err
+				}
 				_ = enableArchiveIndexWAL(db)
 				log.Printf("[pvfine:index] sqlite file index cache hit: files=%d", a.FileCount())
-				return &sqliteArchiveIndex{db: db, path: path, identity: identity, ready: true}, true, nil
+				return &sqliteArchiveIndex{db: db, path: path, identity: identity, ready: sqliteSemanticIndexReady(db)}, true, nil
 			}
 			_ = db.Close()
 		}
@@ -387,8 +398,13 @@ func openSQLiteArchiveIndex(a *pvf.Archive) (*sqliteArchiveIndex, bool, error) {
 	idx := &sqliteArchiveIndex{db: db, path: path, identity: identity, tempDir: tempDir}
 	fileIndexStartedAt := time.Now()
 	log.Printf("[pvfine:index] sqlite file index rebuild started: files=%d", a.FileCount())
-	if err := buildSQLiteFileIndex(db, a, identity); err != nil {
+	if err := buildSQLiteFileIndexContext(ctx, db, a, identity); err != nil {
 		log.Printf("[pvfine:index] sqlite file index rebuild failed: elapsed=%s error=%v", time.Since(fileIndexStartedAt).Round(time.Millisecond), err)
+		idx.close()
+		_ = os.Remove(tmpPath)
+		return nil, false, err
+	}
+	if err := ctx.Err(); err != nil {
 		idx.close()
 		_ = os.Remove(tmpPath)
 		return nil, false, err
@@ -475,10 +491,22 @@ func sqliteIndexComplete(db *sql.DB, identity string) bool {
 	if err := db.QueryRow("SELECT value FROM meta WHERE key='complete'").Scan(&complete); err != nil {
 		return false
 	}
-	return value == identity && complete == "1"
+	return value == identity && (complete == "0" || complete == "1")
+}
+
+func sqliteSemanticIndexReady(db *sql.DB) bool {
+	var complete string
+	return db.QueryRow("SELECT value FROM meta WHERE key='complete'").Scan(&complete) == nil && complete == "1"
 }
 
 func buildSQLiteFileIndex(db *sql.DB, a *pvf.Archive, identity string) error {
+	return buildSQLiteFileIndexContext(context.Background(), db, a, identity)
+}
+
+func buildSQLiteFileIndexContext(ctx context.Context, db *sql.DB, a *pvf.Archive, identity string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	fileIndexProgressStartedAt := time.Now()
 	const schema = `
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -523,11 +551,26 @@ INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0')
 	}
 	knownDirs := make(map[string]struct{}, 1024)
 	for index := int32(0); index < a.FileCount(); index++ {
-		path := a.Path(index)
+		if index%10000 == 0 {
+			if err := ctx.Err(); err != nil {
+				_ = dirStmt.Close()
+				_ = fileStmt.Close()
+				_ = tx.Rollback()
+				return err
+			}
+		}
+		file := a.File(index)
+		path := file.Name
+		if file.Path != "" {
+			if path != "" {
+				path = file.Path + "/" + path
+			} else {
+				path = file.Path
+			}
+		}
 		if path == "" {
 			continue
 		}
-		file := a.File(index)
 		parent, name := splitParent(path)
 		if _, err := fileStmt.Exec(index, path, strings.ToLower(path), name, strings.ToLower(name), parent, file.DataSize, file.DataType, archiveChangeKind(a, index)); err != nil {
 			_ = dirStmt.Close()
@@ -554,21 +597,28 @@ INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0')
 	}
 	_ = dirStmt.Close()
 	_ = fileStmt.Close()
-	if _, err := tx.Exec(`CREATE INDEX files_parent_name ON files(parent,name,file_index);
-CREATE INDEX files_lower_path ON files(lower_path);
+	indexStartedAt := time.Now()
+	if _, err := tx.ExecContext(ctx, `CREATE INDEX files_parent_name ON files(parent,name,file_index);
 CREATE INDEX dirs_parent_name ON dirs(parent,name);`); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE dirs SET child_count=(SELECT COUNT(*) FROM files WHERE parent=dirs.path)+(SELECT COUNT(*) FROM dirs child WHERE child.parent=dirs.path)`); err != nil {
+	log.Printf("[pvfine:index] sqlite file index path indexes finished: elapsed=%s", time.Since(indexStartedAt).Round(time.Millisecond))
+	directoryCountsStartedAt := time.Now()
+	if _, err := tx.ExecContext(ctx, `UPDATE dirs SET child_count=(SELECT COUNT(*) FROM files WHERE parent=dirs.path)+(SELECT COUNT(*) FROM dirs child WHERE child.parent=dirs.path)`); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
-	if _, err := tx.Exec(`CREATE INDEX records_lower_path ON records(lower_path);
+	log.Printf("[pvfine:index] sqlite file index directory counts finished: elapsed=%s", time.Since(directoryCountsStartedAt).Round(time.Millisecond))
+	if _, err := tx.ExecContext(ctx, `CREATE INDEX records_lower_path ON records(lower_path);
 CREATE INDEX records_lower_name ON records(lower_name);
 CREATE INDEX records_lower_id ON records(lower_id);
 CREATE INDEX records_file ON records(file_index,id);
 CREATE INDEX tags_file ON tags(file_index);`); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		_ = tx.Rollback()
 		return err
 	}

@@ -39,6 +39,24 @@ func TestStringOffsetPoolConvention(t *testing.T) {
 	}
 }
 
+func TestReadUTF16(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{name: "ascii", raw: []byte{'h', 0, 'e', 0, 'l', 0, 'l', 0, 'o', 0, 0, 0}, want: "hello"},
+		{name: "unicode", raw: utf16LEBytes("测试😀"), want: "测试😀"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := readUTF16(tt.raw, 0); got != tt.want {
+				t.Fatalf("readUTF16 = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStringPoolEditCountsAsModified(t *testing.T) {
 	source := New()
 	if _, err := source.AddFileText("equipment/a.equ", "[name]\n`a`", TypeScript); err != nil {

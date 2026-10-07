@@ -187,9 +187,30 @@ watch(
   }
 );
 
-function submitSearch(event: KeyboardEvent): void {
-  if (event.isComposing || !archive.indexReady) return;
-  void explorer.search(searchInput.value);
+async function submitSearch(event: KeyboardEvent): Promise<void> {
+  if (event.isComposing || !archive.open) return;
+  if (archive.indexReady) {
+    await explorer.search(searchInput.value);
+    return;
+  }
+  if (archive.indexStatus.stage !== "file-index") return;
+  const query = searchInput.value.trim();
+  if (!query) return;
+  const archivePath = archive.info?.path ?? "";
+  try {
+    const nodes = (await ArchiveService.ResolveFiles([query])) ?? [];
+    if (archive.info?.path !== archivePath) return;
+    const file = nodes.find((node) => node && !node.isDir);
+    if (!file) {
+      message.info("目录索引完成前，请输入完整文件路径");
+      return;
+    }
+    await editor.openFile(file.fileIndex);
+  } catch (error: any) {
+    if (archive.info?.path === archivePath) {
+      message.error(`打开文件失败: ${error?.message ?? error}`);
+    }
+  }
 }
 
 function clearSearch(): void {
@@ -843,11 +864,11 @@ function sortTree(items: TreeItem[]): void {
       </NTooltip>
       <NInput
         v-model:value="searchInput"
-        :placeholder="archive.indexReady ? '搜索路径、名称或 id（支持 *、?）…' : '索引完成后可搜索路径、名称或 id…'"
+        :placeholder="archive.indexReady ? '搜索路径、名称或 id（支持 *、?）…' : archive.indexStatus.stage === 'file-index' ? '输入完整文件路径可提前打开…' : '索引完成后可搜索路径、名称或 id…'"
         clearable
         size="small"
         :disabled="!archive.open"
-        :readonly="!archive.indexReady"
+        :readonly="!archive.indexReady && archive.indexStatus.stage !== 'file-index'"
         @clear="clearSearch"
         @keydown.enter.prevent="submitSearch"
       >
@@ -898,6 +919,18 @@ function sortTree(items: TreeItem[]): void {
             description="无匹配结果"
             size="small"
             class="exp-empty"
+          />
+          <NEmpty
+            v-else-if="explorer.mode === 'tree' && !explorer.roots.length && archive.indexing"
+            :description="archive.indexStatus.stage === 'file-index' ? '正在构建文件目录索引…' : '正在准备搜索索引…'"
+            class="exp-empty"
+            size="small"
+          />
+          <NEmpty
+            v-else-if="explorer.mode === 'tree' && !explorer.roots.length && archive.indexStatus.state === 'error'"
+            :description="archive.indexStatus.error || '文件索引构建失败'"
+            class="exp-empty"
+            size="small"
           />
           <div v-else class="tree-viewport">
             <FileTree

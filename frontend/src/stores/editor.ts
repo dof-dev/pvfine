@@ -259,7 +259,7 @@ export const useEditorStore = defineStore("editor", () => {
       // 让 Vue 先提交加载态，再开始后端调用。
       await nextTick();
       if (!tabs.value.includes(tab)) return;
-      const meta: FileMeta | null = await EditorService.GetFile(tab.index);
+      const meta: FileMeta | null = await EditorService.GetFileBasic(tab.index);
       // 关闭、重新打开或切换归档后，旧请求不能写入新标签。
       if (!tabs.value.includes(tab)) return;
       if (!meta) throw new Error("文件不存在或无法读取");
@@ -277,12 +277,30 @@ export const useEditorStore = defineStore("editor", () => {
         icon: meta.icon ?? null,
         fieldImage: meta.fieldImage ?? null,
       });
+      void hydrateTabMetadata(tab, meta.path, meta.text);
     } catch (error) {
       if (tabs.value.includes(tab)) {
         tab.loadError = error instanceof Error ? error.message : String(error);
       }
     } finally {
       tab.loading = false;
+    }
+  }
+
+  async function hydrateTabMetadata(tab: EditorTab, path: string, baseText: string): Promise<void> {
+    await nextTick();
+    if (!tabs.value.includes(tab) || tab.path !== path) return;
+    try {
+      const meta: FileMeta | null = await EditorService.GetFile(tab.index);
+      if (!meta || !tabs.value.includes(tab) || tab.path !== path || meta.path !== path) return;
+      tab.tags = cleanTreeTags(meta.tags);
+      tab.icon = meta.icon ?? null;
+      tab.fieldImage = meta.fieldImage ?? null;
+      if (tab.text === baseText) {
+        tab.annotations = cleanEditorAnnotations(meta.annotations);
+      }
+    } catch {
+      // Basic text stays usable if optional metadata enrichment fails.
     }
   }
 

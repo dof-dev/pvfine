@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -84,6 +85,10 @@ func (a *Archive) parseNameTable(nb []byte) error {
 func (a *Archive) ResolveString(magicOff int32) string {
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
+	return a.resolveStringLocked(magicOff)
+}
+
+func (a *Archive) resolveStringLocked(magicOff int32) string {
 	if magicOff < 0 {
 		return ""
 	}
@@ -134,6 +139,21 @@ func readUTF16(buf []byte, start int) string {
 	}
 	if (end-start)%2 != 0 {
 		end--
+	}
+	ascii := true
+	for offset := start; offset < end; offset += 2 {
+		if buf[offset+1] != 0 || buf[offset] >= 0x80 {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		var text strings.Builder
+		text.Grow((end - start) / 2)
+		for offset := start; offset < end; offset += 2 {
+			text.WriteByte(buf[offset])
+		}
+		return text.String()
 	}
 	u16 := make([]uint16, (end-start)/2)
 	for i := range u16 {

@@ -421,10 +421,14 @@ func (a *Archive) File(i int32) File {
 	if payload, ok := a.overlay[i]; ok {
 		size = int32(len(payload))
 	}
+	a.cacheMu.Lock()
+	name := a.resolveStringLocked(it.nameOff)
+	path := a.resolveStringLocked(it.pathOff)
+	a.cacheMu.Unlock()
 	return File{
 		Index:      i,
-		Name:       a.ResolveString(it.nameOff),
-		Path:       a.ResolveString(it.pathOff),
+		Name:       name,
+		Path:       path,
 		ChunkIndex: it.chunk,
 		DataOffset: it.off,
 		DataSize:   size,
@@ -435,7 +439,11 @@ func (a *Archive) File(i int32) File {
 // FullPath returns the canonical "dir/name" path of entry i.
 func (a *Archive) FullPath(i int32) string {
 	it := &a.items[i]
-	return joinPath(a.ResolveString(it.pathOff), a.ResolveString(it.nameOff))
+	a.cacheMu.Lock()
+	dir := a.resolveStringLocked(it.pathOff)
+	name := a.resolveStringLocked(it.nameOff)
+	a.cacheMu.Unlock()
+	return joinPath(dir, name)
 }
 
 // Path is an alias of FullPath.

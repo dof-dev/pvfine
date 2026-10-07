@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,17 +45,34 @@ var stringTableFiles = []string{
 }
 
 type stringTableState struct {
-	once  sync.Once
-	paths map[int][]string             // table index -> candidate .str paths (highest precedence first)
-	cache map[string]map[string]string // lowercased path -> key -> value
-	fail  map[string]bool              // paths that could not be read
+	once         sync.Once
+	paths        map[int][]string                  // table index -> candidate .str paths (highest precedence first)
+	cache        map[string]map[string]string      // lowercased path -> key -> value
+	valueIndexes map[string]*stringTableValueIndex // lowercased path -> lazy key/value byte index
+	fail         map[string]bool                   // paths that could not be read
+}
+
+type stringTableValueIndex struct {
+	once   sync.Once
+	raw    []byte
+	values []stringTableValueRange
+	valid  bool
+}
+
+type stringTableValueRange struct {
+	hash     uint64
+	keyStart uint32
+	keyEnd   uint32
+	start    uint32
+	end      uint32
 }
 
 func (a *Archive) initStringTables() {
 	st := &stringTableState{
-		paths: map[int][]string{},
-		cache: map[string]map[string]string{},
-		fail:  map[string]bool{},
+		paths:        map[int][]string{},
+		cache:        map[string]map[string]string{},
+		valueIndexes: map[string]*stringTableValueIndex{},
+		fail:         map[string]bool{},
 	}
 	for _, lst := range stringTableFiles {
 		for _, entry := range a.stringTableMap(lst) {
@@ -196,6 +214,248 @@ func (a *Archive) loadStringTable(path string) map[string]string {
 	return tbl
 }
 
+// lookupStringTableValue resolves keys through a lazily built compact index.
+// It scans a large UTF-16 table once without decoding and retaining every key
+// and value as separate Go strings.
+func (a *Archive) lookupStringTableValue(path, key string) (string, bool) {
+	st := a.ensureStringTables()
+	if st == nil {
+		return "", false
+	}
+	cacheKey := strings.ToLower(path)
+
+	a.tables.mu.Lock()
+	if table, ok := st.cache[cacheKey]; ok {
+		value, found := table[key]
+		a.tables.mu.Unlock()
+		return value, found
+	}
+	if st.fail[cacheKey] {
+		a.tables.mu.Unlock()
+		return "", false
+	}
+	index := st.valueIndexes[cacheKey]
+	if index == nil {
+		index = &stringTableValueIndex{}
+		st.valueIndexes[cacheKey] = index
+	}
+	a.tables.mu.Unlock()
+
+	index.once.Do(func() {
+		index.raw, index.values, index.valid = a.readStringTableValueIndex(path)
+	})
+	if !index.valid {
+		return "", false
+	}
+	valueRange, found := lookupStringTableValueRange(index.raw, index.values, key)
+	if !found {
+		return "", false
+	}
+	return decodeUTF16(index.raw[int(valueRange.start):int(valueRange.end)]), true
+}
+
+// readStringTableValueIndex indexes the listed payload and, only when it is
+// missing or malformed, tries the localized siblings used by loadStringTable.
+func (a *Archive) readStringTableValueIndex(path string) ([]byte, []stringTableValueRange, bool) {
+	candidates := []string{path}
+	base := path
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		base = base[:i]
+	}
+	for _, suffix := range []string{".translate.str", ".kor.str", ".uv.str", ".str"} {
+		candidate := base + suffix
+		if strings.EqualFold(candidate, path) {
+			continue
+		}
+		candidates = append(candidates, candidate)
+	}
+	for _, candidate := range candidates {
+		index, ok := a.Find(candidate)
+		if !ok {
+			continue
+		}
+		raw, err := a.RawBytes(index)
+		if err != nil || len(raw) < 2 {
+			continue
+		}
+		values, valid := indexStringTableValues(raw)
+		if valid {
+			return raw, values, true
+		}
+	}
+	return nil, nil, false
+}
+
+func findStringTableValue(raw []byte, key string) (string, bool) {
+	values, valid := indexStringTableValues(raw)
+	if !valid {
+		return "", false
+	}
+	valueRange, found := lookupStringTableValueRange(raw, values, key)
+	if !found {
+		return "", false
+	}
+	return decodeUTF16(raw[int(valueRange.start):int(valueRange.end)]), true
+}
+
+func indexStringTableValues(raw []byte) ([]stringTableValueRange, bool) {
+	if len(raw) < 2 {
+		return nil, false
+	}
+	values := make([]stringTableValueRange, 0, len(raw)/80)
+	valid := false
+	for lineStart := 0; lineStart+1 < len(raw); {
+		lineEnd, next, more := utf16StringTableLineBounds(raw, lineStart)
+		matchStart := lineStart
+		if lineStart == 0 && len(raw) >= 2 && raw[0] == 0xff && raw[1] == 0xfe {
+			matchStart = 2
+		}
+		contentEnd := lineEnd
+		if contentEnd >= matchStart+2 && raw[contentEnd-2] == '\r' && raw[contentEnd-1] == 0 {
+			contentEnd -= 2
+		}
+		if contentEnd >= matchStart+2 && !utf16StringTableComment(raw, matchStart, contentEnd) {
+			separator := -1
+			for at := matchStart; at+1 < contentEnd; at += 2 {
+				if raw[at] == '>' && raw[at+1] == 0 {
+					separator = at
+					break
+				}
+			}
+			if separator > matchStart {
+				valid = true
+				valueStart := separator + 2
+				for contentEnd >= valueStart+2 && raw[contentEnd-2] == '\r' && raw[contentEnd-1] == 0 {
+					contentEnd -= 2
+				}
+				key := raw[matchStart:separator]
+				values = append(values, stringTableValueRange{
+					hash:     hashUTF16Bytes(key),
+					keyStart: uint32(matchStart),
+					keyEnd:   uint32(separator),
+					start:    uint32(valueStart),
+					end:      uint32(contentEnd),
+				})
+			}
+		}
+		if !more {
+			break
+		}
+		lineStart = next
+	}
+	slices.SortFunc(values, func(left, right stringTableValueRange) int {
+		switch {
+		case left.hash < right.hash:
+			return -1
+		case left.hash > right.hash:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return values, valid
+}
+
+func lookupStringTableValueRange(raw []byte, values []stringTableValueRange, key string) (stringTableValueRange, bool) {
+	hash := hashUTF16String(key)
+	start, _ := slices.BinarySearchFunc(values, hash, func(value stringTableValueRange, target uint64) int {
+		switch {
+		case value.hash < target:
+			return -1
+		case value.hash > target:
+			return 1
+		default:
+			return 0
+		}
+	})
+	if start >= len(values) || values[start].hash != hash {
+		return stringTableValueRange{}, false
+	}
+	var found stringTableValueRange
+	matched := false
+	for i := start; i < len(values) && values[i].hash == hash; i++ {
+		candidate := values[i]
+		if equalUTF16String(raw[int(candidate.keyStart):int(candidate.keyEnd)], key) && (!matched || candidate.keyStart > found.keyStart) {
+			found = candidate
+			matched = true
+		}
+	}
+	return found, matched
+}
+
+func hashUTF16Bytes(raw []byte) uint64 {
+	hash := uint64(14695981039346656037)
+	for i := 0; i+1 < len(raw); i += 2 {
+		hash ^= uint64(raw[i])
+		hash *= 1099511628211
+		hash ^= uint64(raw[i+1])
+		hash *= 1099511628211
+	}
+	return hash
+}
+
+func hashUTF16String(value string) uint64 {
+	hash := uint64(14695981039346656037)
+	for _, r := range value {
+		if r <= 0xffff {
+			hash ^= uint64(byte(r))
+			hash *= 1099511628211
+			hash ^= uint64(byte(r >> 8))
+			hash *= 1099511628211
+			continue
+		}
+		hi, lo := utf16.EncodeRune(r)
+		for _, unit := range [...]uint16{uint16(hi), uint16(lo)} {
+			hash ^= uint64(byte(unit))
+			hash *= 1099511628211
+			hash ^= uint64(byte(unit >> 8))
+			hash *= 1099511628211
+		}
+	}
+	return hash
+}
+
+func equalUTF16String(raw []byte, value string) bool {
+	at := 0
+	for _, r := range value {
+		if r <= 0xffff {
+			if at+1 >= len(raw) || binary.LittleEndian.Uint16(raw[at:]) != uint16(r) {
+				return false
+			}
+			at += 2
+			continue
+		}
+		hi, lo := utf16.EncodeRune(r)
+		if at+3 >= len(raw) || binary.LittleEndian.Uint16(raw[at:]) != uint16(hi) || binary.LittleEndian.Uint16(raw[at+2:]) != uint16(lo) {
+			return false
+		}
+		at += 4
+	}
+	return at == len(raw)
+}
+
+func utf16StringTableLineBounds(raw []byte, start int) (end, next int, more bool) {
+	for at := start; at+1 < len(raw); at += 2 {
+		if raw[at] == 0 && raw[at+1] == 0 {
+			return at, len(raw), false
+		}
+		if raw[at] != '\n' || raw[at+1] != 0 {
+			continue
+		}
+		end = at
+		if at >= start+2 && raw[at-2] == '\r' && raw[at-1] == 0 {
+			end -= 2
+		}
+		next = at + 2
+		return end, next, next < len(raw)
+	}
+	return len(raw) &^ 1, len(raw), false
+}
+
+func utf16StringTableComment(raw []byte, start, end int) bool {
+	return end-start >= 4 && raw[start] == '/' && raw[start+1] == 0 && raw[start+2] == '/' && raw[start+3] == 0
+}
+
 func (a *Archive) readStringTable(path string) map[string]string {
 	i, ok := a.Find(path)
 	if !ok {
@@ -256,11 +516,7 @@ type StringTableResolution struct {
 // out names that an overlay can still answer.
 func (a *Archive) ResolveStringTable(index int, key string) (StringTableResolution, bool) {
 	for i, path := range a.stringTablePaths(index) {
-		tbl := a.loadStringTable(path)
-		if tbl == nil {
-			continue
-		}
-		if v, ok := tbl[key]; ok && v != "" {
+		if v, ok := a.lookupStringTableValue(path, key); ok && v != "" {
 			return StringTableResolution{Text: v, Source: path, Fallback: i > 0}, true
 		}
 	}
