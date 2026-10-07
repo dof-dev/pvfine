@@ -4,6 +4,7 @@ import { nextTick, ref } from "vue";
 
 const api = vi.hoisted(() => ({
   GetFile: vi.fn(),
+  GetFileBasic: vi.fn(),
   ResolveFiles: vi.fn(),
   ApplyWorldDropEdit: vi.fn(),
   showArchiveEditor: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@wailsio/runtime", () => ({ Events: { On: vi.fn() } }));
 vi.mock("../bindings/pvfine/services", () => ({
   EditorService: {
     GetFile: api.GetFile,
+    GetFileBasic: api.GetFileBasic,
     SetText: api.SetText,
     GetAnnotations: api.GetAnnotations,
     Save: api.Save,
@@ -43,7 +45,8 @@ import { useEditorStore } from "../src/stores/editor";
 describe("world drop entry & editor store integration", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    api.GetFileBasic.mockImplementation((index) => api.GetFile(index));
   });
 
   it("openWorldDrop: 归档中缺少 etc/worlddrop.etc 时明确抛错", async () => {
