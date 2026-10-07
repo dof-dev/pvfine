@@ -11,6 +11,7 @@ vi.mock("../src/stores/explorer", () => ({
   useExplorerStore: () => ({ getFilePath: (index: number) => `map/${index}.lst`, selectedKey: null }),
 }));
 import { useEditorStore } from "../src/stores/editor";
+import { longLineThreshold } from "../src/editorWrapping";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,6 +25,35 @@ beforeEach(() => {
   setActivePinia(createPinia());
   vi.resetAllMocks();
   api.GetFile.mockResolvedValue(null);
+});
+
+test("自动换行在加载完成前按行长决定，普通文件默认开启", async () => {
+  api.GetFileBasic.mockImplementation(async (index) =>
+    meta(index, index === 1 ? "x".repeat(longLineThreshold + 1) : "short\nlines")
+  );
+  const store = useEditorStore();
+  await store.openFile(1);
+  expect(store.activeTab?.loading).toBe(false);
+  expect(store.activeTab?.lineWrapping).toBe(false);
+  await store.openFile(2);
+  expect(store.activeTab?.lineWrapping).toBe(true);
+});
+
+test("换行开关按文件保留，分屏共享，重新打开恢复自动判断", async () => {
+  api.GetFileBasic.mockImplementation(async (index) => meta(index));
+  const store = useEditorStore();
+  await store.openFile(1);
+  store.activeTab!.lineWrapping = false;
+  store.split("columns");
+  expect(store.activeTab?.lineWrapping).toBe(false);
+  await store.openFile(2);
+  expect(store.activeTab?.lineWrapping).toBe(true);
+  store.activateTab("pane-2", 1);
+  expect(store.activeTab?.lineWrapping).toBe(false);
+  store.closeTab(1, "pane-2");
+  store.closeTab(1, "pane-1");
+  await store.openFile(1);
+  expect(store.activeTab?.lineWrapping).toBe(true);
 });
 
 test("立即创建加载标签；重复打开共享请求", async () => {

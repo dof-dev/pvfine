@@ -29,6 +29,7 @@ import {
   SplitHorizontal24Regular,
   SplitVertical24Regular,
   TextAddT24Regular,
+  TextWrap24Regular,
 } from "@vicons/fluent";
 import {
   useEditorStore,
@@ -904,6 +905,22 @@ function onDrop(event: DragEvent): void {
                 ? '设置中已全局隐藏标注'
                 : tab.annotationsHidden ? '显示当前文件标注' : '临时隐藏当前文件标注' }}
             </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="tiny"
+                  :type="tab.lineWrapping ? 'primary' : 'default'"
+                  :disabled="tab.loading || !!tab.loadError || isGUI(tab.index)"
+                  :aria-pressed="tab.lineWrapping"
+                  :aria-label="tab.lineWrapping ? '关闭自动换行' : '开启自动换行'"
+                  @click="tab.lineWrapping = !tab.lineWrapping"
+                >
+                  <template #icon><NIcon><TextWrap24Regular /></NIcon></template>
+                </NButton>
+              </template>
+              {{ tab.lineWrapping ? '关闭自动换行' : '开启自动换行（超长行可能导致卡顿）' }}
+            </NTooltip>
             <div v-if="getGUIProvider(tab)" class="gui-mode-switch" role="group" aria-label="文件显示模式">
               <NButton size="tiny" :type="!isGUI(tab.index) ? 'primary' : 'default'"
                 :aria-pressed="!isGUI(tab.index)" @click="guiModes.requestMode(tab.index, 'text')">DSL</NButton>
@@ -936,6 +953,7 @@ function onDrop(event: DragEvent): void {
               :annotations="tab.annotations"
               :tag-placement="tab.annotationsHidden ? 'hidden' : settings.annotationTagPlacement"
               :vim-mode="settings.vimMode"
+              :line-wrapping="tab.lineWrapping"
               :theme-id="props.themeId"
               @change="(text: string) => editor.updateContent(tab.index, text)"
               @open-reference="(fileIndex: number) => editor.openFile(fileIndex, paneId)"

@@ -10,6 +10,7 @@ import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
 import { useScriptStore } from "./script";
 import { startDebugTiming } from "./debugTiming";
+import { hasLongLine } from "../editorWrapping";
 
 export type EditorPaneId = string;
 export type SplitOrientation = "columns" | "rows";
@@ -27,6 +28,7 @@ export interface EditorTab {
   modified: boolean; // 后端 overlay 状态
   annotations: EditorAnnotation[];
   annotationsHidden: boolean; // 当前打开期间临时隐藏此文件的标注
+  lineWrapping: boolean;
   icon: ImageReference | null;
   fieldImage: ImageReference | null;
   loading: boolean;
@@ -244,6 +246,7 @@ export const useEditorStore = defineStore("editor", () => {
       modified: false,
       annotations: [],
       annotationsHidden: false,
+      lineWrapping: true,
       icon: null,
       fieldImage: null,
       loading: true,
@@ -275,6 +278,7 @@ export const useEditorStore = defineStore("editor", () => {
         editable: meta.editable,
         original: meta.text,
         text: meta.text,
+        lineWrapping: !hasLongLine(meta.text),
         modified: meta.modified,
         annotations: cleanEditorAnnotations(meta.annotations),
         icon: meta.icon ?? null,
@@ -299,12 +303,17 @@ export const useEditorStore = defineStore("editor", () => {
     let outcome = "finished";
     try {
       const meta: FileMeta | null = await EditorService.GetFile(tab.index);
-      if (!meta || !tabs.value.includes(tab) || tab.path !== path || meta.path !== path) return;
-      tab.tags = cleanTreeTags(meta.tags);
-      tab.icon = meta.icon ?? null;
-      tab.fieldImage = meta.fieldImage ?? null;
-      if (tab.text === baseText) {
-        tab.annotations = cleanEditorAnnotations(meta.annotations);
+      const finishApply = startDebugTiming("editor.metadata-apply", `file=${tab.index} chars=${meta?.text.length ?? 0} annotations=${meta?.annotations?.length ?? 0}`);
+      try {
+        if (!meta || !tabs.value.includes(tab) || tab.path !== path || meta.path !== path) return;
+        tab.tags = cleanTreeTags(meta.tags);
+        tab.icon = meta.icon ?? null;
+        tab.fieldImage = meta.fieldImage ?? null;
+        if (tab.text === baseText) {
+          tab.annotations = cleanEditorAnnotations(meta.annotations);
+        }
+      } finally {
+        finishApply();
       }
     } catch {
       outcome = "failed";

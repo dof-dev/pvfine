@@ -1,4 +1,4 @@
-import { type EditorState, StateField } from "@codemirror/state";
+import { type EditorState, Facet, StateField } from "@codemirror/state";
 import { foldService } from "@codemirror/language";
 
 interface SectionTag {
@@ -14,7 +14,23 @@ type FoldRange = { from: number; to: number };
 // strings, values, and comments from the folding structure.
 const sectionLine = /^\s*\[([^\]\r\n]+)\]\s*(?:#.*)?$/;
 
+export const sectionFoldTiming = Facet.define<
+  (state: EditorState) => () => void,
+  ((state: EditorState) => () => void) | undefined
+>({
+  combine: (callbacks) => callbacks[0],
+});
+
 function sectionFolds(state: EditorState): Map<number, FoldRange> {
+  const finish = state.facet(sectionFoldTiming)?.(state);
+  try {
+    return scanSectionFolds(state);
+  } finally {
+    finish?.();
+  }
+}
+
+function scanSectionFolds(state: EditorState): Map<number, FoldRange> {
   const tags: SectionTag[] = [];
   let from = 0;
   for (const text of state.doc.iterLines()) {

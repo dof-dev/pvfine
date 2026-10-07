@@ -46,7 +46,9 @@ import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
 import { annotationAt, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
-import { pvfSectionFolding } from "../pvfSectionFolding";
+import { pvfSectionFolding, sectionFoldTiming } from "../pvfSectionFolding";
+import { startDebugTiming } from "../stores/debugTiming";
+import { hasLongLine } from "../editorWrapping";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
 import { useImageStore } from "../stores/images";
@@ -60,6 +62,7 @@ const props = defineProps<{
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
   vimMode?: boolean;
+  lineWrapping?: boolean;
   themeId: ResolvedThemeId;
 }>();
 
@@ -81,11 +84,14 @@ export interface PlaceholderEditRequest {
 
 const host = ref<HTMLDivElement | null>(null);
 let view: EditorView | null = null;
+let paintFrame: number | undefined;
 // 记录最近一次同步文本，避免父组件回传相同值时再次序列化全文。
 let syncedDoc = props.doc;
 const readOnlyComp = new Compartment();
 const vimComp = new Compartment();
 const editorThemeComp = new Compartment();
+const wrappingComp = new Compartment();
+let wrapping = props.lineWrapping ?? !hasLongLine(props.doc);
 const images = useImageStore();
 
 interface AnnotationDisplay {
@@ -579,7 +585,13 @@ function makeExtensions(themeId: ResolvedThemeId) {
     diagnosticLineField,
     indentUnit.of("\t"),
     isJavaScript ? javascript() : pvfLanguage.extension,
-    ...(!isJavaScript ? [foldGutter(), ...pvfSectionFolding] : []),
+    ...(!isJavaScript ? [
+      foldGutter(),
+      sectionFoldTiming.of((state) => startDebugTiming(
+        "editor.fold-scan", `chars=${state.doc.length} lines=${state.doc.lines}`
+      )),
+      ...pvfSectionFolding,
+    ] : []),
     isJavaScript
       ? [
           tooltips({ parent: document.body, position: "fixed" }),
@@ -588,7 +600,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
         ]
       : pvfHighlighting,
     editorThemeComp.of(createEditorTheme(themeId)),
-    EditorView.lineWrapping,
+    wrappingComp.of(wrapping ? EditorView.lineWrapping : []),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) {
         syncedDoc = u.state.doc.toString();
@@ -685,13 +697,32 @@ function insertText(text: string): boolean {
 defineExpose({ revealPosition, insertText });
 
 onMounted(() => {
-  view = new EditorView({
-    state: EditorState.create({ doc: props.doc, extensions: makeExtensions(props.themeId) }),
-    parent: host.value!,
+  const detail = `chars=${props.doc.length} language=${props.language ?? "pvf"} wrapping=${wrapping} vim=${!!props.vimMode}`;
+  const finishState = startDebugTiming("editor.state-create", detail);
+  let state: EditorState;
+  try {
+    state = EditorState.create({ doc: props.doc, extensions: makeExtensions(props.themeId) });
+  } finally {
+    finishState();
+  }
+  const finishView = startDebugTiming("editor.view-create", `chars=${state.doc.length} lines=${state.doc.lines}`);
+  try {
+    view = new EditorView({ state, parent: host.value! });
+  } finally {
+    finishView();
+  }
+  // Two frames include the first rendering opportunity, not just construction.
+  const finishPaint = startDebugTiming("editor.first-paint-wait", detail);
+  paintFrame = requestAnimationFrame(() => {
+    paintFrame = requestAnimationFrame(() => {
+      paintFrame = undefined;
+      finishPaint();
+    });
   });
 });
 
 onBeforeUnmount(() => {
+  if (paintFrame !== undefined) cancelAnimationFrame(paintFrame);
   hideAnnotationTooltip();
   view?.destroy();
   view = null;
@@ -704,11 +735,25 @@ watch(
     if (!view) return;
     if (doc !== syncedDoc) {
       syncedDoc = doc;
+      wrapping = props.lineWrapping ?? !hasLongLine(doc);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: doc },
-        effects: setDiagnosticLine.of(null),
+        effects: [
+          setDiagnosticLine.of(null),
+          wrappingComp.reconfigure(wrapping ? EditorView.lineWrapping : []),
+        ],
       });
     }
+  }
+);
+
+watch(
+  () => props.lineWrapping,
+  (enabled) => {
+    wrapping = enabled ?? !hasLongLine(props.doc);
+    view?.dispatch({
+      effects: wrappingComp.reconfigure(wrapping ? EditorView.lineWrapping : []),
+    });
   }
 );
 
