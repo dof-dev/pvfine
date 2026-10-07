@@ -133,6 +133,7 @@
 ### 🧩 JavaScript 脚本工作区
 - **沙箱化脚本引擎**：进程内集成 Goja 运行时，无需 Node 环境即可执行 `.pvf.js`；提供 `pvf.files` / `find` / `glob` 文件遍历、`text()` 文本读写、`parse()` 结构化 Token 文档 API，以及 `pvf.fileset` / `createFileset` 文件集读写。
 - **丰富的文件与列表 API**：提供 `.lst` 列表遍历（`forEach`）、查询与条目改写 API；提供文件新建、复制、删除与自动补建父目录能力。
+- **110US 字符串引用 API**：支持解析占位符原始译文、编辑字符串表引用及自动注册字符串条目，解析与写入使用当前事务暂存状态。
 - **事务隔离与预览确认**：运行阶段的写入全部落在隔离事务中，成功后生成按文件分页的可审阅 Diff 预览（支持按路径筛选）；只有点击「应用选中」才会写入工作区 Overlay，且仍需手动保存归档。
 - **安全边界**：沙箱不注册 `require`、`process`、网络、本地文件与 shell 能力；单次运行上限 5 分钟，同时仅允许一个运行实例，停止、超时、切换归档或运行异常均自动回滚。
 - **脚本内联编辑与独立窗口**：编辑面板内提供 JavaScript 语法高亮、脚本 API 类型声明与代码补全；支持将脚本工作区以独立窗口打开，便于并排多任务操作。
@@ -153,7 +154,12 @@
 
 ### 📦 提取与整包解包
 - **单文件与批量导出**：支持一键导出当前文件或按选定范围批量导出原始二进制文件。
+- **MOD 导出与输出预览**：支持从选中文件、文件集、工作区改动或历史提交导出为 `110USextend`，按完整输出树勾选文件，并可选补齐字符串与列表登记依赖。该格式不支持删除；无版本基线时跳过显式选择的整张 `.lst` / `.str` 表，导出前汇总警告。详见 [docs/MOD.md](docs/MOD.md)。
 - **流式全量解包**：支持在后台协程将整包数万/数百万文件并发解压导出至指定目录，前端状态栏实时进度条显示，支持随时优雅取消。
+
+### 日志与索引诊断
+- **统一日志面板**：汇集前后端日志，支持等级筛选、展开查看与清空。
+- **110US 字符串表索引状态**：展示索引进度与耗时统计，便于查看归档加载状态。
 
 ---
 
@@ -199,6 +205,7 @@
 │                    Services Layer (pvfine/services)                    │
 │  - ArchiveService: 归档加载、生命周期、目录树与检索、资源导入与解包    │
 │  - EditorService: 文本反编译、Overlay 缓存、落盘原子保存、导出与备份   │
+│  - ExportService: 导出快照、MOD 预检、依赖补齐与输出选择              │
 │  - PreviewService: ANI 关键帧动画解析、装备属性面板计算与预览分派      │
 │  - ListRegistration: 列表关联注册与 list/*_indexhash.etc 自动生成     │
 │  - SearchIndexCache: 归档元数据与搜索索引持久化缓存                    │
@@ -224,6 +231,7 @@
 │  - internal/pvf: 90US/110US(Paged110) 容器/变体恢复/Token/字符串池/表 │
 │  - internal/preview: ANI 关键帧序列与图层调度模型                      │
 │  - internal/script: Goja 沙箱运行时与事务化 PVF 宿主 API               │
+│  - internal/mod: 中立包模型、格式注册表与 110USextend 写入             │
 │  - internal/rendering: 渲染规则编译与编辑器展示格式解析                │
 │  - internal/npk: NPK 容器读取、IMG 图像帧解析与 DXT1/3/5 解码          │
 │  - internal/annotations: 规则加载、版本过滤、LST 双布局映射与联合索引  │
@@ -373,6 +381,7 @@ wails3 task package
 │   ├── pvf/                  # PVF / Paged110 容器、变体与种子恢复、反编译、字符串池/表、IndexHash、差异重打包
 │   ├── preview/              # ANI 关键帧序列解析与动画模型
 │   ├── script/               # Goja 沙箱与仅面向事务的 PVF 宿主 API（支持列表、文件集与增删改）
+│   ├── mod/                  # MOD 包模型、格式注册表与 110USextend 导出
 │   ├── npk/                  # NPK 资源包读取、IMG 图像帧解析与 DXT1/3/5 解码器
 │   ├── annotations/          # 标注规则引擎、LST 双布局映射与装备/道具联合索引
 │   └── version/              # 本地版本库模型、SQLite 元数据与 SHA-256 CAS 对象存储
@@ -380,6 +389,8 @@ wails3 task package
 │   ├── core.go               # 线程安全共享 Core、目录树索引与搜索状态
 │   ├── archive.go            # ArchiveService：归档打开、懒加载目录树、游标搜索
 │   ├── editor.go             # EditorService：文本反编译、内存编辑、保存与解包
+│   ├── export.go             # ExportService：导出预览、依赖补齐与目录发布
+│   ├── logging.go            # 前后端日志汇集与诊断
 │   ├── preview.go            # PreviewService：ANI 动画与装备属性预览解析分派
 │   ├── equipment_preview.go  # 装备脚本高保真属性面板提取与计算
 │   ├── list_registration.go  # 列表注册与 list/*_indexhash.etc 维护
@@ -408,6 +419,7 @@ wails3 task package
 │   │   ├── components/       # UI 组件 (ToolBar, Explorer, EditorTabs, EditorPane,
 │   │   │                     #         BookmarkSidebar, FileSetSidebar, VersionPanel, BatchProcessModal,
 │   │   │                     #         ScriptWorkbench, CodeEditor（PVF / JavaScript 双模式）,
+│   │   │                     #         ExportModal, LogPanel,
 │   │   │                     #         previews/ (AniPreview, EquipmentPreview, PreviewHost),
 │   │   │                     #         gui/ (FileGUIHost, ShopViewer, ShopEditDialog, ShopCostFields),
 │   │   │                     #         DropRateEditorModal, ItemPicker, RecoveryPrompt,
@@ -423,6 +435,7 @@ wails3 task package
 │   └── bindings/             # Wails 自动生成的 TypeScript 服务端点绑定
 ├── docs/                     # 技术规格文档
 │   ├── FORMAT.md             # S4A21 PVF 二进制格式逆向分析规格与数学算法
+│   ├── MOD.md                # MOD 格式注册与 110USextend 导出约定
 │   ├── PVF新格式分析.md       # 110US (Paged110) 容器结构、sk.dat 密钥推导与字符串表分析
 │   ├── 脚本工作区设计.md     # Goja 沙箱 API、事务边界与预览应用流程
 │   ├── 渲染规则设计.md       # 渲染规则 JSON 结构与匹配优先级
