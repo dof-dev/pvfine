@@ -356,6 +356,37 @@ func TestVersionServiceRecoversCommittedWorktreeOnOpen(t *testing.T) {
 	}
 }
 
+func TestCloseArchiveAfterRecoveredVersionLoad(t *testing.T) {
+	c, path, index := versionServiceFixture(t)
+	versions := NewVersionService(c)
+	if _, err := versions.Initialize(); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewEditorService(c).SetText(index, "[name]\n`恢复并立即关闭`"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := versions.Commit("恢复并关闭"); err != nil {
+		t.Fatal(err)
+	}
+	c.closeArchive()
+	for n := 0; n < 10; n++ {
+		if _, err := NewArchiveService(c).Open(path); err != nil {
+			t.Fatal(err)
+		}
+		waitForVersionLoad(t, c)
+		closed := make(chan struct{})
+		go func() {
+			c.closeArchive()
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-time.After(5 * time.Second):
+			t.Fatal("closing waited on the version task that was waiting to start the index")
+		}
+	}
+}
+
 func TestVersionServiceRecordsBatchAsOneChangeSet(t *testing.T) {
 	c, _, _ := versionServiceFixture(t)
 	versions := NewVersionService(c)

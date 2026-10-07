@@ -25,6 +25,7 @@ import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
 import { useBookmarkStore, type BookmarkInput } from "../stores/bookmarks";
 import { useBatchStore } from "../stores/batch";
 import { useImportStore } from "../stores/import";
+import { useExportStore } from "../stores/export";
 import { useSettingsStore } from "../stores/settings";
 import FileTree from "./FileTree.vue";
 
@@ -734,7 +735,7 @@ async function onExportSelected(items: TreeItem[]): Promise<void> {
       message.info("选中的目录中没有文件");
       return;
     }
-    const path = await EditorService.ExportFilesDialog(scopes);
+    const path = await useExportStore().open({ source: "selection", scopes, commitId: "" }, "导出选中文件");
     if (path) message.success(`已导出选中文件到 ${path}`);
   } catch (error: any) {
     if (session === fileSets.sessionId && archive.info?.path === archivePath) {

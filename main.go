@@ -139,6 +139,7 @@ func main() {
 			application.NewService(services.NewBatchService(core)),
 			application.NewService(services.NewScriptService(core, fileSetService)),
 			application.NewService(services.NewVersionService(core)),
+			application.NewService(services.NewExportService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewRenderingService(core)),
 			application.NewService(services.NewPreviewService(core)),

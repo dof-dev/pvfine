@@ -27,7 +27,7 @@ import {
   useMessage,
   useDialog,
 } from "naive-ui";
-import { EditorService } from "../../bindings/pvfine/services";
+import { useExportStore } from "../stores/export";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useFileSetStore, type FileSetEntry } from "../stores/fileSets";
@@ -190,7 +190,7 @@ async function exportCurrent(): Promise<void> {
     ) {
       return;
     }
-    const path = await EditorService.ExportFilesDialog(paths);
+    const path = await useExportStore().open({ source: "selection", scopes: paths, commitId: "" }, `导出文件集“${active.name}”`);
     if (path) {
       const skippedText = unavailableCount > 0 ? `，跳过 ${unavailableCount} 个不存在的文件` : "";
       message.success(`已导出文件集“${active.name}”到 ${path}${skippedText}`);

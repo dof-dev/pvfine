@@ -39,6 +39,7 @@ import { ArchiveService } from "../../bindings/pvfine/services";
 import { useArchiveStore } from "../stores/archive";
 import { useVersionStore } from "../stores/version";
 import { useEditorStore } from "../stores/editor";
+import { useExportStore } from "../stores/export";
 
 const archive = useArchiveStore();
 const version = useVersionStore();
@@ -936,6 +937,28 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
     message.error(`导出版本文件失败: ${error?.message ?? error}`);
   }
 }
+
+async function exportWorking(): Promise<void> {
+  try {
+    const path = await version.exportWorking();
+    if (path) message.success(`已导出当前改动到 ${path}`);
+  } catch (error: any) {
+    if (!String(error?.message ?? error).toLowerCase().includes("cancel")) {
+      message.error(`导出当前改动失败: ${error?.message ?? error}`);
+    }
+  }
+}
+
+async function exportMemory(): Promise<void> {
+  try {
+    const path = await useExportStore().open({ source: "memory", scopes: [], commitId: "" }, "导出当前内存改动");
+    if (path) message.success(`已导出当前内存改动到 ${path}`);
+  } catch (error: any) {
+    if (!String(error?.message ?? error).toLowerCase().includes("cancel")) {
+      message.error(`导出当前内存改动失败: ${error?.message ?? error}`);
+    }
+  }
+}
 </script>
 
 <template>
@@ -1038,6 +1061,14 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
                     已写入内存 overlay，尚未保存到 PVF；按住 {{ overlayOpenModifier }} 单击文件打开
                   </div>
                 </div>
+                <NButton
+                  size="small"
+                  :disabled="overlayFilesLoading || !!overlayFilesError || !overlayFiles.length || version.busy"
+                  @click="exportMemory"
+                >
+                  <template #icon><NIcon><ArrowDownload20Regular /></NIcon></template>
+                  导出当前改动
+                </NButton>
               </div>
 
               <div class="overlay-changes-list">
@@ -1296,6 +1327,16 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
                     </div>
                   </div>
                   <div class="detail-header-actions">
+                    <NButton
+                      size="small"
+                      secondary
+                      :loading="version.exporting && !version.exportingCommitID"
+                      :disabled="!version.status.changedFiles || version.busy || !!confirmAction"
+                      @click="exportWorking"
+                    >
+                      <template #icon><NIcon><ArrowDownload20Regular /></NIcon></template>
+                      导出当前改动
+                    </NButton>
                     <NButton
                       size="small"
                       secondary
@@ -1816,6 +1857,7 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .overlay-changes-heading {
   min-width: 0;
@@ -2102,6 +2144,7 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
 }
 .version-detail-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding-bottom: 10px;
@@ -2111,7 +2154,7 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
 }
 .detail-header-info {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 200px;
 }
 .detail-header-title {
   font-size: 15px;
@@ -2125,14 +2168,16 @@ async function exportCommit(commit: VersionCommit): Promise<void> {
   color: var(--pvf-text-muted);
   margin-top: 3px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 .detail-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 .version-files-pane {
   flex: 0 0 clamp(128px, 30%, 240px);

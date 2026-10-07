@@ -8,6 +8,7 @@ import type {
   VersionFileDiff,
   VersionStatus,
 } from "../../bindings/pvfine/services/models";
+import { useExportStore } from "./export";
 
 const emptyStatus = (): VersionStatus => ({
   enabled: false,
@@ -269,13 +270,25 @@ export const useVersionStore = defineStore("version", () => {
     exportingCommitID.value = commit.id;
     error.value = "";
     try {
-      return (await VersionService.ExportCommitFilesDialog(commit.id)) ?? "";
+      return await useExportStore().open({ source: "commit", scopes: [], commitId: commit.id }, "导出版本修改文件");
     } catch (value: any) {
       error.value = errorMessage(value);
       throw value;
     } finally {
       exporting.value = false;
       exportingCommitID.value = "";
+    }
+  }
+
+  async function exportWorking(): Promise<string> {
+    if (busy.value || !status.value.changedFiles) return "";
+    exporting.value = true;
+    exportingCommitID.value = "";
+    error.value = "";
+    try {
+      return await useExportStore().open({ source: "working", scopes: [], commitId: "" }, "导出当前改动");
+    } finally {
+      exporting.value = false;
     }
   }
 
@@ -443,6 +456,7 @@ export const useVersionStore = defineStore("version", () => {
     checkout,
     remove,
     exportCommit,
+    exportWorking,
     toggleCommitChanges,
     restorePath,
     diffWorking,

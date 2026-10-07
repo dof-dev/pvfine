@@ -1346,6 +1346,10 @@ func (c *core) startVersionLoad(path string, archive *pvf.Archive) {
 		reloaded := session.archive != archive
 		c.mu.Unlock()
 
+		// No archive references are read below. Release this task before the
+		// index acquires its own task, or closing can wait on this parent
+		// while its child waits for closing to finish.
+		finishTask()
 		if reloaded {
 			c.startSearchIndexForced()
 			emitEvent("archive:reloaded", info)

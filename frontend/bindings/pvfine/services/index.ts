@@ -9,6 +9,7 @@ import * as BookmarkService from "./bookmarkservice.js";
 import * as CacheService from "./cacheservice.js";
 import * as DropService from "./dropservice.js";
 import * as EditorService from "./editorservice.js";
+import * as ExportService from "./exportservice.js";
 import * as FileGUIService from "./fileguiservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
@@ -28,6 +29,7 @@ export {
     CacheService,
     DropService,
     EditorService,
+    ExportService,
     FileGUIService,
     FileSetService,
     ImageService,
@@ -75,6 +77,9 @@ export type {
     EquipmentSetAbility,
     EquipmentSetPreviewDocument,
     EquipmentSkillLevelup,
+    ExportPreview,
+    ExportPreviewFile,
+    ExportRequest,
     FileMeta,
     FileRegistration,
     FileRegistrationOptions,

@@ -16,6 +16,7 @@ import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
 import BatchProcessModal from "./components/BatchProcessModal.vue";
 import ImportModal from "./components/ImportModal.vue";
+import ExportModal from "./components/ExportModal.vue";
 import VersionPanel from "./components/VersionPanel.vue";
 import DropRateEditorModal from "./components/DropRateEditorModal.vue";
 import SettingsModal from "./components/SettingsModal.vue";
@@ -227,6 +228,7 @@ function executeShortcut(command: ShortcutCommandId): void {
           <AdvancedSearchModal />
           <BatchProcessModal />
           <ImportModal />
+          <ExportModal />
           <VersionPanel />
           <DropRateEditorModal />
           <SettingsModal />

@@ -376,6 +376,32 @@ export interface EquipmentSkillLevelup {
     "level": number;
 }
 
+export interface ExportPreview {
+    "id": string;
+    "fileCount": number;
+    "dependencyCount": number;
+    "skippedDeletes": number;
+    "warnings": string[] | null;
+    "files": ExportPreviewFile[] | null;
+}
+
+export interface ExportPreviewFile {
+    "path": string;
+    "required": boolean;
+    "dependencyCount": number;
+}
+
+export interface ExportRequest {
+    "source": string;
+    "scopes": string[] | null;
+    "commitId": string;
+    "mode": string;
+    "format": string;
+    "name": string;
+    "version": string;
+    "includeDependencies": boolean;
+}
+
 /**
  * FileMeta 返回给前端的单个文件视图。
  */

@@ -14,9 +14,9 @@ type archiveTaskGate struct {
 }
 
 func newArchiveTaskGate() archiveTaskGate {
-	gate := archiveTaskGate{tasks: make(map[uint64]chan struct{})}
-	gate.cond = sync.NewCond(&gate.mu)
-	return gate
+	// Initialize the condition lazily, after the gate has reached its final
+	// address. Returning a cond bound to a local mutex copies the wrong lock.
+	return archiveTaskGate{tasks: make(map[uint64]chan struct{})}
 }
 
 func (g *archiveTaskGate) ensureLocked() {

@@ -55,3 +55,27 @@ func TestCloseArchiveWaitsForArchiveTasks(t *testing.T) {
 		t.Fatalf("released archive still has %d files", got)
 	}
 }
+
+func TestArchiveTaskGateWaitsDuringClose(t *testing.T) {
+	gate := newArchiveTaskGate()
+	gate.beginClose()
+	started, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		close(started)
+		finish := gate.begin()
+		finish()
+		close(finished)
+	}()
+	<-started
+	select {
+	case <-finished:
+		t.Fatal("task started while gate was closing")
+	case <-time.After(20 * time.Millisecond):
+	}
+	gate.endClose()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("task did not resume after close")
+	}
+}
