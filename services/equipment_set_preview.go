@@ -13,6 +13,7 @@ const equipmentPartSetListPath = "etc/equipmentpartset.etc"
 // readEquipmentSetPreviewLocked uses the editor text for the current equipment
 // and the archive's in-memory edits for files referenced by the set list.
 func (s *PreviewService) readEquipmentSetPreviewLocked(equipmentText string, issues *[]PreviewIssue) *EquipmentSetPreviewDocument {
+	defer debugPhase("ParseEQU.part-set", "")()
 	setID, start := equipmentPartSetID(equipmentText)
 	if setID == "" {
 		return nil
@@ -26,12 +27,16 @@ func (s *PreviewService) readEquipmentSetPreviewLocked(equipmentText string, iss
 		warn("找不到套装列表: " + equipmentPartSetListPath)
 		return nil
 	}
+	finishList := debugPhase("ParseEQU.part-set-list-text", equipmentPartSetListPath)
 	listText, err := s.previewRelatedTextLocked(listIndex)
+	finishList()
 	if err != nil {
 		warn("读取套装列表失败: " + err.Error())
 		return nil
 	}
+	finishFind := debugPhase("ParseEQU.part-set-list-parse", fmt.Sprintf("set=%s", setID))
 	values, ok := findEquipmentPartSet(listText, setID)
+	finishFind()
 	if !ok {
 		warn("套装列表中找不到 ID: " + setID)
 		return nil
@@ -66,12 +71,15 @@ func (s *PreviewService) readEquipmentSetPreviewLocked(equipmentText string, iss
 		warn(fmt.Sprintf("找不到套装效果文件: %s", values[1]))
 		return nil
 	}
+	finishEffect := debugPhase("ParseEQU.part-set-effect", effectPath)
 	effectText, err := s.previewRelatedTextLocked(effectIndex)
 	if err != nil {
+		finishEffect()
 		warn("读取套装效果文件失败: " + err.Error())
 		return nil
 	}
 	abilities, ok := parseEquipmentSetAbilities(a, effectText)
+	finishEffect()
 	if !ok {
 		warn("套装效果文件缺少完整的件数或基础效果描述: " + values[1])
 		return nil

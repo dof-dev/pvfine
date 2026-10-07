@@ -156,26 +156,51 @@ func (s *ArchiveService) RebuildSearchIndex() (IndexStatus, error) {
 
 // ListChildren 懒加载某目录的直接子节点;path 为空表示根。
 func (s *ArchiveService) ListChildren(path string) ([]*TreeNode, error) {
-	s.c.mu.RLock()
+	defer debugPhase("ListChildren", path)()
+	wait := time.Now()
+	diagnoseCoreLock("ListChildren", fmt.Sprintf("path=%s", path), s.c.mu.RLock)
+	debugLockAcquired("ListChildren", wait)
 	defer s.c.mu.RUnlock()
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
 	}
 	if s.c.diskIndex != nil {
+		queryStarted := time.Now()
+		terminalDebugLog("ListChildren.query started path=%s", path)
 		result, err := s.c.diskIndex.children(path)
+		terminalDirectoryStage(path, "query", queryStarted)
 		if err != nil {
 			return nil, err
 		}
+		finish := debugPhase("ListChildren.metadata", fmt.Sprintf("path=%s children=%d sqlite=true", path, len(result)))
+		var annotationsTime, tagsTime, visualsTime time.Duration
+		files := 0
 		for _, node := range result {
+			stageStarted := time.Now()
 			node.Annotations = s.c.annotationsForPathLocked(node.Path, node.IsDir)
+			elapsed := time.Since(stageStarted)
+			annotationsTime += elapsed
+			terminalSlowDirectoryNode(node.Path, "annotations", elapsed)
 			if !node.IsDir {
+				files++
 				node.ChangeKind = archiveChangeKind(s.c.archive, node.FileIndex)
+				stageStarted = time.Now()
 				node.Tags, _ = s.c.diskIndex.tags(node.FileIndex)
+				elapsed = time.Since(stageStarted)
+				tagsTime += elapsed
+				terminalSlowDirectoryNode(node.Path, "tags", elapsed)
+				stageStarted = time.Now()
 				visuals := s.c.diskIndex.visuals(node.FileIndex)
 				node.Icon = cloneImageReference(visuals.icon)
 				node.FieldImage = cloneImageReference(visuals.fieldImage)
+				elapsed = time.Since(stageStarted)
+				visualsTime += elapsed
+				terminalSlowDirectoryNode(node.Path, "visuals", elapsed)
 			}
 		}
+		terminalDebugLog("ListChildren.metadata path=%s children=%d files=%d annotations=%s tags=%s visuals=%s",
+			path, len(result), files, annotationsTime, tagsTime, visualsTime)
+		finish()
 		return result, nil
 	}
 	list := s.c.dirChildren[path]

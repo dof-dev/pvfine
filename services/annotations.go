@@ -119,6 +119,7 @@ func (c *core) annotationChainLocked(filePath string) map[string][]TreeAnnotatio
 }
 
 func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnotation, error) {
+	defer debugPhase("annotations", fmt.Sprintf("file=%d", index))()
 	if c.annotationErr != nil {
 		return nil, c.annotationErr
 	}
@@ -126,9 +127,11 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		return nil, nil
 	}
 	if c.editorAnnotation.valid && c.editorAnnotation.fileIndex == index && c.editorAnnotation.text == text {
+		debugLog("annotations file=%d cache=hit count=%d", index, len(c.editorAnnotation.annotations))
 		return cloneEditorAnnotations(c.editorAnnotation.annotations), nil
 	}
 	filePath := c.archive.Path(index)
+	finishParse := debugPhase("annotations.parse", filePath)
 	view := pvf.ParseScriptViewWithNestedSections(text, func(parent, child string) bool {
 		if c.renderingEngine == nil {
 			return false
@@ -140,6 +143,8 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 		}
 		return false
 	})
+	finishParse()
+	finishRules := debugPhase("annotations.rules-and-relations", filePath)
 	results := c.annotationEngine.AnnotateWithResolvers(
 		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
 		func(root, value string) (int32, bool) {
@@ -151,6 +156,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 			return c.archive.Find(path.Clean(path.Join(root, strings.TrimLeft(value, "/"))))
 		},
 	)
+	finishRules()
 	annotations := make([]EditorAnnotation, 0, len(results))
 	for _, result := range results {
 		annotations = append(annotations, EditorAnnotation{
@@ -162,8 +168,13 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 			InlineImage:     result.InlineImage,
 		})
 	}
+	finishLinks := debugPhase("annotations.list-links", filePath)
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
+	finishLinks()
+	finishPlaceholders := debugPhase("annotations.placeholders", filePath)
 	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations)
+	finishPlaceholders()
+	finishVisuals := debugPhase("annotations.target-visuals", filePath)
 	for i := range annotations {
 		annotation := &annotations[i]
 		annotation.Rarity = pvf.RarityUnknown
@@ -175,6 +186,8 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 			annotation.Rarity = c.fileVisualsLocked(annotation.TargetFileIndex).rarity
 		}
 	}
+	finishVisuals()
+	debugLog("annotations file=%d cache=miss count=%d", index, len(annotations))
 	c.editorAnnotation = editorAnnotationCache{
 		valid:       true,
 		fileIndex:   index,
@@ -361,6 +374,7 @@ func (c *core) resolveListAnnotationReferenceLocked(relationName, id, context, l
 }
 
 func (c *core) readRelationTargetNameLocked(fileIndex int32, listPath, nameSection string) string {
+	defer debugPhase("relation.target-name", fmt.Sprintf("file=%d list=%s section=%s", fileIndex, listPath, nameSection))()
 	text, err := c.archive.Text(fileIndex)
 	if err != nil {
 		return ""
@@ -420,6 +434,7 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 		cacheKey += "\x00" + normalizeAnnotationContext(context)
 	}
 	targets, ok := c.annotationRelations[cacheKey]
+	debugLog("relation.lookup relation=%s context=%s map-cache=%t", relationName, context, ok)
 	if !ok {
 		if relationOK && relation.Kind == "contextual" {
 			targets = c.buildContextualAnnotationRelationLocked(relation, context)
@@ -437,6 +452,8 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 		target.reference.Name = c.readRelationTargetNameLocked(
 			target.reference.FileIndex, target.listPath, target.nameSection,
 		)
+	} else {
+		debugLog("relation.target-name file=%d cache=hit", target.reference.FileIndex)
 	}
 	return target.reference, true
 }
@@ -462,6 +479,7 @@ func (c *core) buildContextualAnnotationRelationLocked(relation annotationrules.
 }
 
 func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.RelationSpec, listPath string) map[string]*relationTarget {
+	defer debugPhase("relation.build", listPath)()
 	result := make(map[string]*relationTarget)
 	if c.archive == nil {
 		return result
@@ -471,11 +489,16 @@ func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.Re
 		return result
 	}
 	listPath = c.archive.Path(listIndex)
+	finishText := debugPhase("relation.list-text", listPath)
 	text, err := c.archive.Text(listIndex)
+	finishText()
 	if err != nil {
 		return result
 	}
+	finishParse := debugPhase("relation.list-parse", listPath)
 	view := pvf.ParseScriptView(text)
+	finishParse()
+	finishMap := debugPhase("relation.map", listPath)
 	tokens := make([]pvf.ScriptElement, 0, len(view.Elements))
 	for _, element := range view.Elements {
 		if element.Kind == pvf.ScriptElementToken {
@@ -502,6 +525,8 @@ func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.Re
 			listPath:    listPath,
 		}
 	}
+	finishMap()
+	debugLog("relation.build list=%s tokens=%d targets=%d", listPath, len(tokens), len(result))
 	return result
 }
 

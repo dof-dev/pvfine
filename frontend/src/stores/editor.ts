@@ -9,6 +9,7 @@ import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../
 import { useArchiveStore } from "./archive";
 import { useExplorerStore } from "./explorer";
 import { useScriptStore } from "./script";
+import { startDebugTiming } from "./debugTiming";
 
 export type EditorPaneId = string;
 export type SplitOrientation = "columns" | "rows";
@@ -255,6 +256,8 @@ export const useEditorStore = defineStore("editor", () => {
   }
 
   async function loadTab(tab: EditorTab): Promise<void> {
+    const finish = startDebugTiming("editor.basic-request", `file=${tab.index} path=${tab.path}`);
+    let outcome = "finished";
     try {
       // 让 Vue 先提交加载态，再开始后端调用。
       await nextTick();
@@ -279,10 +282,12 @@ export const useEditorStore = defineStore("editor", () => {
       });
       void hydrateTabMetadata(tab, meta.path, meta.text);
     } catch (error) {
+      outcome = "failed";
       if (tabs.value.includes(tab)) {
         tab.loadError = error instanceof Error ? error.message : String(error);
       }
     } finally {
+      finish(outcome);
       tab.loading = false;
     }
   }
@@ -290,6 +295,8 @@ export const useEditorStore = defineStore("editor", () => {
   async function hydrateTabMetadata(tab: EditorTab, path: string, baseText: string): Promise<void> {
     await nextTick();
     if (!tabs.value.includes(tab) || tab.path !== path) return;
+    const finish = startDebugTiming("editor.metadata-request", `file=${tab.index} path=${path}`);
+    let outcome = "finished";
     try {
       const meta: FileMeta | null = await EditorService.GetFile(tab.index);
       if (!meta || !tabs.value.includes(tab) || tab.path !== path || meta.path !== path) return;
@@ -300,7 +307,10 @@ export const useEditorStore = defineStore("editor", () => {
         tab.annotations = cleanEditorAnnotations(meta.annotations);
       }
     } catch {
+      outcome = "failed";
       // Basic text stays usable if optional metadata enrichment fails.
+    } finally {
+      finish(outcome);
     }
   }
 

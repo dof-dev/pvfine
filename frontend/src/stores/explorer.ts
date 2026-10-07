@@ -10,6 +10,7 @@ import type {
   ImageReference,
 } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
+import { startDebugTiming } from "./debugTiming";
 
 export interface TreeItem {
   key: string; // 归档内路径
@@ -123,12 +124,17 @@ export const useExplorerStore = defineStore("explorer", () => {
 
   /** 加载根节点(归档打开后调用) */
   async function loadRoots() {
-    const nodes = (await ArchiveService.ListChildren("")) ?? [];
-    const nextRoots = nodes.filter((n): n is TreeNode => !!n).map(toTreeItem);
-    roots.value = nextRoots;
-    itemsByKey.clear();
-    registerItems(roots.value);
-    revision.value++;
+    const finish = startDebugTiming("explorer.roots", "");
+    try {
+      const nodes = (await ArchiveService.ListChildren("")) ?? [];
+      const nextRoots = nodes.filter((n): n is TreeNode => !!n).map(toTreeItem);
+      roots.value = nextRoots;
+      itemsByKey.clear();
+      registerItems(roots.value);
+      revision.value++;
+    } finally {
+      finish();
+    }
   }
 
   /** 重新加载资源树；搜索模式会等待新的语义索引完成后自动恢复。 */
@@ -165,10 +171,15 @@ export const useExplorerStore = defineStore("explorer", () => {
   /** n-tree onLoad:展开目录时加载其子节点 */
   async function loadChildren(node: TreeItem): Promise<void> {
     if (!node.isDir || node.children) return;
-    const nodes = (await ArchiveService.ListChildren(node.key)) ?? [];
-    const children = nodes.filter((n): n is TreeNode => !!n).map(toTreeItem);
-    node.children = children;
-    registerItems(node.children);
+    const finish = startDebugTiming("explorer.children", `path=${node.key}`);
+    try {
+      const nodes = (await ArchiveService.ListChildren(node.key)) ?? [];
+      const children = nodes.filter((n): n is TreeNode => !!n).map(toTreeItem);
+      node.children = children;
+      registerItems(node.children);
+    } finally {
+      finish();
+    }
   }
 
   /** 加载目标文件的父目录，并将其设为资源树当前选中项并滚动定位。 */

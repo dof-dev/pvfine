@@ -6,6 +6,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -286,13 +287,18 @@ func (c *core) buildInitialDiskIndexAsync(a *pvf.Archive, generation uint64, ctx
 			}
 		}()
 		startedAt := time.Now()
+		finishIndex := debugPhase("file-index.open-or-build", fmt.Sprintf("files=%d", a.FileCount()))
+		defer finishIndex()
 		c.mu.RLock()
+		debugLockAcquired("file-index.open-or-build", startedAt)
 		if c.archive != a || c.archiveGeneration != generation || ctx.Err() != nil {
 			c.mu.RUnlock()
 			return
 		}
+		finishRead := debugPhase("file-index.read-lock-held", "")
 		index, _, err := openSQLiteArchiveIndexContext(ctx, a)
 		c.mu.RUnlock()
+		finishRead()
 
 		c.mu.Lock()
 		if c.archive != a || c.archiveGeneration != generation || ctx.Err() != nil {

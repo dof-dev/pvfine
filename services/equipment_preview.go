@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	annotationrules "pvfine/internal/annotations"
@@ -71,6 +72,7 @@ type EquipmentPreviewDocument struct {
 // file path and relation lookups; text itself always comes from the caller so
 // unsaved changes are reflected immediately.
 func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPreviewDocument, error) {
+	defer debugPhase("ParseEQU", fmt.Sprintf("file=%d", fileIndex))()
 	if s == nil || s.c == nil {
 		engine, err := annotationrules.LoadDefault()
 		if err != nil {
@@ -79,7 +81,9 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 		return buildEquipmentPreview("preview.equ", text, engine.ForVersion(""), nil), nil
 	}
 
-	s.c.mu.Lock()
+	wait := time.Now()
+	diagnoseCoreLock("ParseEQU", fmt.Sprintf("file=%d", fileIndex), s.c.mu.Lock)
+	debugLockAcquired("ParseEQU", wait)
 	defer s.c.mu.Unlock()
 	if s.c.archive == nil {
 		engine, err := annotationrules.LoadDefault()
@@ -97,13 +101,17 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 		}
 		return nil, fmt.Errorf("标注引擎未初始化")
 	}
+	finishParse := debugPhase("ParseEQU.fields-and-relations", fmt.Sprintf("file=%d", fileIndex))
 	doc := buildEquipmentPreview(
 		s.c.archive.Path(fileIndex), text, s.c.annotationEngine,
 		s.c.resolveAnnotationReferenceContextLocked,
 	)
+	finishParse()
 	// Newer clients store `<table::key>` placeholders instead of display text.
+	finishNames := debugPhase("ParseEQU.localized-names", fmt.Sprintf("file=%d", fileIndex))
 	doc.Name = resolvePreviewText(s.c.archive, doc.Name)
 	doc.Name2 = resolvePreviewText(s.c.archive, doc.Name2)
+	finishNames()
 	doc.PartSet = s.readEquipmentSetPreviewLocked(text, &doc.Issues)
 	return doc, nil
 }

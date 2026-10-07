@@ -432,6 +432,10 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 					return nil, false, err
 				}
 				_ = enableArchiveIndexWAL(db)
+				if err := ensureSQLiteFilePathIndex(ctx, db); err != nil {
+					_ = db.Close()
+					return nil, false, fmt.Errorf("upgrade SQLite file path index: %w", err)
+				}
 				log.Printf("[pvfine:index] sqlite file index cache hit: files=%d", a.FileCount())
 				return &sqliteArchiveIndex{db: db, path: path, identity: identity, ready: sqliteSemanticIndexReady(db)}, true, nil
 			}
@@ -501,6 +505,23 @@ func enableArchiveIndexWAL(db *sql.DB) error {
 		return err
 	}
 	_, err := db.Exec("PRAGMA synchronous=NORMAL")
+	return err
+}
+
+// Upgrade existing caches in place without invalidating their semantic data.
+func ensureSQLiteFilePathIndex(ctx context.Context, db *sql.DB) error {
+	var exists bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(
+SELECT 1 FROM sqlite_master WHERE type='index' AND name='files_path')`).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	started := time.Now()
+	log.Printf("[pvfine:index] sqlite file path index upgrade started")
+	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS files_path ON files(path,file_index)`)
+	log.Printf("[pvfine:index] sqlite file path index upgrade finished: elapsed=%s error=%v", time.Since(started).Round(time.Millisecond), err)
 	return err
 }
 
@@ -660,6 +681,7 @@ INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0')
 	_ = fileStmt.Close()
 	indexStartedAt := time.Now()
 	if _, err := tx.ExecContext(ctx, `CREATE INDEX files_parent_name ON files(parent,name,file_index);
+CREATE INDEX files_path ON files(path,file_index);
 CREATE INDEX dirs_parent_name ON dirs(parent,name);`); err != nil {
 		_ = tx.Rollback()
 		return err
@@ -804,8 +826,10 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 			continue
 		}
 		listPath := a.Path(listIndex)
+		finishList := debugPhase("semantic-index.list-read-lock-held", listPath)
 		pairs, err := a.ListPairs(listIndex)
 		c.mu.RUnlock()
+		finishList()
 		if err != nil {
 			skipped++
 			log.Printf("[pvfine:index] sqlite spec %d/%d list=%s pairs=0 records=0 skipped=%d elapsed=%s error=%v", specIndex+1, len(specs), spec.listPath, skipped-specSkippedBefore, time.Since(specStartedAt).Round(time.Millisecond), err)
@@ -814,8 +838,10 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 		pairsSeen += len(pairs)
 		if sameSearchPath(spec.listPath, itemShopListPath) {
 			c.mu.RLock()
+			finishNPC := debugPhase("semantic-index.npc-names-read-lock-held", spec.listPath)
 			npcNames = buildNPCNameIndexFromArchive(a)
 			c.mu.RUnlock()
+			finishNPC()
 		}
 		for _, pair := range pairs {
 			if err := ctx.Err(); err != nil {
@@ -824,7 +850,9 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 				_ = recordStmt.Close()
 				return rollback(err)
 			}
+			metadataStarted := time.Now()
 			c.mu.RLock()
+			metadataWait := time.Since(metadataStarted)
 			if c.archive != a || c.indexGen != gen {
 				c.mu.RUnlock()
 				_ = visualStmt.Close()
@@ -852,6 +880,10 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 				}
 			}
 			c.mu.RUnlock()
+			if elapsed := time.Since(metadataStarted); elapsed >= 50*time.Millisecond {
+				debugLog("semantic-index.metadata list=%s file=%d cache=%t core-lock-wait=%s work=%s total=%s",
+					listPath, index, metadataCached, metadataWait, elapsed-metadataWait, elapsed)
+			}
 			if metadataErr != nil {
 				metadataErrors++
 				metadata = pvf.ScriptMetadata{}

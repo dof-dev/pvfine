@@ -3,9 +3,11 @@ package pvf
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"pvfine/internal/rendering"
@@ -76,7 +78,15 @@ func (a *Archive) SetDataType(i int32, dataType int32) error {
 // Text decodes entry i: token scripts are decompiled, UTF-16 sections are
 // returned as text (with Korean-server mojibake repaired when detected).
 func (a *Archive) Text(i int32) (string, error) {
+	started := time.Now()
 	raw, err := a.RawBytes(i)
+	readDuration := time.Since(started)
+	defer func() {
+		if elapsed := time.Since(started); elapsed >= 50*time.Millisecond {
+			log.Printf("[DEBUG] pvf.Text file=%d path=%s bytes=%d read=%s decode=%s total=%s read-ok=%t",
+				i, a.Path(i), len(raw), readDuration, elapsed-readDuration, elapsed, err == nil)
+		}
+	}()
 	if err != nil {
 		return "", err
 	}

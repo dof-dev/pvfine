@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -53,7 +54,10 @@ func (s *EditorService) GetFile(index int32) (*FileMeta, error) {
 // GetFileBasic returns the rendered file body without annotations or indexed
 // metadata so the editor can display useful content before enrichment loads.
 func (s *EditorService) GetFileBasic(index int32) (*FileMeta, error) {
-	s.c.mu.RLock()
+	defer debugPhase("GetFileBasic", fmt.Sprintf("file=%d", index))()
+	wait := time.Now()
+	diagnoseCoreLock("GetFileBasic", fmt.Sprintf("file=%d", index), s.c.mu.RLock)
+	debugLockAcquired("GetFileBasic", wait)
 	defer s.c.mu.RUnlock()
 	a := s.c.archive
 	if a == nil {
@@ -74,9 +78,12 @@ func (s *EditorService) GetFileBasic(index int32) (*FileMeta, error) {
 			return meta, nil
 		}
 		text, ok := s.c.editorText[index]
+		debugLog("GetFileBasic file=%d edited-text-cache=%t", index, ok)
 		if !ok {
 			var err error
+			finish := debugPhase("GetFileBasic.text", meta.Path)
 			text, err = a.Text(index)
+			finish()
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +97,10 @@ func (s *EditorService) GetFileBasic(index int32) (*FileMeta, error) {
 }
 
 func (s *EditorService) getFile(index int32) (*FileMeta, error) {
-	s.c.mu.Lock()
+	defer debugPhase("GetFile", fmt.Sprintf("file=%d", index))()
+	wait := time.Now()
+	diagnoseCoreLock("GetFile", fmt.Sprintf("file=%d", index), s.c.mu.Lock)
+	debugLockAcquired("GetFile", wait)
 	defer s.c.mu.Unlock()
 	a := s.c.archive
 	if a == nil {
@@ -107,6 +117,7 @@ func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 		Size:     f.DataSize,
 		Editable: false,
 	}
+	finishMetadata := debugPhase("GetFile.metadata", meta.Path)
 	meta.Tags = cloneTreeTags(s.c.treeTagsByFile[index])
 	if s.c.diskIndex != nil {
 		meta.Tags, _ = s.c.diskIndex.tags(index)
@@ -114,6 +125,7 @@ func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 	visuals := s.c.fileVisualsLocked(index)
 	meta.Icon = cloneImageReference(visuals.icon)
 	meta.FieldImage = cloneImageReference(visuals.fieldImage)
+	finishMetadata()
 	switch f.DataType {
 	case pvf.TypeScript, pvf.TypeUnicode:
 		if f.DataSize > maxEditableBytes {
@@ -121,9 +133,12 @@ func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 			return meta, nil
 		}
 		text, ok := s.c.editorText[index]
+		debugLog("GetFile file=%d edited-text-cache=%t", index, ok)
 		if !ok {
 			var err error
+			finish := debugPhase("GetFile.text", meta.Path)
 			text, err = a.Text(index)
+			finish()
 			if err != nil {
 				return nil, err
 			}
@@ -146,7 +161,10 @@ func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 
 // GetAnnotations recomputes annotations against the exact current editor text.
 func (s *EditorService) GetAnnotations(index int32) ([]EditorAnnotation, error) {
-	s.c.mu.Lock()
+	defer debugPhase("GetAnnotations", fmt.Sprintf("file=%d", index))()
+	wait := time.Now()
+	diagnoseCoreLock("GetAnnotations", fmt.Sprintf("file=%d", index), s.c.mu.Lock)
+	debugLockAcquired("GetAnnotations", wait)
 	defer s.c.mu.Unlock()
 	if s.c.archive == nil {
 		return nil, ErrNoArchive

@@ -12,6 +12,7 @@ import type {
   PreviewIssue,
 } from "../../../bindings/pvfine/services/models";
 import { useImageStore } from "../../stores/images";
+import { startDebugTiming } from "../../stores/debugTiming";
 import { RARITY_COLORS, rarityColor } from "../../rarity";
 import type { PreviewFile } from "../../previews/types";
 
@@ -95,14 +96,30 @@ function clearForPathChange(): void {
 async function loadIcon(next: EquipmentPreviewDocument, request: number): Promise<void> {
   iconData.value = null;
   if (!next.icon || next.icon.path.trim() === "" || next.icon.index < 0) return;
-  const data = await images.loadImage(next.icon);
-  if (request === parseRequest) iconData.value = data;
+  const finish = startDebugTiming("preview.icon-request", `path=${next.icon.path} frame=${next.icon.index} request=${request}`);
+  try {
+    const data = await images.loadImage(next.icon);
+    if (request === parseRequest) iconData.value = data;
+  } finally {
+    finish();
+  }
 }
 
 async function parseText(text: string, request: number): Promise<void> {
+  const detail = `file=${props.file.index} path=${props.file.path} request=${request}`;
+  const finish = startDebugTiming("preview.equipment", detail);
+  let outcome = "finished";
   parserLoading.value = true;
   try {
-    const result = await PreviewService.ParseEQU(props.file.index, text);
+    const finishRPC = startDebugTiming("preview.equipment-request", detail);
+    let result: EquipmentPreviewDocument | null;
+    let rpcOutcome = "failed";
+    try {
+      result = await PreviewService.ParseEQU(props.file.index, text);
+      rpcOutcome = "finished";
+    } finally {
+      finishRPC(rpcOutcome);
+    }
     if (request !== parseRequest || !result) return;
     parserIssues.value = result.issues ?? [];
     const hasErrors = parserIssues.value.some((issue) => issue.severity === "error");
@@ -112,6 +129,7 @@ async function parseText(text: string, request: number): Promise<void> {
       await loadIcon(result, request);
     }
   } catch (error: any) {
+    outcome = "failed";
     if (request !== parseRequest) return;
     parserIssues.value = [{
       severity: "error",
@@ -120,6 +138,7 @@ async function parseText(text: string, request: number): Promise<void> {
     }];
     // 保留 document.value 和上一次成功的图标，避免编辑中的短暂错误清空画面。
   } finally {
+    finish(request === parseRequest ? outcome : "superseded");
     if (request === parseRequest) parserLoading.value = false;
   }
 }

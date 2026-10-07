@@ -31,6 +31,23 @@ type logBuffer struct {
 }
 
 var applicationLogs logBuffer
+
+func debugLog(format string, args ...any) {
+	recordLog("DEBUG", "performance", fmt.Sprintf(format, args...))
+}
+
+func debugPhase(operation, detail string) func() {
+	started := time.Now()
+	debugLog("%s started %s", operation, detail)
+	return func() {
+		debugLog("%s finished %s elapsed=%.2fms", operation, detail, elapsedMilliseconds(started))
+	}
+}
+
+func debugLockAcquired(operation string, started time.Time) {
+	debugLog("%s core-lock acquired wait=%.2fms", operation, elapsedMilliseconds(started))
+}
+
 var applicationLogStages = struct {
 	sync.Mutex
 	values map[string]string

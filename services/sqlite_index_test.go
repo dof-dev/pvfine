@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -254,6 +255,155 @@ func TestSQLiteArchiveIndexQueries(t *testing.T) {
 	if len(result.Hits) != 2 {
 		t.Fatalf("search hits = %d, want 2", len(result.Hits))
 	}
+}
+
+func assertSQLiteFilePathQueryUsesIndex(t *testing.T, db *sql.DB) {
+	t.Helper()
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT name,path,file_index,size,data_type FROM files WHERE path=? ORDER BY file_index LIMIT 1`, "equip/missing.equ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	detail := strings.Join(plan, "\n")
+	if !strings.Contains(detail, "SEARCH files USING INDEX files_path") ||
+		strings.Contains(detail, "SCAN files") || strings.Contains(detail, "TEMP B-TREE") {
+		t.Fatalf("path query must use indexed lookup without scanning or sorting: %s", detail)
+	}
+}
+
+func TestSQLiteFilePathIndexQueriesAndBatchResolution(t *testing.T) {
+	a := pvf.New()
+	for i := 0; i < 100; i++ {
+		if _, err := a.AddFileText(fmt.Sprintf("equip/%03d.equ", i), "[name]\n`A`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index, _, err := openSQLiteArchiveIndex(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer index.close()
+	assertSQLiteFilePathQueryUsesIndex(t, index.db)
+	node, err := index.resolve("equip/missing.equ")
+	if err != nil || node != nil {
+		t.Fatalf("missing path = %#v, %v", node, err)
+	}
+	// Duplicate archive paths remain legal; resolve must choose the lowest index.
+	if _, err := index.db.Exec(`INSERT INTO files
+SELECT 100,path,lower_path,name,lower_name,parent,size,data_type,change_kind FROM files WHERE file_index=99`); err != nil {
+		t.Fatal(err)
+	}
+	node, err = index.resolve("equip/099.equ")
+	if err != nil || node == nil || node.FileIndex != 99 {
+		t.Fatalf("duplicate path = %#v, %v", node, err)
+	}
+	c := NewCore()
+	c.archive, c.diskIndex = a, index
+	paths := []string{"equip/missing.equ", "equip/099.equ"}
+	for i := 0; i < 40; i++ {
+		paths = append(paths, fmt.Sprintf("equip/%03d.equ", i))
+	}
+	paths = append(paths, "equip/099.equ")
+	nodes, err := NewArchiveService(c).ResolveFiles(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 41 || nodes[0].FileIndex != 99 || nodes[40].FileIndex != 39 {
+		t.Fatalf("batch resolution returned unexpected results: %#v", nodes)
+	}
+}
+
+func TestSQLiteFilePathIndexUpgradesCachedArchive(t *testing.T) {
+	cacheDir := t.TempDir()
+	t.Setenv("LocalAppData", cacheDir)
+	t.Setenv("XDG_CACHE_HOME", cacheDir)
+	t.Setenv("HOME", cacheDir)
+	a := pvf.New()
+	if _, err := a.AddFileText("equip/a.equ", "[name]\n`A`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "cache.pvf")
+	if err := a.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	a, err := pvf.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Release()
+	index, hit, err := openSQLiteArchiveIndex(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hit {
+		index.close()
+		t.Fatal("fresh archive unexpectedly hit the cache")
+	}
+	// Simulate a complete cache written before the path index was introduced.
+	if _, err := index.db.Exec(`DROP INDEX files_path;
+INSERT INTO records(file_index,name,lower_name,record_id,lower_id,path,lower_path,category,list_path,size,data_type)
+VALUES(0,'preserved','preserved','42','42','equip/a.equ','equip/a.equ','equipment','equip/equipment.lst',0,1);
+UPDATE meta SET value='1' WHERE key='complete';`); err != nil {
+		index.close()
+		t.Fatal(err)
+	}
+	index.close()
+	for pass := 0; pass < 2; pass++ {
+		index, hit, err = openSQLiteArchiveIndex(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			defer index.close()
+			if !hit || !index.ready {
+				t.Fatal("upgrade must preserve the complete semantic cache")
+			}
+			assertSQLiteFilePathQueryUsesIndex(t, index.db)
+			var name string
+			if err := index.db.QueryRow("SELECT name FROM records WHERE record_id='42'").Scan(&name); err != nil || name != "preserved" {
+				t.Fatalf("semantic cache changed: name=%q error=%v", name, err)
+			}
+			node, err := index.resolve("equip/a.equ")
+			if err != nil || node == nil || node.FileIndex != 0 {
+				t.Fatalf("resolve after upgrade = %#v, %v", node, err)
+			}
+		}()
+	}
+}
+
+func TestSQLiteFilePathIndexUpgradeCancellation(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := buildSQLiteFileIndex(db, pvf.New(), "cancel-path-index"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("DROP INDEX files_path"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := ensureSQLiteFilePathIndex(ctx, db); !errors.Is(err, context.Canceled) {
+		t.Fatalf("upgrade error = %v, want cancellation", err)
+	}
+	if err := ensureSQLiteFilePathIndex(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	assertSQLiteFilePathQueryUsesIndex(t, db)
 }
 
 func TestSQLiteArchiveIndexPublishesSemanticCandidate(t *testing.T) {

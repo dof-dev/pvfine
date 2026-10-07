@@ -8,7 +8,38 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
+
+func TestDebugTimingLogsUseDebugLevel(t *testing.T) {
+	before := applicationLogs.snapshot()
+	lastID := uint64(0)
+	if len(before) > 0 {
+		lastID = before[len(before)-1].ID
+	}
+	finish := debugPhase("test-phase", "file=42")
+	debugLockAcquired("test-phase", time.Now())
+	finish()
+	var entries []appLogEntry
+	for _, entry := range applicationLogs.snapshot() {
+		if entry.ID > lastID {
+			entries = append(entries, entry)
+		}
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected start, lock wait and finish logs, got %d", len(entries))
+	}
+	for _, entry := range entries {
+		if entry.Level != "DEBUG" || entry.Source != "performance" {
+			t.Fatalf("unexpected entry: %#v", entry)
+		}
+	}
+	for i, expected := range []string{"started file=42", "core-lock acquired wait=", "finished file=42 elapsed="} {
+		if !strings.Contains(entries[i].Message, expected) {
+			t.Fatalf("entry %d: %s", i, entries[i].Message)
+		}
+	}
+}
 
 func TestLogBufferBoundedAndSnapshotIndependent(t *testing.T) {
 	var buffer logBuffer

@@ -243,24 +243,30 @@ func (s *ImageService) IndexStatus() ImageIndexStatus {
 // Missing configuration, unfinished indexes, missing paths and out-of-range
 // frames intentionally return (nil, nil) so callers can render a fallback.
 func (s *ImageService) GetImage(path string, index int32) (*ImageData, error) {
+	defer debugPhase("GetImage", fmt.Sprintf("path=%s frame=%d", path, index))()
 	keyPath := normalizeImagePath(path)
 	if keyPath == "" || index < 0 {
 		return nil, nil
 	}
+	wait := time.Now()
 	s.mu.RLock()
+	debugLog("GetImage image-lock acquired wait=%.2fms", elapsedMilliseconds(wait))
 	snapshot := s.snapshot
 	generation := s.generation
 	if snapshot == nil || s.directory == "" {
+		debugLog("GetImage path=%s frame=%d index-unavailable", path, index)
 		s.mu.RUnlock()
 		return nil, nil
 	}
 	record := snapshot.byPath[keyPath]
 	if record == nil || record.img == nil || index >= int32(len(record.img.Images)) {
+		debugLog("GetImage path=%s frame=%d frame-unavailable", path, index)
 		s.mu.RUnlock()
 		return nil, nil
 	}
 	cacheKey := fmt.Sprintf("%d\x00%s\x00%d", generation, keyPath, index)
 	if cached, ok := s.cache[cacheKey]; ok {
+		debugLog("GetImage path=%s frame=%d cache=hit", path, index)
 		s.mu.RUnlock()
 		return &cached.data, nil
 	}
@@ -273,19 +279,25 @@ func (s *ImageService) GetImage(path string, index int32) (*ImageData, error) {
 	npkOffset, npkSize, img := record.offset, record.size, record.img
 	s.mu.RUnlock()
 
+	finishDecode := debugPhase("GetImage.read-and-decode", fmt.Sprintf("path=%s frame=%d cache=miss", path, index))
 	file, err := os.Open(npkPath)
 	if err != nil {
+		finishDecode()
 		return nil, fmt.Errorf("读取 NPK 文件失败: %w", err)
 	}
 	decoded, err := npk.DecodeImage(file, npkOffset, npkSize, img, index)
 	_ = file.Close()
+	finishDecode()
 	if err != nil {
 		return nil, fmt.Errorf("解码 IMG 图片失败: %w", err)
 	}
 	var encoded bytes.Buffer
+	finishEncode := debugPhase("GetImage.png-encode", fmt.Sprintf("path=%s frame=%d", path, index))
 	if err := png.Encode(&encoded, decoded); err != nil {
+		finishEncode()
 		return nil, fmt.Errorf("编码 PNG 失败: %w", err)
 	}
+	finishEncode()
 	bounds := decoded.Bounds()
 	result := ImageData{
 		DataURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(encoded.Bytes()),
