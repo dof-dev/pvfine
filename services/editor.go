@@ -551,7 +551,7 @@ func (s *EditorService) UnpackDialog() (bool, error) {
 	go func() {
 		defer finishTask()
 		defer s.c.unpackRunning.Store(false)
-		emit := application.Get().Event.Emit
+		emit := emitEvent
 		total := int(a.FileCount())
 		progress := func(done, tot int) { emit("unpack:progress", map[string]int{"done": done, "total": tot}) }
 		cancel := func() bool { return s.c.unpackCancel.Load() }

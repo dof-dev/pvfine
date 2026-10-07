@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,6 +119,9 @@ func (c *closeCoordinator) handlerFor(window application.Window) func(*applicati
 var assets embed.FS
 
 func main() {
+	logOutput := services.CaptureLogs(log.Writer())
+	log.SetOutput(logOutput)
+	application.DefaultServiceOptions.MarshalError = services.LogServiceError
 	core := services.NewCore()
 	settingsService := services.NewSettingsService()
 	// The backup service attaches itself to the core so saving or closing the
@@ -131,6 +135,9 @@ func main() {
 	app := application.New(application.Options{
 		Name:             "pvfine",
 		Description:      "PVF 归档编辑器",
+		Logger:           slog.New(slog.NewTextHandler(logOutput, nil)),
+		MarshalError:     services.LogServiceError,
+		ErrorHandler:     func(err error) { services.LogServiceError(err) },
 		FileAssociations: []string{".pvf"},
 		Services: []application.Service{
 			application.NewService(services.NewArchiveService(core)),
@@ -158,6 +165,7 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	services.ObserveLogEvents(app)
 	app.RegisterService(application.NewService(services.NewUpdateService(app)))
 	scriptWindowService := services.NewScriptWindowService(app)
 	app.RegisterService(application.NewService(scriptWindowService))

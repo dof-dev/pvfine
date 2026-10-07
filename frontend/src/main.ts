@@ -4,6 +4,7 @@ import App from "./App.vue";
 import ScriptWindow from "./ScriptWindow.vue";
 import "./style.css";
 import { applyTheme, getTheme } from "./theme";
+import { installLogging } from "./logging";
 
 // 主题设置从后端异步加载，先同步应用深色默认值，避免启动时闪白。
 applyTheme(getTheme("dark"));
@@ -15,4 +16,5 @@ const root = view === "script" ? ScriptWindow : App;
 
 const app = createApp(root);
 app.use(createPinia());
+installLogging(app);
 app.mount("#app");

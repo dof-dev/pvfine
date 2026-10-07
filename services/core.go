@@ -24,6 +24,11 @@ import (
 
 // emitEvent 安全地发事件:脱离 wails 运行时(如单元测试)时为 no-op。
 func emitEvent(name string, data ...any) {
+	var payload any
+	if len(data) == 1 {
+		payload = data[0]
+	}
+	recordLogEvent(name, payload)
 	if app := application.Get(); app != nil {
 		app.Event.Emit(name, data...)
 	}

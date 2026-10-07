@@ -515,6 +515,7 @@ func (s *AutosaveService) recordError(err error) {
 		return
 	}
 	s.lastErr = err.Error()
+	recordLog("ERROR", "自动缓存", err.Error())
 }
 
 func (s *AutosaveService) lastError() string {

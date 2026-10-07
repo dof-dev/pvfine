@@ -11,6 +11,7 @@ import {
 import ToolBar from "./components/ToolBar.vue";
 import Explorer from "./components/Explorer.vue";
 import EditorTabs from "./components/EditorTabs.vue";
+import LogPanel from "./components/LogPanel.vue";
 import FileSetSidebar from "./components/FileSetSidebar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import AdvancedSearchModal from "./components/AdvancedSearchModal.vue";
@@ -238,7 +239,10 @@ function executeShortcut(command: ShortcutCommandId): void {
             </div>
             <div class="resize-handle" @mousedown.prevent="onResizeStart" />
             <div class="editor-pane">
-              <EditorTabs :theme-id="activeTheme.id" />
+              <div class="editor-main">
+                <EditorTabs :theme-id="activeTheme.id" />
+              </div>
+              <LogPanel />
             </div>
             <FileSetSidebar />
           </div>
@@ -286,6 +290,15 @@ function executeShortcut(command: ShortcutCommandId): void {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.editor-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 .app-root--mac :deep(.toolbar) {
   padding-left: 82px;
