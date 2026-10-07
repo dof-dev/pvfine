@@ -530,6 +530,21 @@ func (a *Archive) LookupStringTable(index int, key string) (string, bool) {
 	return res.Text, ok
 }
 
+// LookupStringTableText keeps normal localization precedence but distinguishes
+// a defined empty value from a missing key.
+func (a *Archive) LookupStringTableText(index int, key string) (string, bool) {
+	defined := false
+	for _, path := range a.stringTablePaths(index) {
+		if value, found := a.lookupStringTableValue(path, key); found {
+			if value != "" {
+				return value, true
+			}
+			defined = true
+		}
+	}
+	return "", defined
+}
+
 // ResolvePlaceholder replaces a single `<table::key>` placeholder. It returns
 // the input unchanged when it is not a placeholder or cannot be resolved.
 func (a *Archive) ResolvePlaceholder(text string) string {

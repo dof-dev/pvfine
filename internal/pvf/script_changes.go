@@ -127,5 +127,6 @@ func (a *Archive) ApplyScriptChanges(stage *Archive, changes []ScriptChange) err
 		}
 		a.AddFile(change.Path, change.Raw, change.DataType)
 	}
+	a.InvalidateStringTables()
 	return nil
 }

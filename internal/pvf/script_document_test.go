@@ -180,7 +180,7 @@ func TestScriptDocumentExactStringPoolEncoding(t *testing.T) {
 
 func TestScriptDocumentAllTokenTypes(t *testing.T) {
 	a := New()
-	index, err := a.AddFileText("test/all.equ", "[all]\n1 1.5 bare `quoted` {5=`block`} {7=7}", TypeScript)
+	index, err := a.AddFileText("test/all.equ", "[all]\n1 1.5 bare `quoted` {5=`block`} {7=7} {8=`<31::name>`} {10=`<31::command>`}", TypeScript)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +200,7 @@ func TestScriptDocumentAllTokenTypes(t *testing.T) {
 	want := []ScriptTokenType{
 		ScriptTokenInteger, ScriptTokenFloat, ScriptTokenString,
 		ScriptTokenQuoted, ScriptTokenBlock5, ScriptTokenBlock7,
+		ScriptTokenBlock8, ScriptTokenBlock10,
 	}
 	if len(values) != len(want) {
 		t.Fatalf("values = %#v", values)
@@ -211,6 +212,22 @@ func TestScriptDocumentAllTokenTypes(t *testing.T) {
 	}
 	if values[1].Value != float64(1.5) || values[4].Value != "block" || values[5].Value != int64(7) {
 		t.Fatalf("token values = %#v", values)
+	}
+	for index, value := range values {
+		replacement, err := NewScriptValue(value.Type, value.Value, value.Pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := section.Set(replacement, index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	encoded, err := a.EncodeScriptDocument(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, raw) {
+		t.Fatal("replacing all values changed their token encoding")
 	}
 }
 

@@ -14,7 +14,9 @@ export type PVFTokenType =
   | "string"
   | "quoted"
   | "block5"
-  | "block7";
+  | "block7"
+  | "block8"
+  | "block10";
 
 export interface PVFValue {
   readonly type: PVFTokenType;
@@ -45,9 +47,16 @@ export interface PVFSection {
 
   values(): PVFValue[];
   children(): PVFSection[];
+  /** 移除全部同名直接子 section（含子树），返回移除数量。 */
+  removeChildren(children_name: string): number;
 
   get(index?: number): PVFScalar | undefined;
   getValue(index?: number): PVFValue | undefined;
+  /** 解析字符串引用；旧式文本或无法解析的引用原样返回，缺失值返回 undefined。 */
+  getOriStrValue(index?: number): string | undefined;
+  /** 始终写入旧式 type 6 文本，不注册字符串表引用。 */
+  setStrValue(text: string, index?: number): void;
+  /** 字符串在 110US 自动注册为 type 8 引用，其它版本写入 type 6；精确值对象不转换。 */
   set(value: PVFValueInput, index?: number): void;
   setValues(values: PVFValueInput[]): void;
   append(value: PVFValueInput): void;
@@ -74,6 +83,24 @@ export interface PVFDocument {
     occurrence?: number,
     valueIndex?: number,
   ): PVFValue | undefined;
+  /** 解析字符串引用；旧式文本或无法解析的引用原样返回，非字符串值报错。 */
+  getOriStrValue(
+    path: SectionPath,
+    occurrence?: number,
+    valueIndex?: number,
+  ): string | undefined;
+  /** 始终写入旧式 type 6 文本，选项与 set 相同，不注册字符串表引用。 */
+  setStrValue(
+    path: SectionPath,
+    text: string,
+    options?: {
+      occurrence?: number;
+      valueIndex?: number;
+      create?: boolean;
+      endTag?: boolean;
+    },
+  ): boolean;
+  /** 字符串在 110US 自动注册为 type 8 引用，其它版本写入 type 6；精确值对象不转换。 */
   set(
     path: SectionPath,
     value: PVFValueInput,
@@ -121,8 +148,8 @@ export type PVFListID = string | number;
 /**
  * 一个 .lst 列表文件的读写句柄。
  *
- * 条目路径相对于该 .lst 所在目录存储。set/mset 同时接受这种相对路径和
- * 完整归档路径（会自动换算），并要求目标文件在当前归档中存在；
+ * 旧布局按 .lst 所在目录存储相对路径，110US / list/ 集中布局按归档根存储路径。
+ * set/mset 同时接受列表目录相对路径和完整归档路径（按布局自动换算），并要求目标文件存在；
  * getId 只做路径换算，不要求文件存在。
  */
 export interface PVFList {
@@ -169,6 +196,8 @@ export interface PVFFileSet {
 }
 
 export interface PVFNamespace {
+  /** 解析 <表号::键名> 引用（包括文本中的引用），未命中时保留原文。 */
+  getOriStrValue(reference: string): string;
   files(): PVFFile[];
   find(path: string): PVFFile | null;
   glob(pattern: string): PVFFile[];
@@ -196,7 +225,7 @@ export interface PVFNamespace {
   copyFile(from: string, to: string, overwrite?: boolean): PVFFile;
   /** 删除文件本体，返回是否真的删除了条目；路径不存在时返回 false。 */
   deleteFile(path: string): boolean;
-  /** 打开一个 .lst 列表文件进行读写；文件不存在或不是列表时报错。 */
+  /** 打开一个 .lst 列表，兼容 equipment/equipment.lst 与 list/equipment.lst 两种布局。 */
   lst(path: string): PVFList;
   log(...values: unknown[]): void;
   progress(done: number, total: number, message?: string): void;
@@ -207,6 +236,7 @@ export interface PVFNamespace {
 
 declare global {
   namespace pvf {
+    function getOriStrValue(reference: string): string;
     function files(): PVFFile[];
     function find(path: string): PVFFile | null;
     function glob(pattern: string): PVFFile[];

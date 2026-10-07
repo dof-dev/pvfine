@@ -64,6 +64,20 @@ func (a *BatchAPI) checkContext() error {
 	}
 }
 
+// GetOriStrValue resolves references against the staged string tables, keeping
+// legacy literal strings and unresolved references unchanged.
+func (a *BatchAPI) GetOriStrValue(reference string) (string, error) {
+	if err := a.checkContext(); err != nil {
+		return "", err
+	}
+	if table, key, ok := pvf.ParsePlaceholder(reference); ok {
+		if text, found := a.tx.Stage().LookupStringTableText(table, key); found {
+			return text, nil
+		}
+	}
+	return a.tx.Stage().ResolvePlaceholders(reference), nil
+}
+
 // Files returns every archive entry in deterministic path order.
 func (a *BatchAPI) Files() ([]*FileHandle, error) {
 	if err := a.checkContext(); err != nil {
@@ -240,7 +254,7 @@ func (a *BatchAPI) OpenList(filePath string) (*ListHandle, error) {
 	if err := a.checkContext(); err != nil {
 		return nil, err
 	}
-	index, ok := a.tx.Stage().Find(filePath)
+	index, ok := a.tx.Stage().FindList(filePath)
 	if !ok {
 		return nil, fmt.Errorf("列表文件不存在: %s", filePath)
 	}
@@ -251,7 +265,8 @@ func (a *BatchAPI) OpenList(filePath string) (*ListHandle, error) {
 }
 
 // ListHandle is the narrow Go host object behind a JavaScript PVFList. Entry
-// paths inside a .lst are relative to the list file's own directory.
+// paths follow the archive's list layout: directory-relative for legacy lists,
+// archive-root-relative for Paged110 and centralized list/ lists.
 type ListHandle struct {
 	api  *BatchAPI
 	path string
@@ -278,11 +293,11 @@ func (l *ListHandle) Set(id, entryPath string) error {
 	if err := l.api.checkContext(); err != nil {
 		return err
 	}
-	relative, err := l.storagePath(entryPath)
+	stored, err := l.storagePath(entryPath)
 	if err != nil {
 		return err
 	}
-	return l.api.tx.SetListPairs(l.path, []pvf.ListPair{{ID: id, Path: relative}})
+	return l.api.tx.SetListPairs(l.path, []pvf.ListPair{{ID: id, Path: stored}})
 }
 
 // MSet inserts or updates several id/path entries at once.
@@ -295,11 +310,11 @@ func (l *ListHandle) MSet(pairs []pvf.ListPair) error {
 	}
 	resolved := make([]pvf.ListPair, 0, len(pairs))
 	for _, pair := range pairs {
-		relative, err := l.storagePath(pair.Path)
+		stored, err := l.storagePath(pair.Path)
 		if err != nil {
 			return err
 		}
-		resolved = append(resolved, pvf.ListPair{ID: pair.ID, Path: relative})
+		resolved = append(resolved, pvf.ListPair{ID: pair.ID, Path: stored})
 	}
 	return l.api.tx.SetListPairs(l.path, resolved)
 }
@@ -344,9 +359,8 @@ func (l *ListHandle) GetID(entryPath string) (string, bool, error) {
 	return "", false, nil
 }
 
-// storagePath resolves an entry path to the list-relative form the .lst file
-// stores. Both spellings are accepted: the native relative form
-// ("character/x.equ") and a full archive path ("equipment/character/x.equ").
+// storagePath resolves an entry path to the native form the .lst file stores.
+// Both full archive paths and list-directory-relative spellings are accepted.
 // The target must exist in the archive so a typo cannot register a dangling
 // entry.
 func (l *ListHandle) storagePath(entryPath string) (string, error) {
@@ -362,15 +376,24 @@ func (l *ListHandle) storagePath(entryPath string) (string, error) {
 	return "", fmt.Errorf("列表条目指向的文件不存在: %s", raw)
 }
 
-// candidatePaths lists the list-relative spellings a user path may mean, most
-// literal first: the path as written, then the same path interpreted as an
-// archive path and rebased onto the list directory.
+// candidatePaths lists native storage spellings, preferring the literal input
+// when both interpretations resolve. Root-relative lists never strip prefixes.
 func (l *ListHandle) candidatePaths(raw string) []string {
 	candidates := []string{raw}
+	if l.rootRelative() {
+		if joined := path.Join(path.Dir(l.path), raw); joined != raw {
+			candidates = append(candidates, joined)
+		}
+		return candidates
+	}
 	if rebased, ok := l.rebase(raw); ok && rebased != raw {
 		candidates = append(candidates, rebased)
 	}
 	return candidates
+}
+
+func (l *ListHandle) rootRelative() bool {
+	return l.api.tx.Stage().IsPaged110() || strings.EqualFold(path.Dir(l.path), "list")
 }
 
 // rebase converts a full archive path into the list-relative form, when the
@@ -391,18 +414,21 @@ func (l *ListHandle) rebase(archivePath string) (string, bool) {
 	return relative, true
 }
 
-// targetExists reports whether a list-relative entry resolves to an archive
+// targetExists reports whether a native storage path resolves to an archive
 // entry, mirroring the service lookup that also accepts a "(r)" sibling.
-func (l *ListHandle) targetExists(relative string) bool {
-	directory := path.Dir(l.path)
-	if _, ok := l.api.tx.Stage().Find(path.Join(directory, relative)); ok {
+func (l *ListHandle) targetExists(stored string) bool {
+	archivePath := stored
+	if !l.rootRelative() {
+		archivePath = path.Join(path.Dir(l.path), stored)
+	}
+	if _, ok := l.api.tx.Stage().Find(archivePath); ok {
 		return true
 	}
-	base := path.Base(relative)
+	base := path.Base(archivePath)
 	if strings.HasPrefix(strings.ToLower(base), "(r)") {
 		return false
 	}
-	_, ok := l.api.tx.Stage().Find(path.Join(directory, path.Dir(relative), "(r)"+base))
+	_, ok := l.api.tx.Stage().Find(path.Join(path.Dir(archivePath), "(r)"+base))
 	return ok
 }
 

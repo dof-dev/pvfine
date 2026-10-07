@@ -3,12 +3,92 @@ package script
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"strings"
 	"testing"
 	"time"
 
 	"pvfine/internal/pvf"
 )
+
+func TestGojaRuntimeStringReferences(t *testing.T) {
+	archive := pvf.New()
+	for _, file := range []struct {
+		path string
+		text string
+		kind int32
+	}{
+		{"list/n_string.lst", "31 `string/names.str`", pvf.TypeScript},
+		{"string/names.str", "first>Original\nsecond>Replacement\n", pvf.TypeUnicode},
+		{"equipment/item.equ", "[name]\n{8=`<31::first>`}\n[legacy]\n`literal`\n[multi]\n{10=`<31::first>`}\n[price]\n1", pvf.TypeScript},
+	} {
+		if _, err := archive.AddFileText(file.path, file.text, file.kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+const file = pvf.find("equipment/item.equ");
+const doc = file.parse();
+const name = doc.section("name");
+if (name.get() !== "<31::first>") throw new Error("get changed");
+if (name.getOriStrValue() !== "Original") throw new Error("section resolution");
+if (doc.getOriStrValue("multi") !== "Original") throw new Error("type 10 resolution");
+if (doc.getOriStrValue("legacy") !== "literal") throw new Error("legacy resolution");
+if (doc.getOriStrValue("missing") !== undefined || name.getOriStrValue(3) !== undefined) throw new Error("missing value");
+if (pvf.getOriStrValue("<31::missing>") !== "<31::missing>") throw new Error("missing reference");
+if (pvf.getOriStrValue("prefix <31::first>") !== "prefix Original") throw new Error("direct resolution");
+let rejected = false;
+try { doc.getOriStrValue("price"); } catch { rejected = true; }
+if (!rejected) throw new Error("numeric read accepted");
+rejected = false;
+try { name.setStrValue(123); } catch { rejected = true; }
+if (!rejected) throw new Error("numeric reference accepted");
+pvf.find("string/names.str").setText("first>Staged\nsecond>Replacement\n");
+if (name.getOriStrValue() !== "Staged") throw new Error("stale table");
+name.set({type: "block8", value: "<31::second>"});
+if (name.getValue().type !== "block8") throw new Error("type 8 inference");
+doc.section("multi").set({type: "block10", value: "<31::second>"});
+doc.section("legacy").setStrValue("<31::second>");
+if (doc.section("legacy").getValue().type !== "quoted") throw new Error("legacy conversion");
+if (doc.setStrValue("missing", "<31::second>") !== false) throw new Error("missing set");
+if (!doc.setStrValue("new", "<31::second>", {create: true})) throw new Error("create reference");
+name.setStrValue("<31::first>");
+file.write(doc);
+const roundTrip = file.parse();
+if (roundTrip.getOriStrValue("legacy") !== "Replacement") throw new Error("round trip");
+if (roundTrip.getValue("multi").type !== "block10") throw new Error("type 10 write");
+if (roundTrip.getValue("name").type !== "quoted" || roundTrip.getValue("new").type !== "quoted") throw new Error("forced legacy write");
+if (!roundTrip.getValue("new").pool) throw new Error("pool metadata");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("result = %#v diagnostic=%#v err=%v", result, result.Error, err)
+	}
+	if archive.ResolvePlaceholder("<31::first>") != "Original" {
+		t.Fatal("preview mutated live string table")
+	}
+	if _, err := tx.Commit(map[string]struct{}{"equipment/item.equ": {}, "string/names.str": {}}); err != nil {
+		t.Fatal(err)
+	}
+	index, _ := archive.Find("equipment/item.equ")
+	raw, err := archive.RawBytes(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var types []byte
+	for pos := 0; pos+5 <= len(raw); pos += 5 {
+		if raw[pos] == 8 || raw[pos] == 10 {
+			types = append(types, raw[pos])
+			if text := archive.ResolveString(int32(binary.LittleEndian.Uint32(raw[pos+1:]))); text != "<31::first>" && text != "<31::second>" {
+				t.Fatalf("reference = %q", text)
+			}
+		}
+	}
+	if !bytes.Equal(types, []byte{10}) {
+		t.Fatalf("reference token types = %v", types)
+	}
+}
 
 func scriptTestArchive(t *testing.T) *pvf.Archive {
 	t.Helper()
@@ -658,12 +738,81 @@ func TestGojaRuntimeListAbsolutePathRebased(t *testing.T) {
 	result, err := NewGojaRuntime().Run(context.Background(), `
 	const lst = pvf.lst("equipment/equipment.lst");
 	lst.set("2000", "equipment/character/a.equ");
+	lst.mset({"2001": "equipment/character/b.equ"});
+	if (pvf.lst("list/equipment.lst").path !== lst.path) throw new Error("legacy list lookup");
 	const stored = lst.getId("character/a.equ");
 	if (stored !== "2000" && stored !== "1008") throw new Error("absolute path was not rebased: " + stored);
 	if (lst.get()["2000"] !== "character/a.equ") throw new Error("stored value is not list-relative");
+	if (lst.get()["2001"] !== "character/b.equ") throw new Error("mset value is not list-relative");
 `, host)
 	if err != nil || result.Status != RunStatusCompleted {
 		t.Fatalf("run result = %#v error=%#v err=%v", result, result.Error, err)
+	}
+}
+
+func TestGojaRuntimeListRootRelativePaths(t *testing.T) {
+	built := pvf.New()
+	if _, err := built.AddFileText("list/equipment.lst", "1008 `equipment/character/a.equ` 1009 `equipment/missing.equ`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	for _, filePath := range []string{
+		"equipment/character/a.equ", "equipment/character/b.equ",
+		"equipment/character/(r)c.equ", "list/equipment/character/a.equ", "list/local.equ",
+	} {
+		if _, err := built.AddFileText(filePath, "[name]\n`x`", pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var data bytes.Buffer
+	if err := built.SaveTo(&data); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := pvf.Parse(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := NewTransaction(archive)
+	host := NewBatchAPI(context.Background(), tx, nil, nil)
+	result, err := NewGojaRuntime().Run(context.Background(), `
+const lst = pvf.lst("EQUIPMENT/EQUIPMENT.LST");
+if (lst.path !== "list/equipment.lst") throw new Error("list layout lookup");
+if (lst.getId("equipment\\character\\a.equ") !== "1008") throw new Error("root getId");
+if (lst.getId("equipment/missing.equ") !== "1009") throw new Error("missing target lookup");
+lst.set("1008", "/equipment/character/b.equ/");
+lst.mset({
+  "1010": "equipment/character/a.equ",
+  "1011": "equipment/character/c.equ",
+  "1012": "list/equipment/character/a.equ",
+  "1013": "local.equ"
+});
+const stored = lst.get();
+if (stored["1008"] !== "equipment/character/b.equ") throw new Error("set rebased root path");
+if (stored["1010"] !== "equipment/character/a.equ") throw new Error("mset rebased root path");
+if (stored["1011"] !== "equipment/character/c.equ") throw new Error("(r) lookup");
+if (stored["1012"] !== "list/equipment/character/a.equ") throw new Error("list prefix stripped");
+if (stored["1013"] !== "list/local.equ") throw new Error("list-relative input");
+if (lst.getId("local.equ") !== "1013" || lst.getId("list/local.equ") !== "1013") throw new Error("relative getId");
+let rejected = false;
+try { lst.mset({"2000": "equipment/character/a.equ", "2001": "equipment/nope.equ"}); } catch { rejected = true; }
+if (!rejected || lst.get()["2000"] !== undefined) throw new Error("partial mset");
+const seen = [];
+lst.forEach((id, path) => seen.push(path));
+if (!seen.includes("list/equipment/character/a.equ")) throw new Error("forEach changed storage");
+`, host)
+	if err != nil || result.Status != RunStatusCompleted {
+		t.Fatalf("result = %#v diagnostic=%#v err=%v", result, result.Error, err)
+	}
+	changes, err := tx.Changes()
+	if err != nil || len(changes) != 1 || changes[0].Path != "list/equipment.lst" {
+		t.Fatalf("changes = %#v err=%v", changes, err)
+	}
+	if _, err := tx.Commit(map[string]struct{}{"list/equipment.lst": {}}); err != nil {
+		t.Fatal(err)
+	}
+	index, _ := archive.Find("list/equipment.lst")
+	pairs, err := archive.ListPairs(index)
+	if err != nil || len(pairs) != 6 || pairs[0].Path != "equipment/character/b.equ" || pairs[4].Path != "list/equipment/character/a.equ" {
+		t.Fatalf("committed pairs = %#v err=%v", pairs, err)
 	}
 }
 

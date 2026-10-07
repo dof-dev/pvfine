@@ -208,6 +208,16 @@ func bindRuntime(vm *goja.Runtime, host *BatchAPI) error {
 
 func (b *gojaBindings) bindPVF() error {
 	pvfObject := b.vm.NewObject()
+	if err := setFunction(b.vm, pvfObject, "getOriStrValue", func(call goja.FunctionCall) (goja.Value, error) {
+		text, err := requiredString(call.Argument(0), "字符串引用")
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := b.host.GetOriStrValue(text)
+		return b.vm.ToValue(resolved), err
+	}); err != nil {
+		return err
+	}
 	if err := setFunction(b.vm, pvfObject, "files", func(goja.FunctionCall) (goja.Value, error) {
 		files, err := b.host.Files()
 		if err != nil {
@@ -671,47 +681,71 @@ func (b *gojaBindings) documentObject(document *documentBinding) *goja.Object {
 		}
 		return b.valueObject(value), nil
 	})
-	_ = setFunction(b.vm, object, "set", func(call goja.FunctionCall) (goja.Value, error) {
-		path, err := sectionPath(call.Argument(0))
+	_ = setFunction(b.vm, object, "getOriStrValue", func(call goja.FunctionCall) (goja.Value, error) {
+		value, found, err := b.documentValue(document, call, false)
 		if err != nil {
 			return nil, err
 		}
-		options, err := objectArgument(call.Argument(2))
-		if err != nil {
-			return nil, err
-		}
-		occurrence, err := optionInteger(options, "occurrence", 0)
-		if err != nil {
-			return nil, err
-		}
-		valueIndex, err := optionInteger(options, "valueIndex", 0)
-		if err != nil {
-			return nil, err
-		}
-		create, err := optionBool(options, "create", false)
-		if err != nil {
-			return nil, err
-		}
-		endTag, err := optionBool(options, "endTag", false)
-		if err != nil {
-			return nil, err
-		}
-		var existing *pvf.ScriptValue
-		if section, found := document.document.Section(path, int(occurrence)); found {
-			if current, found := section.GetValue(int(valueIndex)); found {
-				existing = &current
-			}
-		}
-		value, err := b.scriptValue(call.Argument(1), existing)
-		if err != nil {
-			return nil, err
-		}
-		changed, err := document.document.Set(path, int(occurrence), int(valueIndex), value, create, endTag)
-		if err != nil {
-			return nil, err
-		}
-		return b.vm.ToValue(changed), nil
+		return b.originalStringValue(value, found)
 	})
+	for _, method := range []string{"set", "setStrValue"} {
+		_ = setFunction(b.vm, object, method, func(call goja.FunctionCall) (goja.Value, error) {
+			path, err := sectionPath(call.Argument(0))
+			if err != nil {
+				return nil, err
+			}
+			if len(path) == 0 {
+				return nil, fmt.Errorf("section 路径不能为空")
+			}
+			options, err := objectArgument(call.Argument(2))
+			if err != nil {
+				return nil, err
+			}
+			occurrence, err := optionInteger(options, "occurrence", 0)
+			if err != nil {
+				return nil, err
+			}
+			valueIndex, err := optionInteger(options, "valueIndex", 0)
+			if err != nil {
+				return nil, err
+			}
+			create, err := optionBool(options, "create", false)
+			if err != nil {
+				return nil, err
+			}
+			endTag, err := optionBool(options, "endTag", false)
+			if err != nil {
+				return nil, err
+			}
+			var existing *pvf.ScriptValue
+			if section, found := document.document.Section(path, int(occurrence)); found {
+				if current, found := section.GetValue(int(valueIndex)); found {
+					existing = &current
+				}
+				if existing == nil {
+					return nil, fmt.Errorf("section 没有对应的直接值")
+				}
+			} else if !create {
+				return b.vm.ToValue(false), nil
+			} else if occurrence < 0 || valueIndex != 0 {
+				return nil, fmt.Errorf("新建 section 只能设置第 0 个值")
+			}
+			var value pvf.ScriptValue
+			if method == "setStrValue" {
+				value, err = b.legacyStringValue(call.Argument(1))
+			} else {
+				value, err = b.setValue(call.Argument(1), existing, document.file.Path())
+			}
+			if err != nil {
+				return nil, err
+			}
+			changed, err := document.document.Set(path, int(occurrence), int(valueIndex), value, create, endTag)
+			if err != nil {
+				return nil, err
+			}
+			return b.vm.ToValue(changed), nil
+		})
+	}
 	_ = setFunction(b.vm, object, "delete", func(call goja.FunctionCall) (goja.Value, error) {
 		path, err := sectionPath(call.Argument(0))
 		if err != nil {
@@ -778,6 +812,17 @@ func (b *gojaBindings) sectionObject(binding *sectionBinding) *goja.Object {
 		}
 		return b.vm.NewArray(items...), nil
 	})
+	_ = setFunction(b.vm, object, "removeChildren", func(call goja.FunctionCall) (goja.Value, error) {
+		if err := b.checkSection(binding); err != nil {
+			return nil, err
+		}
+		name, err := requiredString(call.Argument(0), "子 section 名称")
+		if err != nil {
+			return nil, err
+		}
+		count, err := binding.section.RemoveChildren(name)
+		return b.vm.ToValue(count), err
+	})
 	_ = setFunction(b.vm, object, "get", func(call goja.FunctionCall) (goja.Value, error) {
 		value, found, err := b.sectionValue(binding, call.Argument(0), false)
 		if err != nil {
@@ -798,6 +843,27 @@ func (b *gojaBindings) sectionObject(binding *sectionBinding) *goja.Object {
 		}
 		return b.valueObject(value), nil
 	})
+	_ = setFunction(b.vm, object, "getOriStrValue", func(call goja.FunctionCall) (goja.Value, error) {
+		value, found, err := b.sectionValue(binding, call.Argument(0), false)
+		if err != nil {
+			return nil, err
+		}
+		return b.originalStringValue(value, found)
+	})
+	_ = setFunction(b.vm, object, "setStrValue", func(call goja.FunctionCall) (goja.Value, error) {
+		if err := b.checkSection(binding); err != nil {
+			return nil, err
+		}
+		value, err := b.legacyStringValue(call.Argument(0))
+		if err != nil {
+			return nil, err
+		}
+		index, err := optionalInteger(call.Argument(1), 0)
+		if err != nil {
+			return nil, err
+		}
+		return goja.Undefined(), binding.section.Set(value, int(index))
+	})
 	_ = setFunction(b.vm, object, "set", func(call goja.FunctionCall) (goja.Value, error) {
 		if err := b.checkSection(binding); err != nil {
 			return nil, err
@@ -810,7 +876,10 @@ func (b *gojaBindings) sectionObject(binding *sectionBinding) *goja.Object {
 		if current, found := binding.section.GetValue(int(index)); found {
 			existing = &current
 		}
-		value, err := b.scriptValue(call.Argument(0), existing)
+		if existing == nil {
+			return nil, fmt.Errorf("section 没有对应的直接值")
+		}
+		value, err := b.setValue(call.Argument(0), existing, binding.document.file.Path())
 		if err != nil {
 			return nil, err
 		}
@@ -938,11 +1007,43 @@ func (b *gojaBindings) sectionValue(binding *sectionBinding, value goja.Value, _
 	return result, found, nil
 }
 
+func (b *gojaBindings) originalStringValue(value pvf.ScriptValue, found bool) (goja.Value, error) {
+	if !found {
+		return goja.Undefined(), nil
+	}
+	text, ok := value.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("值不是字符串")
+	}
+	resolved, err := b.host.GetOriStrValue(text)
+	return b.vm.ToValue(resolved), err
+}
+
+func (b *gojaBindings) legacyStringValue(input goja.Value) (pvf.ScriptValue, error) {
+	text, err := requiredString(input, "字符串")
+	if err != nil {
+		return pvf.ScriptValue{}, err
+	}
+	return pvf.NewScriptValue(pvf.ScriptTokenQuoted, text, "")
+}
+
+func (b *gojaBindings) setValue(input goja.Value, existing *pvf.ScriptValue, owner string) (pvf.ScriptValue, error) {
+	if _, object := input.(*goja.Object); !object && !isMissingValue(input) {
+		if text, ok := input.Export().(string); ok {
+			if b.host.tx.Stage().ContentRules().SupportsStringReferences {
+				return b.host.tx.RegisterStringReference(owner, text, existing)
+			}
+			return b.legacyStringValue(input)
+		}
+	}
+	return b.scriptValue(input, existing)
+}
+
 func (b *gojaBindings) valueObject(value pvf.ScriptValue) *goja.Object {
 	object := b.vm.NewObject()
 	_ = defineReadOnly(object, "type", b.vm.ToValue(string(value.Type)))
 	_ = defineReadOnly(object, "value", b.vm.ToValue(value.Value))
-	if value.Pool != "" && (value.Type == pvf.ScriptTokenString || value.Type == pvf.ScriptTokenQuoted || value.Type == pvf.ScriptTokenBlock5 || value.Type == pvf.ScriptTokenBlock7) {
+	if value.Pool != "" {
 		_ = defineReadOnly(object, "pool", b.vm.ToValue(string(value.Pool)))
 	}
 	return object
@@ -1014,7 +1115,7 @@ func (b *gojaBindings) scriptValue(value goja.Value, existing *pvf.ScriptValue) 
 }
 
 func (b *gojaBindings) checkSection(binding *sectionBinding) error {
-	if binding == nil || binding.host != b.host || binding.section == nil {
+	if binding == nil || binding.host != b.host || binding.section == nil || binding.section.Occurrence() < 0 {
 		return fmt.Errorf("section 句柄无效")
 	}
 	return b.host.checkContext()

@@ -65,7 +65,7 @@ func NewScriptValue(kind ScriptTokenType, value any, pool ScriptStringPool) (Scr
 		if pool != ScriptPoolUTF8 && pool != ScriptPoolUTF16 {
 			return ScriptValue{}, fmt.Errorf("未知字符串池: %s", pool)
 		}
-	case ScriptTokenBlock5, ScriptTokenBlock7:
+	case ScriptTokenBlock5, ScriptTokenBlock7, ScriptTokenBlock8, ScriptTokenBlock10:
 		if _, number := scriptNumber(value); !number {
 			if _, stringValue := value.(string); !stringValue {
 				return ScriptValue{}, fmt.Errorf("脚本值类型 %s 需要数字或字符串", kind)
@@ -276,6 +276,36 @@ func (s *ScriptSection) Children() []*ScriptSection {
 		}
 	}
 	return children
+}
+
+// RemoveChildren removes matching direct children and their subtrees.
+func (s *ScriptSection) RemoveChildren(name string) (int, error) {
+	if s == nil || s.deleted {
+		return 0, fmt.Errorf("section 已失效")
+	}
+	name = normalizeScriptSectionName(name)
+	if name == "" {
+		return 0, fmt.Errorf("子 section 名称不能为空")
+	}
+	var invalidate func(*ScriptSection)
+	invalidate = func(section *ScriptSection) {
+		for _, child := range section.Children() {
+			invalidate(child)
+		}
+		section.deleted = true
+	}
+	removed := 0
+	items := make([]*scriptItem, 0, len(s.items))
+	for _, item := range s.items {
+		if item.section != nil && item.section.name == name && !item.section.deleted {
+			invalidate(item.section)
+			removed++
+		} else {
+			items = append(items, item)
+		}
+	}
+	s.items = items
+	return removed, nil
 }
 
 // GetValue returns one direct value by zero-based index.
@@ -887,7 +917,7 @@ func (a *Archive) encodeScriptValue(value ScriptValue) (batchToken, error) {
 			return batchToken{}, fmt.Errorf("字符串值非法")
 		}
 		return batchToken{typ: scriptTokenByte(value.Type), value: a.scriptStringOffset(text, value.Pool)}, nil
-	case ScriptTokenBlock5, ScriptTokenBlock7:
+	case ScriptTokenBlock5, ScriptTokenBlock7, ScriptTokenBlock8, ScriptTokenBlock10:
 		if number, ok := scriptNumber(value.Value); ok {
 			if math.IsNaN(number) || math.IsInf(number, 0) || math.Trunc(number) != number || number < math.MinInt32 || number > math.MaxInt32 {
 				return batchToken{}, fmt.Errorf("块值超出 int32 范围")
@@ -918,6 +948,10 @@ func scriptTokenByte(kind ScriptTokenType) byte {
 		return 5
 	case ScriptTokenBlock7:
 		return 7
+	case ScriptTokenBlock8:
+		return 8
+	case ScriptTokenBlock10:
+		return 10
 	default:
 		return 3
 	}

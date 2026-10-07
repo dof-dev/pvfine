@@ -3,7 +3,9 @@ package script
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"sort"
+	"strings"
 
 	"pvfine/internal/pvf"
 )
@@ -42,7 +44,8 @@ type Transaction struct {
 
 	// deleteRevision advances whenever a removal shifts entry indexes, which
 	// is the only staged mutation that invalidates outstanding file handles.
-	deleteRevision int
+	deleteRevision     int
+	stringDependencies map[string]map[string]struct{}
 }
 
 // NewTransaction creates an isolated stage from the current archive. Callers
@@ -133,7 +136,11 @@ func (t *Transaction) SetText(path, text string) error {
 	if !ok {
 		return fmt.Errorf("文件不存在: %s", path)
 	}
-	return t.stage.SetText(index, text)
+	if err := t.stage.SetText(index, text); err != nil {
+		return err
+	}
+	t.invalidateStringTables(path)
+	return nil
 }
 
 // SetRawBytes stages a binary payload produced by a parsed script document.
@@ -145,7 +152,18 @@ func (t *Transaction) SetRawBytes(path string, raw []byte) error {
 	if !ok {
 		return fmt.Errorf("文件不存在: %s", path)
 	}
-	return t.stage.SetRawBytes(index, raw)
+	if err := t.stage.SetRawBytes(index, raw); err != nil {
+		return err
+	}
+	t.invalidateStringTables(path)
+	return nil
+}
+
+func (t *Transaction) invalidateStringTables(filePath string) {
+	switch strings.ToLower(path.Ext(filePath)) {
+	case ".str", ".lst":
+		t.stage.InvalidateStringTables()
+	}
 }
 
 // ListPairs reads the staged id/path pairs of a .lst file.
@@ -169,7 +187,11 @@ func (t *Transaction) SetListPairs(path string, pairs []pvf.ListPair) error {
 	if !ok {
 		return fmt.Errorf("文件不存在: %s", path)
 	}
-	return t.stage.SetListPairs(index, pairs)
+	if err := t.stage.SetListPairs(index, pairs); err != nil {
+		return err
+	}
+	t.invalidateStringTables(path)
+	return nil
 }
 
 // UnsetListIDs stages removal of every entry matching the supplied ids.
@@ -184,7 +206,11 @@ func (t *Transaction) UnsetListIDs(path string, ids []string) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("文件不存在: %s", path)
 	}
-	return t.stage.RemoveListIDs(index, ids)
+	count, err := t.stage.RemoveListIDs(index, ids)
+	if err == nil && count > 0 {
+		t.invalidateStringTables(path)
+	}
+	return count, err
 }
 
 // ListID resolves the id registered for a path in a .lst file.
@@ -213,6 +239,7 @@ func (t *Transaction) CreateFile(rawPath string, dataType int32, raw []byte) (st
 		return "", fmt.Errorf("不支持的文件类型: %d", dataType)
 	}
 	t.stage.AddFile(path, append([]byte(nil), raw...), dataType)
+	t.invalidateStringTables(path)
 	key := pvf.NormalizePath(path)
 	// Recreating a path deleted earlier in the same run cancels the removal.
 	delete(t.deleted, key)
@@ -254,11 +281,13 @@ func (t *Transaction) CopyFile(from, to string, overwrite bool) (string, error) 
 		if err := t.stage.SetRawBytes(existing, append([]byte(nil), raw...)); err != nil {
 			return "", err
 		}
+		t.invalidateStringTables(target)
 		t.paths[pvf.NormalizePath(target)] = t.stage.Path(existing)
 		return t.stage.Path(existing), nil
 	}
 
 	t.stage.AddFile(target, append([]byte(nil), raw...), dataType)
+	t.invalidateStringTables(target)
 	key := pvf.NormalizePath(target)
 	// Recreating a path deleted earlier in the same run cancels the removal.
 	delete(t.deleted, key)
@@ -283,6 +312,7 @@ func (t *Transaction) DeleteFile(path string) (bool, error) {
 	if _, err := t.stage.RemoveFiles([]int32{index}); err != nil {
 		return false, err
 	}
+	t.invalidateStringTables(displayPath)
 	key := pvf.NormalizePath(displayPath)
 	// A path created and then deleted in the same run leaves no trace: the
 	// base archive never had it, so there is nothing to remove at commit and
@@ -373,6 +403,26 @@ func (t *Transaction) Commit(selected map[string]struct{}) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	changedPaths := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		changedPaths[change.Normalized] = struct{}{}
+	}
+	for _, change := range changes {
+		if _, ok := selected[change.Normalized]; !ok || change.Kind == pvf.ChangeKindDeleted {
+			continue
+		}
+		for dependency := range t.stringDependencies[change.Normalized] {
+			if !t.referencesStringTable(change.raw, dependency) {
+				continue
+			}
+			if _, changed := changedPaths[dependency]; !changed {
+				continue
+			}
+			if _, included := selected[dependency]; !included {
+				return false, fmt.Errorf("文件 %s 的字符串引用依赖 %s，请一并选择应用", change.Path, dependency)
+			}
+		}
+	}
 	applied := make([]pvf.ScriptChange, 0, len(selected))
 	structural := false
 	for _, change := range changes {
@@ -406,4 +456,5 @@ func (t *Transaction) Rollback() {
 	t.paths = nil
 	t.created = nil
 	t.deleted = nil
+	t.stringDependencies = nil
 }
