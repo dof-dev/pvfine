@@ -17,7 +17,7 @@
         PackageDisplayName="pvfine"
         PublisherName="CN=dof-dev"
         PublisherDisplayName="dof-dev"
-        Version="0.9.0.0"
+        Version="0.9.1.0"
         PackageDescription="PVF 归档编辑器">
         <Capabilities>
             <Capability Name="runFullTrust" />
