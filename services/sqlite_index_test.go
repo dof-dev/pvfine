@@ -3,12 +3,139 @@ package services
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 	"pvfine/internal/pvf"
 )
+
+type sqliteBackupTestError int
+
+func (e sqliteBackupTestError) Error() string { return fmt.Sprintf("SQLite code %d", e) }
+func (e sqliteBackupTestError) Code() int     { return int(e) }
+
+func TestStepSQLiteBackupRetriesLocks(t *testing.T) {
+	for _, code := range []int{sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_BUSY_RECOVERY, sqlite3.SQLITE_LOCKED_SHAREDCACHE} {
+		for _, wantMore := range []bool{false, true} {
+			t.Run(fmt.Sprintf("code=%d/more=%t", code, wantMore), func(t *testing.T) {
+				calls := 0
+				more, err := stepSQLiteBackup(context.Background(), func(pages int32) (bool, error) {
+					if pages != 512 {
+						t.Fatalf("pages = %d, want 512", pages)
+					}
+					calls++
+					if calls <= 2 {
+						return false, fmt.Errorf("backup: %w", sqliteBackupTestError(code))
+					}
+					return wantMore, nil
+				})
+				if err != nil || more != wantMore || calls != 3 {
+					t.Fatalf("more = %t, err = %v, calls = %d", more, err, calls)
+				}
+			})
+		}
+	}
+}
+
+func TestStepSQLiteBackupDoesNotRetryOtherErrors(t *testing.T) {
+	for _, want := range []error{sqliteBackupTestError(sqlite3.SQLITE_IOERR), errors.New("database is locked")} {
+		calls := 0
+		_, err := stepSQLiteBackup(context.Background(), func(int32) (bool, error) {
+			calls++
+			return false, want
+		})
+		if !errors.Is(err, want) || calls != 1 {
+			t.Fatalf("err = %v, calls = %d, want %v on first call", err, calls, want)
+		}
+	}
+}
+
+func TestStepSQLiteBackupCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	_, err := stepSQLiteBackup(ctx, func(int32) (bool, error) {
+		calls++
+		cancel()
+		return false, sqliteBackupTestError(sqlite3.SQLITE_BUSY_RECOVERY)
+	})
+	if !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatalf("err = %v, calls = %d", err, calls)
+	}
+	_, err = stepSQLiteBackup(ctx, func(int32) (bool, error) {
+		t.Fatal("cancelled backup called Step")
+		return false, nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want cancellation", err)
+	}
+}
+
+func TestStepSQLiteBackupLockTimeout(t *testing.T) {
+	want := sqliteBackupTestError(sqlite3.SQLITE_BUSY_RECOVERY)
+	calls := 0
+	started := time.Now()
+	_, err := stepSQLiteBackup(context.Background(), func(int32) (bool, error) {
+		calls++
+		return false, want
+	})
+	if !errors.Is(err, want) || calls < 2 || time.Since(started) < 5*time.Second {
+		t.Fatalf("err = %v, calls = %d, elapsed = %s", err, calls, time.Since(started))
+	}
+}
+
+func TestBackupSQLiteDatabaseWaitsForSourceLock(t *testing.T) {
+	dir := t.TempDir()
+	source, err := sql.Open("sqlite", filepath.Join(dir, "source.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if _, err := source.Exec("CREATE TABLE data(value TEXT); INSERT INTO data VALUES('original')"); err != nil {
+		t.Fatal(err)
+	}
+	// Pin the locked writer so the backup must acquire a separate connection.
+	writer, err := source.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err := writer.ExecContext(context.Background(), "BEGIN EXCLUSIVE; UPDATE data SET value='committed'"); err != nil {
+		t.Fatal(err)
+	}
+	defer writer.ExecContext(context.Background(), "ROLLBACK")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	target := filepath.Join(dir, "backup.db")
+	done := make(chan error, 1)
+	go func() { done <- backupSQLiteDatabase(ctx, source, target) }()
+	select {
+	case err := <-done:
+		t.Fatalf("backup returned before source lock release: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	_, commitErr := writer.ExecContext(context.Background(), "COMMIT")
+	backupErr := <-done
+	if commitErr != nil {
+		t.Fatal(commitErr)
+	}
+	if backupErr != nil {
+		t.Fatal(backupErr)
+	}
+	snapshot, err := sql.Open("sqlite", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Close()
+	var value string
+	if err := snapshot.QueryRow("SELECT value FROM data").Scan(&value); err != nil || value != "committed" {
+		t.Fatalf("backup value = %q, err = %v", value, err)
+	}
+}
 
 func TestSQLiteWildcardSearchBeyondCandidateBatch(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
@@ -153,5 +280,97 @@ func TestSQLiteArchiveIndexPublishesSemanticCandidate(t *testing.T) {
 	}
 	if result, err := index.search("equip", 0, 10, false); err != nil || len(result.Hits) != 1 {
 		t.Fatalf("search after reopen = %#v, %v", result, err)
+	}
+}
+
+func TestSQLiteArchiveIndexConfiguresEveryConnection(t *testing.T) {
+	a := pvf.New()
+	a.AddFile("equip/a.equ", []byte("[name]\n`A`"), pvf.TypeScript)
+	index, _, err := openSQLiteArchiveIndex(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer index.close()
+	checkConnections := func(t *testing.T) {
+		for n := 0; n < 3; n++ {
+			conn, err := index.db.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Keep each connection pinned until all pool slots are checked.
+			defer conn.Close()
+			for pragma, want := range map[string]int{
+				"busy_timeout": 5000,
+				"foreign_keys": 1,
+				"temp_store":   1,
+				"cache_size":   -8192,
+				"mmap_size":    0,
+				"synchronous":  1,
+			} {
+				var got int
+				if err := conn.QueryRowContext(context.Background(), "PRAGMA "+pragma).Scan(&got); err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("connection %d: %s = %d, want %d", n, pragma, got, want)
+				}
+			}
+		}
+	}
+	t.Run("opened", checkConnections)
+	c := NewCore()
+	c.archive = a
+	c.diskIndex = index
+	c.indexGen = 1
+	if _, _, err := index.buildSemantic(context.Background(), c, a, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("published", checkConnections)
+}
+
+func TestSQLiteArchiveIndexNewReaderWaitsForLock(t *testing.T) {
+	db, err := openArchiveIndexDatabase(filepath.Join(t.TempDir(), "index.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := configureArchiveIndex(db, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE data(value TEXT); INSERT INTO data VALUES('original')"); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err := writer.ExecContext(context.Background(), "BEGIN EXCLUSIVE; UPDATE data SET value='committed'"); err != nil {
+		t.Fatal(err)
+	}
+	defer writer.ExecContext(context.Background(), "ROLLBACK")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		var value string
+		err := db.QueryRowContext(ctx, "SELECT value FROM data").Scan(&value)
+		if err == nil && value != "committed" {
+			err = fmt.Errorf("value = %q, want committed", value)
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("reader returned before source lock release: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	_, commitErr := writer.ExecContext(context.Background(), "COMMIT")
+	queryErr := <-done
+	if commitErr != nil {
+		t.Fatal(commitErr)
+	}
+	if queryErr != nil {
+		t.Fatal(queryErr)
 	}
 }

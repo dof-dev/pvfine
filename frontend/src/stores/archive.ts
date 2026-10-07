@@ -46,6 +46,7 @@ export const useArchiveStore = defineStore("archive", () => {
   const indexReady = computed(() => open.value && indexStatus.value.state === "ready");
   let indexPollTimer: number | undefined;
   let indexPollBusy = false;
+  let indexStatusRevision = 0;
 
   function readRecentArchives(): string[] {
     if (typeof window === "undefined") return [];
@@ -114,17 +115,30 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   function stopIndexPolling() {
+    indexStatusRevision++;
     window.clearInterval(indexPollTimer);
     indexPollTimer = undefined;
+  }
+
+  function applyIndexStatus(data: unknown) {
+    indexStatusRevision++;
+    const status = readIndexStatus(data);
+    indexStatus.value = status;
+    if (open.value && (status.state === "building" || status.refreshing)) {
+      if (indexPollTimer === undefined) startIndexPolling();
+    } else {
+      stopIndexPolling();
+    }
   }
 
   async function refreshIndexStatus() {
     if (!open.value || indexPollBusy) return;
     indexPollBusy = true;
+    const revision = indexStatusRevision;
     try {
       const status = readIndexStatus(await ArchiveService.IndexStatus());
-      indexStatus.value = status;
-      if (status.state === "ready" || status.state === "error") stopIndexPolling();
+      // Events or a different archive may have superseded this request.
+      if (revision === indexStatusRevision && open.value) applyIndexStatus(status);
     } catch {
       // Event delivery remains the primary path; a transient poll failure is harmless.
     } finally {
@@ -134,15 +148,14 @@ export const useArchiveStore = defineStore("archive", () => {
 
   function startIndexPolling() {
     stopIndexPolling();
-    void refreshIndexStatus();
     indexPollTimer = window.setInterval(() => void refreshIndexStatus(), 250);
+    void refreshIndexStatus();
   }
 
-  function applyOpenedInfo(res: ArchiveInfo, poll = true): ArchiveInfo {
+  function applyOpenedInfo(res: ArchiveInfo): ArchiveInfo {
     info.value = res;
     rememberArchive(res.path);
-    indexStatus.value = readIndexStatus({ state: "building", stage: "preparing" });
-    if (poll) startIndexPolling();
+    applyIndexStatus({ state: "building", stage: "preparing" });
     return res;
   }
 
@@ -168,9 +181,7 @@ export const useArchiveStore = defineStore("archive", () => {
     try {
       const res = await ArchiveService.OpenDialog();
       if (res) {
-        applyOpenedInfo(res, false);
-        indexStatus.value = readIndexStatus(await ArchiveService.IndexStatus());
-        startIndexPolling();
+        applyOpenedInfo(res);
       }
     } catch (e: any) {
       loadError.value = String(e?.message ?? e);
@@ -191,9 +202,10 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   async function rebuildSearchIndex(): Promise<IndexStatus> {
+    const revision = indexStatusRevision;
     const status = readIndexStatus(await ArchiveService.RebuildSearchIndex());
-    indexStatus.value = status;
-    return status;
+    if (revision === indexStatusRevision) applyIndexStatus(status);
+    return indexStatus.value;
   }
 
   async function listRegistrationOptions(fileIndex: number): Promise<FileRegistrationOptions | null> {
@@ -241,19 +253,16 @@ export const useArchiveStore = defineStore("archive", () => {
   Events.On("archive:closed", () => {
     stopIndexPolling();
     info.value = null;
-    indexStatus.value = readIndexStatus(null);
+    applyIndexStatus(null);
   });
   Events.On("archive:index-progress", (event: any) => {
-    indexStatus.value = readIndexStatus(eventData(event));
+    applyIndexStatus(eventData(event));
   });
   Events.On("archive:index-ready", (event: any) => {
-    stopIndexPolling();
-    indexStatus.value = readIndexStatus(eventData(event));
+    applyIndexStatus(eventData(event));
   });
   Events.On("archive:index-error", (event: any) => {
-    stopIndexPolling();
-    const data = eventData(event);
-    indexStatus.value = readIndexStatus(data);
+    applyIndexStatus(eventData(event));
   });
   Events.On("archive:saved", (event: any) => {
     info.value = eventData(event);

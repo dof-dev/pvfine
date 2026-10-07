@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 	"pvfine/internal/pvf"
 )
 
@@ -84,23 +86,43 @@ func (i *sqliteArchiveIndex) close() {
 	}
 }
 
+func archiveIndexConnectionPragmas(writable bool) []string {
+	pragmas := []string{
+		"busy_timeout=5000",
+		"foreign_keys=ON",
+		"temp_store=FILE",
+		"cache_size=-8192",
+		"mmap_size=0",
+	}
+	if writable {
+		pragmas = append(pragmas, "synchronous=OFF")
+	} else {
+		pragmas = append(pragmas, "synchronous=NORMAL")
+	}
+	return pragmas
+}
+
+func openArchiveIndexDatabase(path string, writable bool) (*sql.DB, error) {
+	query := url.Values{}
+	// Connection-local PRAGMAs must also run on connections the pool opens
+	// later, especially when concurrent readers trigger WAL recovery.
+	for _, pragma := range archiveIndexConnectionPragmas(writable) {
+		query.Add("_pragma", pragma)
+	}
+	return sql.Open("sqlite", sqliteFileURI(path, query.Encode()))
+}
+
 func configureArchiveIndex(db *sql.DB, writable bool) error {
 	// Keep the pool bounded. A semantic rebuild uses one transaction while
 	// directory/search requests may hold a small number of read connections.
 	db.SetMaxOpenConns(3)
 	db.SetMaxIdleConns(3)
-	pragmas := []string{
-		"PRAGMA foreign_keys=ON",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA temp_store=FILE",
-		"PRAGMA cache_size=-8192",
-		"PRAGMA mmap_size=0",
-	}
+	pragmas := archiveIndexConnectionPragmas(writable)
 	if writable {
-		pragmas = append(pragmas, "PRAGMA journal_mode=OFF", "PRAGMA synchronous=OFF")
+		pragmas = append(pragmas, "journal_mode=OFF")
 	}
 	for _, pragma := range pragmas {
-		if _, err := db.Exec(pragma); err != nil {
+		if _, err := db.Exec("PRAGMA " + pragma); err != nil {
 			return err
 		}
 	}
@@ -109,6 +131,44 @@ func configureArchiveIndex(db *sql.DB, writable bool) error {
 
 type sqliteBackuper interface {
 	NewBackup(string) (*sqlite.Backup, error)
+}
+
+func stepSQLiteBackup(ctx context.Context, step func(int32) (bool, error)) (bool, error) {
+	const lockTimeout = 5 * time.Second
+	const retryDelay = 25 * time.Millisecond
+	var lockedAt time.Time
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		more, err := step(512)
+		if err == nil {
+			return more, nil
+		}
+		var codeErr interface{ Code() int }
+		if !errors.As(err, &codeErr) {
+			return false, err
+		}
+		// Extended codes such as BUSY_RECOVERY retain the primary code in
+		// the low byte. Backup.Step does not retry these transient locks.
+		code := codeErr.Code() & 0xff
+		if code != sqlite3.SQLITE_BUSY && code != sqlite3.SQLITE_LOCKED {
+			return false, err
+		}
+		if lockedAt.IsZero() {
+			lockedAt = time.Now()
+		}
+		if time.Since(lockedAt) >= lockTimeout {
+			return false, fmt.Errorf("SQLite backup lock timeout: %w", err)
+		}
+		timer := time.NewTimer(retryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return false, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // backupSQLiteDatabase creates a consistent disk snapshot without taking the
@@ -146,14 +206,15 @@ func backupSQLiteDatabase(ctx context.Context, source *sql.DB, target string) er
 				return ctx.Err()
 			default:
 			}
-			more, err := backup.Step(512)
+			more, err := stepSQLiteBackup(ctx, backup.Step)
 			if err != nil {
 				return err
 			}
 			pageCount := backup.PageCount()
-			if pageCount-lastLoggedPage >= 16384 {
-				log.Printf("[pvfine:index] sqlite phase=backup progress pages=%d/%d", pageCount, pageCount+backup.Remaining())
-				lastLoggedPage = pageCount
+			copiedPages := pageCount - backup.Remaining()
+			if copiedPages-lastLoggedPage >= 16384 {
+				log.Printf("[pvfine:index] sqlite phase=backup progress pages=%d/%d", copiedPages, pageCount)
+				lastLoggedPage = copiedPages
 			}
 			if !more {
 				break
@@ -204,7 +265,7 @@ func (i *sqliteArchiveIndex) prepareSemanticCandidate(ctx context.Context, c *co
 		return nil, "", err
 	}
 	i.dbMu.RUnlock()
-	candidateDB, err := sql.Open("sqlite", candidatePath)
+	candidateDB, err := openArchiveIndexDatabase(candidatePath, true)
 	if err != nil {
 		_ = os.Remove(candidatePath)
 		return nil, "", err
@@ -279,7 +340,7 @@ func (i *sqliteArchiveIndex) publishSemanticCandidate(c *core, a *pvf.Archive, g
 		}
 		return err
 	}
-	newDB, err := sql.Open("sqlite", i.path)
+	newDB, err := openArchiveIndexDatabase(i.path, false)
 	if err == nil {
 		err = configureArchiveIndex(newDB, false)
 	}
@@ -294,7 +355,7 @@ func (i *sqliteArchiveIndex) publishSemanticCandidate(c *core, a *pvf.Archive, g
 		if oldPath != "" {
 			_ = os.Rename(oldPath, i.path)
 		}
-		if restored, restoreErr := sql.Open("sqlite", i.path); restoreErr == nil && configureArchiveIndex(restored, false) == nil {
+		if restored, restoreErr := openArchiveIndexDatabase(i.path, false); restoreErr == nil && configureArchiveIndex(restored, false) == nil {
 			i.db = restored
 		} else if restoreErr == nil {
 			_ = restored.Close()
@@ -364,7 +425,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 	}
 
 	if !a.Modified() {
-		if db, openErr := sql.Open("sqlite", path); openErr == nil {
+		if db, openErr := openArchiveIndexDatabase(path, false); openErr == nil {
 			if configureArchiveIndex(db, false) == nil && sqliteIndexComplete(db, identity) {
 				if err := ctx.Err(); err != nil {
 					_ = db.Close()
@@ -386,7 +447,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 	tmpPath := tmp.Name()
 	_ = tmp.Close()
 	_ = os.Remove(tmpPath)
-	db, err := sql.Open("sqlite", tmpPath)
+	db, err := openArchiveIndexDatabase(tmpPath, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -421,7 +482,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 			return nil, false, err
 		}
 	}
-	db, err = sql.Open("sqlite", path)
+	db, err = openArchiveIndexDatabase(path, false)
 	if err != nil {
 		return nil, false, err
 	}
