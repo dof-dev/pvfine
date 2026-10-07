@@ -41,6 +41,8 @@ func (a *Archive) Release() int64 {
 
 	a.tables.mu.Lock()
 	a.tables.state = nil
+	a.tables.stats = StringTableIndexStats{}
+	a.tables.observer = nil
 	a.tables.mu.Unlock()
 
 	a.scriptRenderer = nil

@@ -132,7 +132,12 @@ func (s *ArchiveService) Info() ArchiveInfo {
 func (s *ArchiveService) IndexStatus() IndexStatus {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
-	return s.c.indexStatus
+	status := s.c.indexStatus
+	if s.c.archive != nil {
+		stats := s.c.archive.StringTableIndexStats()
+		status.StringTableIndex = &stats
+	}
+	return status
 }
 
 // RebuildSearchIndex starts an asynchronous forced rebuild. An existing ready

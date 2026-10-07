@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"pvfine/internal/pvf"
 )
 
 const logCapacity = 2000
@@ -143,6 +145,21 @@ func recordLogEvent(name string, data any) {
 func describeLogEvent(name string, data any) (level, message, key, signature string) {
 	level = "INFO"
 	switch status := data.(type) {
+	case pvf.StringTableIndexEvent:
+		if status.Kind == "snapshot" {
+			return
+		}
+		kind := "字符串表键值索引"
+		if status.Kind == "mapping" {
+			kind = "字符串表映射索引"
+		}
+		message = fmt.Sprintf("%s: 归档=%s; 表=%s; 状态=%s; 条目=%d; 数据=%d B; 本次耗时=%.2f ms; 累计耗时=%.2f ms; 累计表构建=%d; 失败=%d",
+			kind, status.ArchivePath, status.Path, status.State, status.Entries, status.Bytes,
+			status.DurationMs, status.Stats.BuildDurationMs, status.Stats.TableBuilds, status.Stats.FailedTables)
+		if status.Error != "" {
+			level = "WARN"
+			message += "; 错误=" + status.Error
+		}
 	case ArchiveInfo:
 		action := map[string]string{
 			"archive:opened": "归档已打开", "archive:saved": "归档已保存", "archive:reloaded": "归档已重新加载",

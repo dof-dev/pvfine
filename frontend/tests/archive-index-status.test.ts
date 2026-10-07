@@ -46,6 +46,43 @@ beforeEach(() => {
   api.Close.mockResolvedValue(undefined);
 });
 
+test("string table events retain timings without restarting semantic indexing", () => {
+  const store = useArchiveStore();
+  store.info = { path: "/game/Script.pvf" } as NonNullable<typeof store.info>;
+  emit("archive:string-table-index", {
+    archivePath: "/game/Script.pvf",
+    stats: { revision: 4, state: "ready", tableBuilds: 1, entries: 100, mappingDurationMs: 2, tableDurationMs: 12, buildDurationMs: 14 },
+  });
+  expect(store.stringTableIndex.buildDurationMs).toBe(14);
+  expect(store.stringTableIndex.tableBuilds).toBe(1);
+  expect(store.stringTableIndex.entries).toBe(100);
+  expect(vi.getTimerCount()).toBe(0);
+  emit("archive:string-table-index", { archivePath: "/game/Script.pvf", stats: { revision: 3, buildDurationMs: 10 } });
+  expect(store.stringTableIndex.buildDurationMs).toBe(14);
+  emit("archive:string-table-index", { archivePath: "/game/old.pvf", stats: { revision: 10, buildDurationMs: 200 } });
+  expect(store.stringTableIndex.buildDurationMs).toBe(14);
+  emit("archive:string-table-index", {
+    archivePath: "/game/Script.pvf", kind: "snapshot", stats: { revision: 0, state: "idle" },
+  });
+  expect(store.stringTableIndex.state).toBe("idle");
+  expect(store.stringTableIndex.buildDurationMs).toBe(0);
+  emit("archive:closed");
+  expect(store.stringTableIndex.state).toBe("idle");
+  expect(store.stringTableIndex.buildDurationMs).toBe(0);
+});
+
+test("index polling restores missing string table statistics", async () => {
+  api.IndexStatus.mockResolvedValue({
+    state: "ready", stringTableIndex: { revision: 4, state: "ready", tableBuilds: 2, buildDurationMs: 30 },
+  });
+  const store = useArchiveStore();
+  emit("archive:opened", { path: "/game/Script.pvf" });
+  await flush();
+  expect(store.stringTableIndex.buildDurationMs).toBe(30);
+  expect(store.stringTableIndex.tableBuilds).toBe(2);
+  expect(store.indexReady).toBe(true);
+});
+
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();

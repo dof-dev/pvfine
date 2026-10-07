@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf16"
 )
 
@@ -68,6 +69,8 @@ type stringTableValueRange struct {
 }
 
 func (a *Archive) initStringTables() {
+	a.reportStringTableIndex(StringTableIndexEvent{Kind: "mapping", State: "building"})
+	started := time.Now()
 	st := &stringTableState{
 		paths:        map[int][]string{},
 		cache:        map[string]map[string]string{},
@@ -92,6 +95,9 @@ func (a *Archive) initStringTables() {
 	a.tables.mu.Lock()
 	a.tables.state = st
 	a.tables.mu.Unlock()
+	a.reportStringTableIndex(StringTableIndexEvent{
+		Kind: "mapping", State: "ready", Entries: len(st.paths), DurationMs: stringTableElapsedMs(started),
+	})
 }
 
 // ensureStringTables returns the lazily built table index -> path map.
@@ -242,7 +248,18 @@ func (a *Archive) lookupStringTableValue(path, key string) (string, bool) {
 	a.tables.mu.Unlock()
 
 	index.once.Do(func() {
+		a.reportStringTableIndex(StringTableIndexEvent{Kind: "table", Path: path, State: "building"})
+		started := time.Now()
 		index.raw, index.values, index.valid = a.readStringTableValueIndex(path)
+		event := StringTableIndexEvent{
+			Kind: "table", Path: path, State: "ready", DurationMs: stringTableElapsedMs(started),
+			Entries: len(index.values), Bytes: int64(len(index.raw)),
+		}
+		if !index.valid {
+			event.State = "error"
+			event.Error = ErrStringTableUnreadable.Error()
+		}
+		a.reportStringTableIndex(event)
 	})
 	if !index.valid {
 		return "", false

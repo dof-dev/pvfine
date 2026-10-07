@@ -632,6 +632,9 @@ func (c *core) bindRenderingEngineLocked(a *pvf.Archive) {
 		return
 	}
 	a.SetScriptRenderer(c.renderingEngine)
+	a.SetStringTableIndexObserver(func(event pvf.StringTableIndexEvent) {
+		emitEvent("archive:string-table-index", event)
+	})
 }
 
 func (c *core) closeArchive() {

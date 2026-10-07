@@ -40,11 +40,12 @@ type IndexStatus struct {
 	Error   string `json:"error"`
 	// Refreshing means an older ready snapshot is still serving queries while
 	// a newer candidate is being built in the background.
-	Refreshing      bool    `json:"refreshing"`
-	RefreshError    string  `json:"refreshError"`
-	CacheHit        bool    `json:"cacheHit"`
-	OpenDurationMs  float64 `json:"openDurationMs"`
-	BuildDurationMs float64 `json:"buildDurationMs"`
+	Refreshing       bool                       `json:"refreshing"`
+	RefreshError     string                     `json:"refreshError"`
+	CacheHit         bool                       `json:"cacheHit"`
+	OpenDurationMs   float64                    `json:"openDurationMs"`
+	BuildDurationMs  float64                    `json:"buildDurationMs"`
+	StringTableIndex *pvf.StringTableIndexStats `json:"stringTableIndex,omitempty"`
 }
 
 // SearchHit is one searchable file/list record.

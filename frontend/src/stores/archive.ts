@@ -10,6 +10,7 @@ import type {
   IndexHashTarget,
   IndexStatus,
 } from "../../bindings/pvfine/services/models";
+import type { StringTableIndexStats } from "../../bindings/pvfine/internal/pvf/models";
 
 const recentArchivesKey = "pvfine.recentArchives";
 const maxRecentArchives = 8;
@@ -20,6 +21,7 @@ export const useArchiveStore = defineStore("archive", () => {
   const info = ref<ArchiveInfo | null>(null);
   const loading = ref(false);
   const loadError = ref("");
+  const stringTableIndex = ref<StringTableIndexStats>(readStringTableIndex(null));
   const indexStatus = ref<IndexStatus>({
     state: "idle",
     stage: "",
@@ -107,6 +109,24 @@ export const useArchiveStore = defineStore("archive", () => {
       cacheHit: Boolean(data?.cacheHit ?? false),
       openDurationMs: Number(data?.openDurationMs ?? 0),
       buildDurationMs: Number(data?.buildDurationMs ?? 0),
+      stringTableIndex: data?.stringTableIndex ?? null,
+    };
+  }
+
+  function readStringTableIndex(data: any): StringTableIndexStats {
+    return {
+      revision: Number(data?.revision ?? 0),
+      state: String(data?.state ?? "idle"),
+      activeBuilds: Number(data?.activeBuilds ?? 0),
+      mappingBuilds: Number(data?.mappingBuilds ?? 0),
+      mappingCount: Number(data?.mappingCount ?? 0),
+      tableBuilds: Number(data?.tableBuilds ?? 0),
+      failedTables: Number(data?.failedTables ?? 0),
+      entries: Number(data?.entries ?? 0),
+      bytes: Number(data?.bytes ?? 0),
+      mappingDurationMs: Number(data?.mappingDurationMs ?? 0),
+      tableDurationMs: Number(data?.tableDurationMs ?? 0),
+      buildDurationMs: Number(data?.buildDurationMs ?? 0),
     };
   }
 
@@ -124,6 +144,9 @@ export const useArchiveStore = defineStore("archive", () => {
     indexStatusRevision++;
     const status = readIndexStatus(data);
     indexStatus.value = status;
+    if (status.stringTableIndex && status.stringTableIndex.revision >= stringTableIndex.value.revision) {
+      stringTableIndex.value = readStringTableIndex(status.stringTableIndex);
+    }
     if (open.value && (status.state === "building" || status.refreshing)) {
       if (indexPollTimer === undefined) startIndexPolling();
     } else {
@@ -153,6 +176,7 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   function applyOpenedInfo(res: ArchiveInfo): ArchiveInfo {
+    if (info.value?.path !== res.path) stringTableIndex.value = readStringTableIndex(null);
     info.value = res;
     rememberArchive(res.path);
     applyIndexStatus({ state: "building", stage: "preparing" });
@@ -195,6 +219,7 @@ export const useArchiveStore = defineStore("archive", () => {
     await ArchiveService.Close();
     stopIndexPolling();
     info.value = null;
+    stringTableIndex.value = readStringTableIndex(null);
   }
 
   async function refreshInfo() {
@@ -246,6 +271,7 @@ export const useArchiveStore = defineStore("archive", () => {
 
   // 后端事件
   Events.On("archive:opened", (event: any) => {
+    stringTableIndex.value = readStringTableIndex(null);
     const data = eventData(event);
     applyOpenedInfo(data);
     loading.value = false;
@@ -253,7 +279,15 @@ export const useArchiveStore = defineStore("archive", () => {
   Events.On("archive:closed", () => {
     stopIndexPolling();
     info.value = null;
+    stringTableIndex.value = readStringTableIndex(null);
     applyIndexStatus(null);
+  });
+  Events.On("archive:string-table-index", (event: any) => {
+    const data = eventData(event);
+    if (open.value && data?.archivePath === info.value?.path && data?.stats &&
+      (data.kind === "snapshot" || Number(data.stats.revision ?? 0) >= stringTableIndex.value.revision)) {
+      stringTableIndex.value = readStringTableIndex(data.stats);
+    }
   });
   Events.On("archive:index-progress", (event: any) => {
     applyIndexStatus(eventData(event));
@@ -303,6 +337,7 @@ export const useArchiveStore = defineStore("archive", () => {
     open,
     modifiedCount,
     indexStatus,
+    stringTableIndex,
     indexing,
     refreshingIndex,
     indexReady,

@@ -28,6 +28,25 @@ export interface ContentRules {
 }
 
 /**
+ * StringTableIndexStats counts actual lazy builds, not cached lookups.
+ * Durations and payload counts are cumulative for this archive instance.
+ */
+export interface StringTableIndexStats {
+    "revision": number;
+    "state": string;
+    "activeBuilds": number;
+    "mappingBuilds": number;
+    "mappingCount": number;
+    "tableBuilds": number;
+    "failedTables": number;
+    "entries": number;
+    "bytes": number;
+    "mappingDurationMs": number;
+    "tableDurationMs": number;
+    "buildDurationMs": number;
+}
+
+/**
  * WriteCapabilities is derived from both the format and recovered archive
  * state. Structural edits include appending or remapping string-pool entries.
  */

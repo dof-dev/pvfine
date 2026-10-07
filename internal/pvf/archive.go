@@ -111,8 +111,10 @@ type Archive struct {
 	// tables caches the lazily loaded string tables used to resolve
 	// `<index::key>` placeholders in item names.
 	tables struct {
-		mu    sync.Mutex
-		state *stringTableState
+		mu       sync.Mutex
+		state    *stringTableState
+		stats    StringTableIndexStats
+		observer func(StringTableIndexEvent)
 	}
 }
 

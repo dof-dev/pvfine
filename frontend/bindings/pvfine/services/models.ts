@@ -565,6 +565,7 @@ export interface IndexStatus {
     "cacheHit": boolean;
     "openDurationMs": number;
     "buildDurationMs": number;
+    "stringTableIndex"?: pvf$0.StringTableIndexStats | null;
 }
 
 /**

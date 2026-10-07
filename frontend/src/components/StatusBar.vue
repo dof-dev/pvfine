@@ -59,6 +59,9 @@ const indexStateLabel = computed(() => {
   }
 });
 const indexTimingTitle = computed(() => {
+  const strings = archive.stringTableIndex;
+  const stringIndex = strings.state === "idle" ? "尚未按需构建" :
+    `${strings.buildDurationMs.toFixed(2)} ms（累计；映射 ${strings.mappingDurationMs.toFixed(2)} ms；表索引 ${strings.tableDurationMs.toFixed(2)} ms；${strings.tableBuilds} 次表构建；${strings.entries} 条键值；失败 ${strings.failedTables}${strings.activeBuilds ? `；${strings.activeBuilds} 项构建中` : ""}）`;
   let npkIndex = "未完成";
   if (!images.status.directory) {
     npkIndex = "未配置 NPK 目录";
@@ -75,6 +78,7 @@ const indexTimingTitle = computed(() => {
     `打开 PVF 至可操作：${formatDuration(archive.indexStatus.openDurationMs)}`,
     `构建 PVF 索引：${formatDuration(archive.indexStatus.buildDurationMs)}${archive.indexStatus.cacheHit ? "（缓存命中）" : ""}`,
     archive.indexStatus.refreshError ? `后台更新失败：${archive.indexStatus.refreshError}` : "",
+    archive.info?.contentRules.supportsStringReferences ? `字符串表索引：${stringIndex}` : "",
     `构建 NPK 索引：${npkIndex}`,
   ].filter(Boolean).join("\n");
 });

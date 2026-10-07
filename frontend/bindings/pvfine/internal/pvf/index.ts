@@ -4,5 +4,6 @@
 export type {
     ArchiveInfoView,
     ContentRules,
+    StringTableIndexStats,
     WriteCapabilities
 } from "./models.js";
