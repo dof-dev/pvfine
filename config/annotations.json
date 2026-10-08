@@ -77,41 +77,6 @@
       }
     },
     {
-      "id": "equ.rarity",
-      "match": {
-        "extensions": [
-          ".equ"
-        ]
-      },
-      "target": {
-        "kind": "token",
-        "section": "rarity",
-        "index": 0
-      },
-      "annotation": {
-        "title": "稀有度",
-        "type": "enum",
-        "values": {
-          "0": "普通",
-          "1": "魔法",
-          "2": "稀有",
-          "3": "神器",
-          "4": "史诗",
-          "5": "勇者",
-          "6": "传说",
-          "7": "神话",
-          "8": "太初"
-        }
-      },
-      "preview": {
-        "provider": "equ",
-        "role": "rarity",
-        "group": "summary",
-        "order": 10,
-        "format": "enum"
-      }
-    },
-    {
       "id": "equ.unique-option-fame-value",
       "match": {
         "extensions": [

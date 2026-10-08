@@ -1,6 +1,7 @@
 package annotations
 
 import (
+	"strings"
 	"testing"
 
 	"pvfine/internal/pvf"
@@ -135,15 +136,29 @@ func TestDefaultNewRarityAnnotations(t *testing.T) {
 	for _, path := range []string{"equipment/test.equ", "stackable/test.stk"} {
 		for value, label := range map[string]string{"7": "神话", "8": "太初"} {
 			results := engine.Annotate(path, pvf.ParseScriptView("[rarity]\n"+value), nil)
-			if len(results) == 0 {
-				t.Fatalf("%s rarity %s has no annotation", path, value)
+			if len(results) != 1 {
+				t.Fatalf("%s rarity %s annotations = %#v", path, value, results)
 			}
 			for _, result := range results {
+				if len(result.RuleIDs) != 1 || result.RuleIDs[0] != "field:*.rarity" || strings.Count(result.Content, "所有枚举值:") != 1 {
+					t.Fatalf("%s rarity %s duplicated tooltip = %#v", path, value, result)
+				}
 				if result.Title != label {
 					t.Fatalf("%s rarity %s = %q, want %q", path, value, result.Title, label)
 				}
 			}
 		}
+	}
+}
+
+func TestDefaultEquipmentRarityPreviewUsesGlobalField(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := engine.ForVersion("110US").ExtractPreviewFields("equipment/test.equ", pvf.ParseScriptView("[rarity]\n8"), "equ")
+	if len(values) != 1 || values[0].Field.ID != "*.rarity" || values[0].Field.Preview.Role != "rarity" || values[0].Values[0] != "8" {
+		t.Fatalf("rarity preview fields = %#v", values)
 	}
 }
 
