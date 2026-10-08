@@ -2,6 +2,8 @@
 import { computed, h, ref, watch } from "vue";
 import {
   ArrowSync24Regular,
+  ArrowUpRight24Regular,
+  Bug24Regular,
   CheckmarkCircle24Regular,
   Code24Regular,
   Copy24Regular,
@@ -10,6 +12,7 @@ import {
   DismissCircle24Regular,
   DocumentSync24Regular,
   FolderOpen24Regular,
+  Globe24Regular,
   Image24Regular,
   Keyboard24Regular,
   Info24Regular,
@@ -36,6 +39,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
+import { Browser } from "@wailsio/runtime";
 import {
   AnnotationService,
   CacheService,
@@ -49,6 +53,7 @@ import {
   useSettingsStore,
   type AnnotationTagPlacement,
   type ExplorerOpenMode,
+  type SettingsTab,
   type ThemeMode,
 } from "../stores/settings";
 import { useAutosaveStore } from "../stores/autosave";
@@ -58,7 +63,7 @@ import { useExplorerStore } from "../stores/explorer";
 import { useImageStore } from "../stores/images";
 import ShortcutSettings from "./ShortcutSettings.vue";
 
-type TabKey = "general" | "editor" | "npk" | "system" | "shortcuts";
+type TabKey = SettingsTab;
 
 const settings = useSettingsStore();
 const autosave = useAutosaveStore();
@@ -83,6 +88,8 @@ const selectingAutosavePath = ref(false);
 const cacheUsage = ref<CacheUsage | null>(null);
 const cacheUsageLoading = ref(false);
 const clearingCache = ref(false);
+const appVersion = ref("");
+const appVersionLoading = ref(false);
 
 const autosaveIntervalMinutes = computed(() =>
   Math.max(
@@ -113,6 +120,13 @@ const cacheUsageSummary = computed(() => {
   return parts.join("；");
 });
 
+// 版本号由 Go 侧在构建时注入,可能带或不带 "v" 前缀;dev 构建显示为 "dev"。
+const versionLabel = computed(() => {
+  const raw = appVersion.value.trim().replace(/^v/i, "");
+  if (!raw) return "";
+  return raw === "dev" ? raw : `v${raw}`;
+});
+
 // 打开设置界面时统计一次缓存占用,避免常驻轮询。
 watch(
   () => settings.visible,
@@ -120,6 +134,7 @@ watch(
     if (!visible) return;
     void autosave.refreshStatus();
     void refreshCacheUsage();
+    void refreshAppVersion();
   }
 );
 
@@ -127,9 +142,16 @@ const tabs = [
   { id: "general" as const, label: "常规与外观", icon: PaintBrush24Regular },
   { id: "editor" as const, label: "代码编辑器", icon: Code24Regular },
   { id: "npk" as const, label: "NPK 资源库", icon: Image24Regular },
-  { id: "system" as const, label: "系统维护", icon: Wrench24Regular },
   { id: "shortcuts" as const, label: "快捷键", icon: Keyboard24Regular },
+  { id: "system" as const, label: "系统维护", icon: Wrench24Regular },
+  { id: "about" as const, label: "关于", icon: Info24Regular },
 ];
+
+watch(activeTab, (tab) => {
+  if (tab === "about") {
+    void refreshAppVersion();
+  }
+});
 
 const npkProgressPercent = computed(() => {
   const { total, done } = images.status;
@@ -268,6 +290,36 @@ async function onDiscardAutosave(): Promise<void> {
     else message.info("没有可删除的备份缓存");
   } catch (error: any) {
     message.error(`删除备份缓存失败: ${error?.message ?? error}`);
+  }
+}
+
+/** 读取应用版本号;进程存活期间不会变化,拿到后不再重复请求。 */
+async function refreshAppVersion(): Promise<void> {
+  if (appVersionLoading.value || appVersion.value) return;
+  appVersionLoading.value = true;
+  try {
+    appVersion.value = await UpdateService.Version();
+  } catch {
+    // 读取失败时留空,下次打开设置再试。
+  } finally {
+    appVersionLoading.value = false;
+  }
+}
+
+async function openExternalUrl(url: string): Promise<void> {
+  try {
+    await Browser.OpenURL(url);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
+async function copyText(text: string, label: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success(`已复制${label}`);
+  } catch {
+    message.warning(`复制${label}失败，请手动复制`);
   }
 }
 
@@ -1143,25 +1195,246 @@ function formatBytes(bytes: number): string {
             </div>
           </section>
 
-          <!-- 关于应用信息 -->
-          <div class="about-card">
-            <div class="about-logo-row">
-              <div class="about-brand">pvfine</div>
-              <NTag size="small" round :bordered="false" type="primary">v0.0.0</NTag>
-            </div>
-            <div class="about-desc">
-              基于 Wails 3、Go 与 Vue 3 构建的高性能、现代化的 DNF PVF 脚本交互式编辑工具。
-            </div>
-            <div class="about-badges">
-              <span class="about-pill">Go 1.24</span>
-              <span class="about-pill">Vue 3</span>
-              <span class="about-pill">CodeMirror 6</span>
-              <span class="about-pill">Naive UI</span>
-            </div>
-          </div>
         </div>
+
         <div v-show="activeTab === 'shortcuts'" class="settings-tab-panel">
           <ShortcutSettings />
+        </div>
+
+        <!-- Tab 6: 关于 -->
+        <div v-show="activeTab === 'about'" class="settings-tab-panel about-panel">
+          <!-- 软件信息标头 -->
+          <div class="about-hero-card">
+            <div class="about-hero-icon-wrap">
+              <img src="/appicon.png" alt="pvfine logo" class="about-hero-icon" />
+            </div>
+            <div class="about-hero-content">
+              <div class="about-hero-header">
+                <span class="about-hero-title">pvfine</span>
+                <NTag
+                  v-if="versionLabel"
+                  size="small"
+                  round
+                  :bordered="false"
+                  type="primary"
+                  class="about-version-tag"
+                >
+                  {{ versionLabel }}
+                </NTag>
+                <NTag
+                  v-else-if="appVersionLoading"
+                  size="small"
+                  round
+                  :bordered="false"
+                  type="default"
+                  class="about-version-tag"
+                >
+                  读取版本中…
+                </NTag>
+                <NButton
+                  size="tiny"
+                  secondary
+                  round
+                  :loading="checkingUpdates"
+                  class="about-update-btn"
+                  aria-label="检查更新"
+                  @click="onCheckUpdates"
+                >
+                  <template #icon><NIcon :size="13"><ArrowSync24Regular /></NIcon></template>
+                  检查更新
+                </NButton>
+              </div>
+              <div class="about-hero-desc">
+                基于 Wails 3、Go 与 Vue 3 构建的高性能、现代化的 DNF PVF 脚本交互式编辑工具。
+              </div>
+              <div class="about-badges">
+                <span class="about-pill">Go 1.24</span>
+                <span class="about-pill">Vue 3</span>
+                <span class="about-pill">Wails 3</span>
+                <span class="about-pill">CodeMirror 6</span>
+                <span class="about-pill">Naive UI</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 官方链接与社区 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">官方资源与代码仓库</div>
+              <div class="group-subtitle">获取官方文档、最新发布与社区动态，或前往 GitHub 参与开源共建</div>
+            </div>
+
+            <div class="settings-card">
+              <!-- 官方网站 -->
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><Globe24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label-row">
+                    <span class="setting-item-label">官方网站</span>
+                    <NTag size="tiny" :bordered="false" type="info">Official</NTag>
+                  </div>
+                  <div class="setting-item-desc">
+                    <a
+                      href="https://pvfineapp.com/"
+                      class="about-link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click.prevent="openExternalUrl('https://pvfineapp.com/')"
+                    >
+                      https://pvfineapp.com/
+                    </a>
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NTooltip trigger="hover">
+                    <template #trigger>
+                      <NButton
+                        size="small"
+                        secondary
+                        circle
+                        aria-label="复制官网链接"
+                        @click="copyText('https://pvfineapp.com/', '官网链接')"
+                      >
+                        <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
+                      </NButton>
+                    </template>
+                    复制链接
+                  </NTooltip>
+                  <NButton
+                    size="small"
+                    secondary
+                    type="primary"
+                    aria-label="访问官网"
+                    @click="openExternalUrl('https://pvfineapp.com/')"
+                  >
+                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                    访问
+                  </NButton>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <!-- GitHub 仓库 -->
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path
+                      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                    />
+                  </svg>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label-row">
+                    <span class="setting-item-label">GitHub 仓库</span>
+                    <NTag size="tiny" :bordered="false" type="default">Open Source</NTag>
+                  </div>
+                  <div class="setting-item-desc">
+                    <a
+                      href="https://github.com/dof-dev/pvfine"
+                      class="about-link"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click.prevent="openExternalUrl('https://github.com/dof-dev/pvfine')"
+                    >
+                      https://github.com/dof-dev/pvfine
+                    </a>
+                  </div>
+                </div>
+                <div class="setting-item-control setting-item-control--actions">
+                  <NTooltip trigger="hover">
+                    <template #trigger>
+                      <NButton
+                        size="small"
+                        secondary
+                        circle
+                        aria-label="复制 GitHub 链接"
+                        @click="copyText('https://github.com/dof-dev/pvfine', 'GitHub 仓库链接')"
+                      >
+                        <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
+                      </NButton>
+                    </template>
+                    复制链接
+                  </NTooltip>
+                  <NButton
+                    size="small"
+                    secondary
+                    aria-label="访问 GitHub 仓库"
+                    @click="openExternalUrl('https://github.com/dof-dev/pvfine')"
+                  >
+                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                    访问
+                  </NButton>
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <!-- 反馈与建议 -->
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><Bug24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">问题反馈与建议</div>
+                  <div class="setting-item-desc">使用中发现 Bug 或有新功能设想？欢迎在 GitHub Issues 提交反馈</div>
+                </div>
+                <div class="setting-item-control">
+                  <NButton
+                    size="small"
+                    secondary
+                    aria-label="提交反馈"
+                    @click="openExternalUrl('https://github.com/dof-dev/pvfine/issues')"
+                  >
+                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                    提交反馈
+                  </NButton>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 开源许可 -->
+          <section class="settings-group">
+            <div class="group-header">
+              <div class="group-title">开源许可与声明</div>
+            </div>
+
+            <div class="settings-card">
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label-row">
+                    <span class="setting-item-label">GNU General Public License v3.0</span>
+                    <NTag size="tiny" :bordered="false" type="success">GPL-3.0</NTag>
+                  </div>
+                  <div class="setting-item-desc">
+                    pvfine 为自由开源软件，遵循 GNU 通用公共许可证第三版，保障用户的自由使用与修改权利。
+                  </div>
+                </div>
+                <div class="setting-item-control">
+                  <NButton
+                    size="small"
+                    secondary
+                    aria-label="查看开源协议"
+                    @click="openExternalUrl('https://github.com/dof-dev/pvfine/blob/main/LICENSE')"
+                  >
+                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                    查看协议
+                  </NButton>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 底部版权说明 -->
+          <footer class="about-footer">
+            <p class="about-footer-text">© 2026 pvfine team · Made for DNF Modding Community</p>
+          </footer>
         </div>
       </div>
     </NSpin>
@@ -1687,46 +1960,118 @@ function formatBytes(bytes: number): string {
   border-top: 1px solid var(--pvf-border-faint);
 }
 
-/* 关于卡片 */
-.about-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  background: var(--pvf-surface-subtle);
-  border: 1px solid var(--pvf-border-faint);
-  border-radius: 10px;
+/* 关于面板 */
+.about-panel {
+  gap: 16px;
 }
-.about-logo-row {
+
+.about-hero-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--pvf-surface-card);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 12px;
+}
+
+.about-hero-icon-wrap {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--pvf-border-faint);
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  background: var(--pvf-surface-subtle);
 }
-.about-brand {
-  font-size: 16px;
+
+.about-hero-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.about-hero-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.about-hero-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.about-hero-title {
+  font-size: 18px;
   font-weight: 700;
   color: var(--pvf-text-primary);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
 }
-.about-desc {
+
+.about-version-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+}
+
+.about-update-btn {
+  margin-left: 2px;
+}
+
+.about-hero-desc {
   color: var(--pvf-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.5;
 }
+
 .about-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
 }
+
 .about-pill {
   display: inline-flex;
   padding: 2px 8px;
-  background: var(--pvf-surface-card);
-  border: 1px solid var(--pvf-border-subtle);
+  background: var(--pvf-surface-subtle);
+  border: 1px solid var(--pvf-border-faint);
   border-radius: 4px;
   font-size: 11px;
   color: var(--pvf-text-muted);
+  font-weight: 500;
+}
+
+.about-link {
+  color: var(--pvf-primary);
+  text-decoration: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  transition: opacity 0.15s ease;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.about-footer {
+  padding: 6px 0 12px;
+  text-align: center;
+}
+
+.about-footer-text {
+  color: var(--pvf-text-faint);
+  font-size: 11px;
+  margin: 0;
 }
 
 /* 动画 */

@@ -18,3 +18,11 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 export function CheckForUpdates(): $CancellablePromise<void> {
     return $Call.ByID(3771798315);
 }
+
+/**
+ * Version reports the running application version so the frontend can display
+ * it without knowing how release builds inject it.
+ */
+export function Version(): $CancellablePromise<string> {
+    return $Call.ByID(3218535008);
+}

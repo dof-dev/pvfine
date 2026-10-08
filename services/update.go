@@ -10,11 +10,21 @@ import (
 // UpdateService exposes the native updater to platforms without a visible
 // application menu, such as the Windows desktop shell.
 type UpdateService struct {
-	app *application.App
+	app     *application.App
+	version string
 }
 
-func NewUpdateService(app *application.App) *UpdateService {
-	return &UpdateService{app: app}
+func NewUpdateService(app *application.App, version string) *UpdateService {
+	return &UpdateService{app: app, version: version}
+}
+
+// Version reports the running application version so the frontend can display
+// it without knowing how release builds inject it.
+func (s *UpdateService) Version() string {
+	if s == nil {
+		return ""
+	}
+	return s.version
 }
 
 // CheckForUpdates checks the configured release source and opens the Wails

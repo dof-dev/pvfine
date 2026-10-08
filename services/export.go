@@ -464,8 +464,8 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 	if err := writer.Write(temp, pkg); err != nil {
 		return "", err
 	}
-	// Windows refuses to rename a directory over an existing directory.
-	if runtime.GOOS == "windows" {
+	// Windows and macOS refuse to rename a directory over an existing directory.
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		if err := os.Rename(temp, dest); err != nil {
 			return "", err
 		}

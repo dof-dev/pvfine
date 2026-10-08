@@ -166,7 +166,7 @@ func main() {
 		},
 	})
 	services.ObserveLogEvents(app)
-	app.RegisterService(application.NewService(services.NewUpdateService(app)))
+	app.RegisterService(application.NewService(services.NewUpdateService(app, appVersion)))
 	scriptWindowService := services.NewScriptWindowService(app)
 	app.RegisterService(application.NewService(scriptWindowService))
 	closeCoordinator := newCloseCoordinator(app, scriptWindowService)

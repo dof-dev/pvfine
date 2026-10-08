@@ -28,6 +28,7 @@ type logBuffer struct {
 	mu      sync.Mutex
 	nextID  uint64
 	entries []appLogEntry
+	emit    func(appLogEntry)
 }
 
 var applicationLogs logBuffer
@@ -74,10 +75,23 @@ func (b *logBuffer) snapshot() []appLogEntry {
 }
 
 func recordLog(level, source, message string) {
-	entry := applicationLogs.append(level, source, message)
-	if app := application.Get(); app != nil {
-		_ = app.Event.Emit("app:log", entry)
+	applicationLogs.record(level, source, message)
+}
+
+func (b *logBuffer) record(level, source, message string) {
+	entry := b.append(level, source, message)
+	b.mu.Lock()
+	emit := b.emit
+	b.mu.Unlock()
+	if emit != nil {
+		emit(entry)
 	}
+}
+
+func (b *logBuffer) setEmitter(emit func(appLogEntry)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.emit = emit
 }
 
 type logCaptureWriter struct{ output io.Writer }
@@ -130,6 +144,11 @@ func LogServiceError(err error) []byte {
 func ObserveLogEvents(app *application.App) {
 	app.Event.On("app:logs-request", func(*application.CustomEvent) {
 		_ = app.Event.Emit("app:logs", applicationLogs.snapshot())
+	})
+	// application.New logs before its event processor is initialized. Only
+	// enable live forwarding after New returns; startup logs stay in history.
+	applicationLogs.setEmitter(func(entry appLogEntry) {
+		_ = app.Event.Emit("app:log", entry)
 	})
 }
 

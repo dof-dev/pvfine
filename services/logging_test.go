@@ -170,3 +170,41 @@ func TestDescribeOtherEvents(t *testing.T) {
 		t.Fatalf("image log = %s, %s", level, message)
 	}
 }
+
+func TestLogForwardingWaitsForEventInitialization(t *testing.T) {
+	var buffer logBuffer
+	buffer.record("INFO", "Go", "Build Info:")
+	var forwarded []appLogEntry
+	buffer.setEmitter(func(entry appLogEntry) {
+		// Reading history here must not deadlock with the recording lock.
+		_ = buffer.snapshot()
+		forwarded = append(forwarded, entry)
+	})
+	buffer.record("ERROR", "Go", "service failure")
+	if len(forwarded) != 1 || forwarded[0].Message != "service failure" {
+		t.Fatalf("live logs = %#v", forwarded)
+	}
+	history := buffer.snapshot()
+	if len(history) != 2 || history[0].Message != "Build Info:" || history[1] != forwarded[0] {
+		t.Fatalf("startup history = %#v", history)
+	}
+}
+
+func TestLogForwardingConcurrentInitialization(t *testing.T) {
+	var buffer logBuffer
+	var workers sync.WaitGroup
+	workers.Go(func() {
+		for range 100 {
+			buffer.setEmitter(func(appLogEntry) {})
+		}
+	})
+	workers.Go(func() {
+		for range 100 {
+			buffer.record("INFO", "Go", "startup")
+		}
+	})
+	workers.Wait()
+	if got := len(buffer.snapshot()); got != 100 {
+		t.Fatalf("history entries = %d, want 100", got)
+	}
+}

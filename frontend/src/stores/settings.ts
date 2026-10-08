@@ -8,7 +8,7 @@ import type { ShortcutOverrides } from "../shortcuts";
 
 export type AnnotationTagPlacement = "after-target" | "line-end" | "hidden";
 export type ExplorerOpenMode = "single-click" | "double-click";
-export type SettingsTab = "general" | "editor" | "npk" | "system" | "shortcuts";
+export type SettingsTab = "general" | "editor" | "npk" | "system" | "shortcuts" | "about";
 export type { ThemeMode } from "../theme";
 
 export const defaultAutosaveIntervalSeconds = 300;
