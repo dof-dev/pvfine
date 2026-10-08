@@ -165,92 +165,12 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  build-linux:
-    name: Build Linux x64
-    runs-on: ubuntu-24.04
-    env:
-      CGO_ENABLED: '1'
-      GOARCH: amd64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Apply release version metadata
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: node scripts/set-build-version.js "${RELEASE_TAG#v}"
-
-      - name: Install Linux desktop dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            libgtk-4-dev \
-            libwebkitgtk-6.0-dev \
-            pkg-config
-
-      - name: Install Wails CLI
-        shell: bash
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Build frontend before Go tests
-        shell: bash
-        run: wails3 task common:build:frontend
-
-      - name: Run Go tests
-        run: go test ./...
-
-      - name: Build Linux AppImage
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          VERSION="${RELEASE_TAG#v}"
-          wails3 task linux:create:appimage \
-            ARCH=amd64 \
-            VERSION="$VERSION" \
-            REPOSITORY="$GITHUB_REPOSITORY"
-
-          mkdir -p release
-          appimage="$(find bin -type f -iname '*.AppImage' -print -quit)"
-          if [ -z "$appimage" ]; then
-            echo "Expected Linux AppImage was not generated" >&2
-            exit 1
-          fi
-
-          cp "$appimage" "release/pvfine-${RELEASE_TAG}-linux-amd64.AppImage"
-          chmod +x "release/pvfine-${RELEASE_TAG}-linux-amd64.AppImage"
-
-      - name: Upload Linux asset
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-release
-          path: release/*
-          if-no-files-found: error
-
   publish:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs:
       - build-windows
       - build-macos
-      - build-linux
     steps:
       - name: Download release assets
         uses: actions/download-artifact@v4
@@ -263,7 +183,7 @@ jobs:
         shell: bash
         run: |
           find release-assets -type f -print
-          test "$(find release-assets -type f | wc -l)" -ge 5
+          test "$(find release-assets -type f | wc -l)" -ge 4
 
       - name: Generate checksums
         shell: bash
