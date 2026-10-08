@@ -15,7 +15,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
-import { ArrowCollapseAll20Regular, Target20Regular } from "@vicons/fluent";
+import { ArrowCollapseAll20Regular, CheckboxChecked20Regular, Target20Regular } from "@vicons/fluent";
 import { ArchiveService, EditorService } from "../../bindings/pvfine/services";
 import type { FileRegistration, TreeTag, TreeNode } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
@@ -42,6 +42,7 @@ const dialog = useDialog();
 
 const searchInput = ref("");
 const fileTreeRef = ref<{ collapseAll: () => void } | null>(null);
+const showCheckboxes = ref(false);
 const adding = ref(false);
 const bookmarking = ref(false);
 const exporting = ref(false);
@@ -863,6 +864,23 @@ function sortTree(items: TreeItem[]): void {
         </template>
         收起所有目录
       </NTooltip>
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            circle
+            size="small"
+            :type="showCheckboxes ? 'primary' : 'default'"
+            :disabled="!archive.open"
+            :aria-label="showCheckboxes ? '隐藏复选框' : '显示复选框'"
+            :aria-pressed="showCheckboxes"
+            @click="showCheckboxes = !showCheckboxes"
+          >
+            <template #icon><NIcon><CheckboxChecked20Regular /></NIcon></template>
+          </NButton>
+        </template>
+        {{ showCheckboxes ? '隐藏复选框' : '显示复选框' }}
+      </NTooltip>
       <NInput
         v-model:value="searchInput"
         :placeholder="archive.indexReady ? '搜索路径、名称或 id（支持 *、?）…' : archive.indexStatus.stage === 'file-index' ? '输入完整文件路径可提前打开…' : '索引完成后可搜索路径、名称或 id…'"
@@ -939,6 +957,7 @@ function sortTree(items: TreeItem[]): void {
               :key="treeKey"
               :items="visibleTreeItems"
               :expand-all="explorer.mode === 'search'"
+              :show-checkboxes="showCheckboxes"
               :open-mode="settings.explorerOpenMode"
               :selected-key="explorer.selectedKey"
               :reveal-request="explorer.revealRequest"

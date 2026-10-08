@@ -12,6 +12,7 @@ const props = withDefaults(
     items: TreeItem[];
     height?: string;
     expandAll?: boolean;
+    showCheckboxes?: boolean;
     openMode?: ExplorerOpenMode;
     selectedKey?: string | null;
     revealRequest?: RevealRequest | null;
@@ -20,6 +21,7 @@ const props = withDefaults(
   {
     height: "100%",
     expandAll: false,
+    showCheckboxes: false,
     openMode: "single-click",
     selectedKey: null,
     revealRequest: null,
@@ -217,7 +219,7 @@ function onNodeDblclick(event: MouseEvent, item: TreeItem): void {
 function onNodeContextMenu(event: MouseEvent, item: TreeItem): void {
   event.preventDefault();
   event.stopPropagation();
-  const checkedItems = checkedKeys.value
+  const checkedItems = (props.showCheckboxes ? checkedKeys.value : [])
     .map((selectedKey) => itemsByKey.value.get(selectedKey))
     .filter((selectedItem): selectedItem is TreeItem => !!selectedItem);
   emit("contextmenu", event, item, checkedItems.length > 0 ? checkedItems : [item]);
@@ -339,7 +341,7 @@ defineExpose({ collapseAll });
     <NTree
       ref="treeRef"
       block-line
-      checkable
+      :checkable="showCheckboxes"
       cascade
       :selectable="false"
       :animated="false"
