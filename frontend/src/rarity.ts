@@ -1,5 +1,5 @@
 /**
- * 稀有度配色：与 config/annotations.json 中 `[rarity]` 枚举（0..6）的顺序一致。
+ * 稀有度配色：与 config/annotations.json 中 `[rarity]` 枚举（0..8）的顺序一致。
  * 装备预览、资源管理器名称标签与商店商品名共用这里的颜色，避免各处再写一份。
  */
 export const RARITY_NAMES = [
@@ -10,6 +10,8 @@ export const RARITY_NAMES = [
   "epic",
   "brave",
   "legendary",
+  "mythic",
+  "primordial",
 ] as const;
 
 export type RarityName = (typeof RARITY_NAMES)[number];
@@ -25,6 +27,8 @@ export const RARITY_COLORS: Record<RarityName, string> = {
   epic: "#ffd438",
   brave: "#ff4a4a",
   legendary: "#ff7903",
+  mythic: "#c69aac",
+  primordial: "#52A77C",
 };
 
 /** 已知稀有度返回名称，未知（缺省或越界）返回 null。 */
@@ -37,4 +41,24 @@ export function rarityName(rarity: number | null | undefined): RarityName | null
 export function rarityColor(rarity: number | null | undefined): string | undefined {
   const name = rarityName(rarity);
   return name ? RARITY_COLORS[name] : undefined;
+}
+
+/** 神话使用金紫渐变，太初使用青绿渐变；纯色调用方可获取中间色。 */
+export function rarityTextStyle(rarity: number | null | undefined): Record<string, string> | undefined {
+  const color = rarityColor(rarity);
+  if (!color) return undefined;
+  const name = rarityName(rarity);
+  const gradient = name === "mythic"
+    ? "linear-gradient(180deg, #e3c66e 0%, #c69aac 50%, #a66acb 100%)"
+    : name === "primordial"
+      ? "linear-gradient(180deg, #a8e3cc 0%, #52A77C 50%, #378b64 100%)"
+      : undefined;
+  if (!gradient) return { color };
+  return {
+    color,
+    backgroundImage: gradient,
+    backgroundClip: "text",
+    webkitBackgroundClip: "text",
+    webkitTextFillColor: "transparent",
+  };
 }

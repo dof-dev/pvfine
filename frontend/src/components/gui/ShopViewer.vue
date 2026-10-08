@@ -8,7 +8,7 @@ import ImageThumbnail from "../ImageThumbnail.vue";
 import { createShopSession } from "../../gui/state";
 import type { GUIFile } from "../../gui/types";
 import { useFileGUIStore } from "../../stores/fileGUI";
-import { rarityColor } from "../../rarity";
+import { rarityTextStyle } from "../../rarity";
 
 const props = defineProps<{ file: GUIFile; active: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -45,8 +45,7 @@ const currentCategoryName = computed(() => {
 const number = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 // 商品名按稀有度着色；没有 [rarity] 的物品（如材料）保留默认的青色。
 function itemNameStyle(entry: ShopEntry): Record<string, string> | undefined {
-  const color = rarityColor(entry.item.rarity);
-  return color ? { color } : undefined;
+  return rarityTextStyle(entry.item.rarity);
 }
 function reload() { return session.load(props.file, String(gui.epoch)); }
 

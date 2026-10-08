@@ -4,7 +4,7 @@ import { NTag, NTree, type TreeInst, type TreeOption } from "naive-ui";
 import { useArchiveStore } from "../stores/archive";
 import type { RevealRequest, TreeItem } from "../stores/explorer";
 import type { ExplorerOpenMode } from "../stores/settings";
-import { rarityColor } from "../rarity";
+import { rarityTextStyle } from "../rarity";
 import ImageThumbnail from "./ImageThumbnail.vue";
 
 const props = withDefaults(
@@ -305,7 +305,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
       }
       if (tag.name) {
         // 名称标签用目标文件的稀有度着色；没有 [rarity] 的文件保留默认配色。
-        const rarity = rarityColor(tag.rarity);
+        const rarity = rarityTextStyle(tag.rarity);
         children.push(
           h(
             NTag,
@@ -315,7 +315,7 @@ function renderLabel({ option }: { option: TreeOption }): VNodeChild {
               type: "success",
               class: "tree-tag tree-tag-name",
               title: tag.name,
-              style: rarity ? { color: rarity } : undefined,
+              style: rarity,
             },
             { default: () => tag.name }
           )

@@ -206,6 +206,26 @@ func TestPreviewServiceParseEQUResolvesDescriptionPlaceholders(t *testing.T) {
 	})
 }
 
+func TestPreviewServiceParseEQUNewRarities(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		label string
+	}{
+		{"7", "神话"},
+		{"8", "太初"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			result, err := NewPreviewService().ParseEQU(-1, "[name]\n`测试装备`\n[rarity]\n"+tc.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.RarityLabel != tc.label || len(result.Issues) != 0 {
+				t.Fatalf("rarity = %q, issues = %#v", result.RarityLabel, result.Issues)
+			}
+		})
+	}
+}
+
 func TestPreviewServiceParseEQUFame(t *testing.T) {
 	for _, tc := range []struct{ name, text, want string }{
 		{"unique", "[unique option fame value]\n748", "冒险家名望 748"},

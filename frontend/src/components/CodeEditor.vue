@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { rarityColor } from "../rarity";
+import { rarityTextStyle } from "../rarity";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   EditorView,
@@ -159,8 +159,8 @@ class AnnotationWidget extends WidgetType {
       : `cm-annotation-tag cm-annotation-tag--${this.annotation.type || "text"}`;
     if (!inlineImage) {
       tag.textContent = this.annotation.title;
-      const color = rarityColor(this.annotation.rarity);
-      if (color) tag.style.color = color;
+      const style = rarityTextStyle(this.annotation.rarity);
+      if (style) Object.assign(tag.style, style);
     }
     const hints = [
       this.annotation.targetFileIndex >= 0 ? "Cmd/Ctrl+单击打开目标文件" : "",

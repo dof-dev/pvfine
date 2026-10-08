@@ -13,7 +13,7 @@ import type {
 } from "../../../bindings/pvfine/services/models";
 import { useImageStore } from "../../stores/images";
 import { startDebugTiming } from "../../stores/debugTiming";
-import { RARITY_COLORS, rarityColor } from "../../rarity";
+import { RARITY_COLORS, rarityTextStyle } from "../../rarity";
 import type { PreviewFile } from "../../previews/types";
 
 const props = defineProps<{
@@ -33,7 +33,7 @@ const setDetailMode = ref(false);
 let parseTimer: number | undefined;
 let parseRequest = 0;
 
-const rarityNameColor = computed(() => rarityColor(document.value?.rarity) ?? RARITY_COLORS.normal);
+const rarityNameStyle = computed(() => rarityTextStyle(document.value?.rarity) ?? { color: RARITY_COLORS.normal });
 const explanation = computed(() => {
   if (detailMode.value && document.value?.detailExplain) return document.value.detailExplain;
   return document.value?.baseExplain ?? "";
@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
           <img class="equ-icon" :src="iconData.dataUrl" alt="装备图标" />
         </div>
         <div class="equ-title-block">
-          <div class="equ-name" :style="{ color: rarityNameColor }">
+          <div class="equ-name" :style="rarityNameStyle">
             {{ document.name || "未命名装备" }}
           </div>
           <div v-if="document.name2" class="equ-name2">{{ document.name2 }}</div>
@@ -260,7 +260,7 @@ onBeforeUnmount(() => {
           <span v-if="document.qualityText" class="equ-quality">
             <span class="equ-quality-label">{{ qualityParts.label }}</span><span v-if="qualityParts.detail" class="equ-quality-detail">{{ qualityParts.detail }}</span>
           </span>
-          <span v-if="document.rarityLabel" class="equ-rarity" :style="{ color: rarityNameColor }">{{ document.rarityLabel }}</span>
+          <span v-if="document.rarityLabel" class="equ-rarity" :style="rarityNameStyle">{{ document.rarityLabel }}</span>
         </div>
         <div
           v-if="baseAttributes.length || document.equipmentType || document.itemGroupName || document.attachType"

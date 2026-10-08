@@ -126,6 +126,27 @@ func TestLoadDefaultIncludesEquipmentPreviewFields(t *testing.T) {
 	}
 }
 
+func TestDefaultNewRarityAnnotations(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine = engine.ForVersion("110US")
+	for _, path := range []string{"equipment/test.equ", "stackable/test.stk"} {
+		for value, label := range map[string]string{"7": "神话", "8": "太初"} {
+			results := engine.Annotate(path, pvf.ParseScriptView("[rarity]\n"+value), nil)
+			if len(results) == 0 {
+				t.Fatalf("%s rarity %s has no annotation", path, value)
+			}
+			for _, result := range results {
+				if result.Title != label {
+					t.Fatalf("%s rarity %s = %q, want %q", path, value, result.Title, label)
+				}
+			}
+		}
+	}
+}
+
 func TestDefaultFameSections(t *testing.T) {
 	engine, err := LoadDefault()
 	if err != nil {
