@@ -41,6 +41,7 @@ import { useArchiveStore } from "../stores/archive";
 import { useExplorerStore } from "../stores/explorer";
 import { useBookmarkStore } from "../stores/bookmarks";
 import CodeEditor, { type PlaceholderEditRequest } from "./CodeEditor.vue";
+import { archiveEditorLanguage } from "../luaLanguage";
 import { useSettingsStore } from "../stores/settings";
 import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 import ImageThumbnail from "./ImageThumbnail.vue";
@@ -950,6 +951,7 @@ function onDrop(event: DragEvent): void {
             <CodeEditor
               :ref="(instance: unknown) => setEditorRef(tab.index, instance)"
               :doc="tab.text"
+              :language="archiveEditorLanguage(tab.path)"
               :read-only="!tab.editable || editor.guiApplying"
               :annotations="tab.annotations"
               :tag-placement="tab.annotationsHidden ? 'hidden' : settings.annotationTagPlacement"

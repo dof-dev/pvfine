@@ -46,6 +46,7 @@ import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
 import { annotationAt, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
+import { luaLanguage } from "../luaLanguage";
 import { pvfSectionFolding, sectionFoldTiming } from "../pvfSectionFolding";
 import { startDebugTiming } from "../stores/debugTiming";
 import { hasLongLine } from "../editorWrapping";
@@ -57,7 +58,7 @@ import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
   doc: string;
-  language?: "pvf" | "javascript" | "typescript";
+  language?: "pvf" | "javascript" | "typescript" | "lua";
   readOnly?: boolean;
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
@@ -103,7 +104,7 @@ const setAnnotations = StateEffect.define<EditorAnnotation[]>();
 const setAnnotationPlacement = StateEffect.define<AnnotationTagPlacement>();
 const setDiagnosticLine = StateEffect.define<number | null>();
 
-const javascriptHighlighting = syntaxHighlighting(
+const scriptHighlighting = syntaxHighlighting(
   HighlightStyle.define([
     { tag: tags.comment, color: "var(--pvf-text-faint)", fontStyle: "italic" },
     { tag: [tags.string, tags.regexp], color: "var(--pvf-editor-syntax-string)" },
@@ -527,6 +528,8 @@ function createEditorTheme(themeId: ResolvedThemeId) {
 
 function makeExtensions(themeId: ResolvedThemeId) {
   const isJavaScript = props.language === "javascript" || props.language === "typescript";
+  const isLua = props.language === "lua";
+  const isPvf = !isJavaScript && !isLua;
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -542,7 +545,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ...defaultKeymap,
       ...historyKeymap,
       ...searchKeymap,
-      ...(!isJavaScript ? foldKeymap : []),
+      ...(isPvf ? foldKeymap : []),
       { key: "Tab", run: insertTab, shift: indentLess },
     ]),
     EditorView.domEventHandlers({
@@ -584,8 +587,10 @@ function makeExtensions(themeId: ResolvedThemeId) {
     annotationField,
     diagnosticLineField,
     indentUnit.of("\t"),
-    isJavaScript ? javascript({ typescript: props.language === "typescript" }) : pvfLanguage.extension,
-    ...(!isJavaScript ? [
+    isJavaScript
+      ? javascript({ typescript: props.language === "typescript" })
+      : isLua ? luaLanguage.extension : pvfLanguage.extension,
+    ...(isPvf ? [
       foldGutter(),
       sectionFoldTiming.of((state) => startDebugTiming(
         "editor.fold-scan", `chars=${state.doc.length} lines=${state.doc.lines}`
@@ -595,10 +600,10 @@ function makeExtensions(themeId: ResolvedThemeId) {
     isJavaScript
       ? [
           tooltips({ parent: document.body, position: "fixed" }),
-          javascriptHighlighting,
+          scriptHighlighting,
           ...(props.readOnly ? [] : [autocompletion({ override: [scriptCompletionSource] })]),
         ]
-      : pvfHighlighting,
+      : isLua ? scriptHighlighting : pvfHighlighting,
     editorThemeComp.of(createEditorTheme(themeId)),
     wrappingComp.of(wrapping ? EditorView.lineWrapping : []),
     EditorView.updateListener.of((u) => {
