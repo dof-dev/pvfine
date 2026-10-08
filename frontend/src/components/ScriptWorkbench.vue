@@ -7,6 +7,7 @@ import {
   NEmpty,
   NIcon,
   NInput,
+  NModal,
   NProgress,
   NScrollbar,
   NSpin,
@@ -36,6 +37,7 @@ import {
   WindowNew24Regular,
 } from "@vicons/fluent";
 import CodeEditor from "./CodeEditor.vue";
+import scriptApiDeclaration from "../script-api.d.ts?raw";
 import { useScriptStore } from "../stores/script";
 import { useArchiveStore } from "../stores/archive";
 import { useSettingsStore } from "../stores/settings";
@@ -58,6 +60,7 @@ const settings = useSettingsStore();
 const message = useMessage();
 const dialog = useDialog();
 const scriptLibraryVisible = ref(false);
+const scriptDocumentationVisible = ref(false);
 const scriptEditor = ref<{ revealPosition: (line: number, column?: number) => void } | null>(null);
 const scriptMain = ref<HTMLDivElement | null>(null);
 const scriptEditorPanel = ref<HTMLElement | null>(null);
@@ -446,6 +449,10 @@ onBeforeUnmount(() => {
           <template #icon><NIcon><Merge24Regular /></NIcon></template>
           合并回主窗口
         </NButton>
+        <NButton size="small" secondary @click="scriptDocumentationVisible = true">
+          <template #icon><NIcon><DocumentText24Regular /></NIcon></template>
+          查询文档
+        </NButton>
       </div>
 
       <div ref="scriptMain" class="script-main">
@@ -770,6 +777,23 @@ onBeforeUnmount(() => {
         </div>
       </NScrollbar>
     </section>
+    <NModal
+      v-model:show="scriptDocumentationVisible"
+      preset="card"
+      title="脚本 API 文档 · script-api.d.ts"
+      :bordered="false"
+      :style="{ width: 'min(1000px, calc(100vw - 32px))' }"
+    >
+      <div class="script-documentation">
+        <NText depth="3">只读文档，可复制内容；点击文档后按 Ctrl/Cmd+F 查找。</NText>
+        <CodeEditor
+          :doc="scriptApiDeclaration"
+          language="typescript"
+          read-only
+          :theme-id="themeId"
+        />
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -1262,5 +1286,12 @@ onBeforeUnmount(() => {
 .script-load-more {
   margin-top: 7px;
   flex-shrink: 0;
+}
+.script-documentation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: min(70vh, 720px);
+  min-height: 0;
 }
 </style>

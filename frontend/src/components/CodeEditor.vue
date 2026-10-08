@@ -57,7 +57,7 @@ import type { ResolvedThemeId } from "../theme";
 
 const props = defineProps<{
   doc: string;
-  language?: "pvf" | "javascript";
+  language?: "pvf" | "javascript" | "typescript";
   readOnly?: boolean;
   annotations?: EditorAnnotation[];
   tagPlacement?: AnnotationTagPlacement;
@@ -526,7 +526,7 @@ function createEditorTheme(themeId: ResolvedThemeId) {
 }
 
 function makeExtensions(themeId: ResolvedThemeId) {
-  const isJavaScript = props.language === "javascript";
+  const isJavaScript = props.language === "javascript" || props.language === "typescript";
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -584,7 +584,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
     annotationField,
     diagnosticLineField,
     indentUnit.of("\t"),
-    isJavaScript ? javascript() : pvfLanguage.extension,
+    isJavaScript ? javascript({ typescript: props.language === "typescript" }) : pvfLanguage.extension,
     ...(!isJavaScript ? [
       foldGutter(),
       sectionFoldTiming.of((state) => startDebugTiming(
@@ -596,7 +596,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
       ? [
           tooltips({ parent: document.body, position: "fixed" }),
           javascriptHighlighting,
-          autocompletion({ override: [scriptCompletionSource] }),
+          ...(props.readOnly ? [] : [autocompletion({ override: [scriptCompletionSource] })]),
         ]
       : pvfHighlighting,
     editorThemeComp.of(createEditorTheme(themeId)),
