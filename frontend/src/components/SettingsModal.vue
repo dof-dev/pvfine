@@ -48,6 +48,7 @@ import {
 } from "../../bindings/pvfine/services";
 import type { CacheUsage } from "../../bindings/pvfine/services/models";
 import {
+  maxEditableSizeMB,
   maxAutosaveIntervalMinutes,
   minAutosaveIntervalMinutes,
   useSettingsStore,
@@ -183,6 +184,15 @@ async function onVimModeChange(value: boolean) {
   }
 }
 
+async function onMaxEditableSizeMBChange(value: number | null) {
+  if (value === null || !Number.isInteger(value) || value < 1 || value > maxEditableSizeMB) return;
+  try {
+    await settings.saveMaxEditableSizeMB(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
 async function onBackupSourceOnSaveChange(value: boolean) {
   try {
     await settings.saveBackupSourceOnSave(value);
@@ -211,7 +221,8 @@ async function onAutosaveIntervalChange(value: number | null) {
   const minutes = Number(value ?? 0);
   if (!Number.isFinite(minutes) || minutes <= 0) return;
   const clamped = Math.min(
-    maxAutosaveIntervalMinutes,
+    maxEditableSizeMB,
+  maxAutosaveIntervalMinutes,
     Math.max(minAutosaveIntervalMinutes, Math.round(minutes))
   );
   try {
@@ -888,6 +899,33 @@ function formatBytes(bytes: number): string {
                 </div>
                 <div class="setting-item-control">
                   <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
+                </div>
+              </div>
+
+              <div class="setting-card-divider" />
+
+              <div class="setting-item">
+                <div class="setting-item-icon">
+                  <NIcon :size="18"><Code24Regular /></NIcon>
+                </div>
+                <div class="setting-item-content">
+                  <div class="setting-item-label">大文件编辑阈值</div>
+                  <div class="setting-item-desc">超过此大小的脚本或文本仅显示只读提示，默认 8 MB（1 MB = 1024² 字节）。修改后关闭并重新打开文件生效；调高阈值会增加内存占用和加载时间。</div>
+                </div>
+                <div class="setting-item-control">
+                  <NInputNumber
+                    :value="settings.maxEditableSizeMB"
+                    :min="1"
+                    :max="maxEditableSizeMB"
+                    :precision="0"
+                    :disabled="settings.saving"
+                    size="small"
+                    style="width: 140px"
+                    aria-label="大文件编辑阈值（MB）"
+                    @update:value="onMaxEditableSizeMBChange"
+                  >
+                    <template #suffix>MB</template>
+                  </NInputNumber>
                 </div>
               </div>
             </div>

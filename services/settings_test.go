@@ -273,3 +273,52 @@ func TestSettingsServiceUpdateShortcutOverridesPreservesOtherSettings(t *testing
 		t.Fatalf("legacy shortcuts = %#v", legacy.ShortcutOverrides)
 	}
 }
+
+func TestSettingsEditableSizeLimit(t *testing.T) {
+	service := newSettingsService(filepath.Join(t.TempDir(), "settings.json"))
+	for _, limit := range []int{1, 64, maxEditableSizeMB} {
+		settings := DefaultAppSettings()
+		settings.MaxEditableSizeMB = limit
+		if err := service.SaveSettings(settings); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := service.GetSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.MaxEditableSizeMB != limit {
+			t.Fatalf("loaded limit = %d, want %d", loaded.MaxEditableSizeMB, limit)
+		}
+	}
+	for _, limit := range []int{-1, maxEditableSizeMB + 1} {
+		settings := DefaultAppSettings()
+		settings.MaxEditableSizeMB = limit
+		if err := service.SaveSettings(settings); err == nil {
+			t.Fatalf("accepted invalid limit %d", limit)
+		}
+	}
+	// Older API clients omit the field (zero), which keeps the existing default.
+	settings := DefaultAppSettings()
+	settings.MaxEditableSizeMB = 0
+	if err := service.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := service.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.MaxEditableSizeMB != DefaultMaxEditableSizeMB {
+		t.Fatalf("default limit = %d", loaded.MaxEditableSizeMB)
+	}
+	legacyPath := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(legacyPath, []byte(`{"vimMode":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := newSettingsService(legacyPath).GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.MaxEditableSizeMB != DefaultMaxEditableSizeMB {
+		t.Fatalf("legacy limit = %d", legacy.MaxEditableSizeMB)
+	}
+}

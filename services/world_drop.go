@@ -72,7 +72,7 @@ func (s *FileGUIService) ReadWorldDrop(fileIndex int32, text string) (*WorldDrop
 	if err := validateWorldDropFile(s.c.archive, fileIndex, ""); err != nil {
 		return nil, err
 	}
-	if len(text) > maxEditableBytes {
+	if len(text) > int(s.c.editableByteLimit()) {
 		return nil, fmt.Errorf("全局掉率文本过大")
 	}
 	levels, err := parseWorldDrop(text)
@@ -285,7 +285,7 @@ func (s *FileGUIService) applyWorldDropEditLocked(req WorldDropEditRequest) (*Wo
 	if err := validateWorldDropFile(a, req.FileIndex, req.Path); err != nil {
 		return fail(err)
 	}
-	if len(req.Text) > maxEditableBytes {
+	if len(req.Text) > int(s.c.editableByteLimit()) {
 		return fail(fmt.Errorf("全局掉率文本过大"))
 	}
 	previous, err := parseWorldDrop(req.Text)
@@ -300,7 +300,7 @@ func (s *FileGUIService) applyWorldDropEditLocked(req WorldDropEditRequest) (*Wo
 	}
 	stage := a.CloneForBatch()
 	newText := renderWorldDrop(req.Levels)
-	if len(newText) > maxEditableBytes {
+	if len(newText) > int(s.c.editableByteLimit()) {
 		return fail(fmt.Errorf("全局掉率文本过大"))
 	}
 	if err := stage.SetText(req.FileIndex, newText); err != nil {

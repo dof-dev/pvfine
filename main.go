@@ -122,8 +122,8 @@ func main() {
 	logOutput := services.CaptureLogs(log.Writer())
 	log.SetOutput(logOutput)
 	application.DefaultServiceOptions.MarshalError = services.LogServiceError
-	core := services.NewCore()
 	settingsService := services.NewSettingsService()
+	core := services.NewCore(settingsService)
 	// The backup service attaches itself to the core so saving or closing the
 	// workspace can drop a cache that no longer protects anything.
 	autosaveService := services.NewAutosaveService(core, settingsService)

@@ -115,6 +115,7 @@ export interface AppSettings {
      * value explicitly disables a command's default binding.
      */
     "shortcutOverrides": { [_ in string]?: string } | null;
+    "maxEditableSizeMB": number;
 }
 
 /**

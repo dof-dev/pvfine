@@ -11,6 +11,9 @@ export type ExplorerOpenMode = "single-click" | "double-click";
 export type SettingsTab = "general" | "editor" | "npk" | "system" | "shortcuts" | "about";
 export type { ThemeMode } from "../theme";
 
+export const defaultMaxEditableSizeMB = 8;
+export const maxEditableSizeMB = 1024;
+
 export const defaultAutosaveIntervalSeconds = 300;
 export const minAutosaveIntervalMinutes = 1;
 export const maxAutosaveIntervalMinutes = 120;
@@ -26,6 +29,7 @@ const defaultSettings: AppSettings = {
   autosavePath: "",
   autosaveIntervalSeconds: defaultAutosaveIntervalSeconds,
   shortcutOverrides: {},
+  maxEditableSizeMB: defaultMaxEditableSizeMB,
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -43,6 +47,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const autosavePath = ref("");
   const autosaveIntervalSeconds = ref(defaultAutosaveIntervalSeconds);
   const shortcutOverrides = ref<ShortcutOverrides>({});
+  const maxEditableSizeMB = ref(defaultMaxEditableSizeMB);
 
   /** 当前设置的全量快照,避免每次保存都手写所有字段。 */
   function currentSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -57,6 +62,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosavePath: autosavePath.value,
       autosaveIntervalSeconds: autosaveIntervalSeconds.value,
       shortcutOverrides: shortcutOverrides.value,
+      maxEditableSizeMB: maxEditableSizeMB.value,
       ...overrides,
     };
   }
@@ -75,6 +81,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosavePath.value = normalizeAutosavePath(settings.autosavePath);
       autosaveIntervalSeconds.value = normalizeAutosaveInterval(settings.autosaveIntervalSeconds);
       shortcutOverrides.value = normalizeShortcutOverrides(settings.shortcutOverrides);
+      maxEditableSizeMB.value = normalizeMaxEditableSizeMB(settings.maxEditableSizeMB);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
@@ -87,6 +94,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosavePath.value = "";
       autosaveIntervalSeconds.value = defaultAutosaveIntervalSeconds;
       shortcutOverrides.value = {};
+      maxEditableSizeMB.value = defaultMaxEditableSizeMB;
     } finally {
       loaded.value = true;
     }
@@ -124,6 +132,10 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveSettings(currentSettings({ autosaveIntervalSeconds: seconds }));
   }
 
+  async function saveMaxEditableSizeMB(value: number) {
+    await saveSettings(currentSettings({ maxEditableSizeMB: value }));
+  }
+
   async function updateShortcutOverrides(overrides: ShortcutOverrides) {
     saving.value = true;
     try {
@@ -159,6 +171,7 @@ export const useSettingsStore = defineStore("settings", () => {
     const previousAutosavePath = autosavePath.value;
     const previousAutosaveInterval = autosaveIntervalSeconds.value;
     const previousShortcutOverrides = shortcutOverrides.value;
+    const previousMaxEditableSizeMB = maxEditableSizeMB.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
     vimMode.value = normalizeVimMode(next.vimMode);
@@ -169,6 +182,7 @@ export const useSettingsStore = defineStore("settings", () => {
     autosavePath.value = normalizeAutosavePath(next.autosavePath);
     autosaveIntervalSeconds.value = normalizeAutosaveInterval(next.autosaveIntervalSeconds);
     shortcutOverrides.value = normalizeShortcutOverrides(next.shortcutOverrides);
+    maxEditableSizeMB.value = normalizeMaxEditableSizeMB(next.maxEditableSizeMB);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -186,6 +200,7 @@ export const useSettingsStore = defineStore("settings", () => {
       autosavePath.value = previousAutosavePath;
       autosaveIntervalSeconds.value = previousAutosaveInterval;
       shortcutOverrides.value = previousShortcutOverrides;
+      maxEditableSizeMB.value = previousMaxEditableSizeMB;
       throw error;
     } finally {
       saving.value = false;
@@ -217,6 +232,8 @@ export const useSettingsStore = defineStore("settings", () => {
     autosavePath,
     autosaveIntervalSeconds,
     shortcutOverrides,
+    maxEditableSizeMB,
+    saveMaxEditableSizeMB,
     load,
     savePlacement,
     saveExplorerOpenMode,
@@ -280,4 +297,11 @@ function normalizeShortcutOverrides(value: Record<string, string | undefined> | 
     if (typeof binding === "string") result[command] = binding;
   }
   return result;
+}
+
+function normalizeMaxEditableSizeMB(value: number | null | undefined): number {
+  if (!Number.isInteger(value) || Number(value) < 1 || Number(value) > maxEditableSizeMB) {
+    return defaultMaxEditableSizeMB;
+  }
+  return Number(value);
 }

@@ -126,7 +126,8 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	if c.annotationEngine == nil || c.archive == nil {
 		return nil, nil
 	}
-	if c.editorAnnotation.valid && c.editorAnnotation.fileIndex == index && c.editorAnnotation.text == text {
+	limit := c.editableByteLimit()
+	if c.editorAnnotation.valid && c.editorAnnotation.fileIndex == index && c.editorAnnotation.text == text && c.editorAnnotation.editableByteLimit == limit {
 		debugLog("annotations file=%d cache=hit count=%d", index, len(c.editorAnnotation.annotations))
 		return cloneEditorAnnotations(c.editorAnnotation.annotations), nil
 	}
@@ -172,7 +173,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	annotations = c.appendUnindexedListLinksLocked(filePath, view, annotations)
 	finishLinks()
 	finishPlaceholders := debugPhase("annotations.placeholders", filePath)
-	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations)
+	annotations = c.appendPlaceholderAnnotationsLocked(view, annotations, limit)
 	finishPlaceholders()
 	finishVisuals := debugPhase("annotations.target-visuals", filePath)
 	for i := range annotations {
@@ -189,10 +190,11 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	finishVisuals()
 	debugLog("annotations file=%d cache=miss count=%d", index, len(annotations))
 	c.editorAnnotation = editorAnnotationCache{
-		valid:       true,
-		fileIndex:   index,
-		text:        text,
-		annotations: cloneEditorAnnotations(annotations),
+		editableByteLimit: limit,
+		valid:             true,
+		fileIndex:         index,
+		text:              text,
+		annotations:       cloneEditorAnnotations(annotations),
 	}
 	return annotations, nil
 }
@@ -206,7 +208,7 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 // A placeholder no table answers yet is annotated too, with Missing set: that
 // is how a brand-new file gets its text, because the editor can then create the
 // entry instead of the user having to open the (possibly 49 MB) table.
-func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotations []EditorAnnotation) []EditorAnnotation {
+func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotations []EditorAnnotation, limit int32) []EditorAnnotation {
 	if c.archive == nil {
 		return annotations
 	}
@@ -252,7 +254,7 @@ func (c *core) appendPlaceholderAnnotationsLocked(view pvf.ScriptView, annotatio
 			},
 		}
 		// Link to the string table itself when the editor can open it.
-		if sourceIndex, ok := c.archive.Find(resolution.Source); ok && c.archive.File(sourceIndex).DataSize <= maxEditableBytes {
+		if sourceIndex, ok := c.archive.Find(resolution.Source); ok && c.archive.File(sourceIndex).DataSize <= limit {
 			annotation.TargetFileIndex = sourceIndex
 			annotation.Content += "\n\nCmd/Ctrl+单击打开字符串表；单击标签可修改译文"
 		} else {

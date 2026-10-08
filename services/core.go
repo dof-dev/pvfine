@@ -75,6 +75,7 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
+	settings            *SettingsService
 	mu                  sync.RWMutex
 	archive             *pvf.Archive
 	diskIndex           *sqliteArchiveIndex
@@ -159,16 +160,27 @@ func (c *core) attachAutosave(service *AutosaveService) {
 }
 
 type editorAnnotationCache struct {
-	valid       bool
-	fileIndex   int32
-	text        string
-	annotations []EditorAnnotation
+	editableByteLimit int32
+	valid             bool
+	fileIndex         int32
+	text              string
+	annotations       []EditorAnnotation
 }
 
 func newCore() *core { return makeCore() }
 
 // NewCore creates the shared service state (one per application).
-func NewCore() *core { return makeCore() }
+func NewCore(settings ...*SettingsService) *core {
+	c := makeCore()
+	if len(settings) > 0 {
+		c.settings = settings[0]
+	}
+	return c
+}
+
+func (c *core) editableByteLimit() int32 {
+	return editableByteLimit(c.settings)
+}
 
 func makeCore() *core {
 	annotationEngine, annotationErr := annotationrules.LoadDefault()

@@ -19,6 +19,9 @@ const (
 	ThemeLight               = "light"
 	ThemeSystem              = "system"
 
+	DefaultMaxEditableSizeMB = 8
+	maxEditableSizeMB        = 1024
+
 	DefaultAutosaveIntervalSeconds = 300
 	minAutosaveIntervalSeconds     = 30
 	maxAutosaveIntervalSeconds     = 7200
@@ -41,6 +44,7 @@ type AppSettings struct {
 	// ShortcutOverrides stores only bindings changed by the user. An empty
 	// value explicitly disables a command's default binding.
 	ShortcutOverrides map[string]string `json:"shortcutOverrides"`
+	MaxEditableSizeMB int               `json:"maxEditableSizeMB"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -55,6 +59,7 @@ func DefaultAppSettings() AppSettings {
 		AutosavePath:            "",
 		AutosaveIntervalSeconds: DefaultAutosaveIntervalSeconds,
 		ShortcutOverrides:       map[string]string{},
+		MaxEditableSizeMB:       DefaultMaxEditableSizeMB,
 	}
 }
 
@@ -203,6 +208,9 @@ func normalizeSettings(settings AppSettings) AppSettings {
 	if settings.AutosaveIntervalSeconds <= 0 {
 		settings.AutosaveIntervalSeconds = DefaultAutosaveIntervalSeconds
 	}
+	if settings.MaxEditableSizeMB == 0 {
+		settings.MaxEditableSizeMB = DefaultMaxEditableSizeMB
+	}
 	if settings.ShortcutOverrides == nil {
 		settings.ShortcutOverrides = map[string]string{}
 	}
@@ -210,6 +218,9 @@ func normalizeSettings(settings AppSettings) AppSettings {
 }
 
 func validateSettings(settings AppSettings) error {
+	if settings.MaxEditableSizeMB < 1 || settings.MaxEditableSizeMB > maxEditableSizeMB {
+		return fmt.Errorf("大文件编辑阈值需在 1-%d MB 之间", maxEditableSizeMB)
+	}
 	if len(settings.ShortcutOverrides) > 64 {
 		return fmt.Errorf("快捷键配置数量超出限制")
 	}

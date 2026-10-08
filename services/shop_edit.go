@@ -160,7 +160,8 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 	if !sameSearchPath(req.Path, a.Path(req.FileIndex)) || !strings.HasSuffix(strings.ToLower(req.Path), ".shp") {
 		return fail(fmt.Errorf("商店文件已变化"))
 	}
-	if len(req.Text) > maxEditableBytes {
+	limit := int(s.c.editableByteLimit())
+	if len(req.Text) > limit {
 		return fail(fmt.Errorf("商店文本过大"))
 	}
 	parsed := parseShop(req.Text)
@@ -200,7 +201,7 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 			if draft, ok := drafts[index]; ok {
 				text = draft.Text
 			}
-			if len(text) > maxEditableBytes {
+			if len(text) > limit {
 				return nil, fmt.Errorf("待修改文件超过编辑大小限制")
 			}
 			beforeTexts[index] = text

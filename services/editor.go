@@ -14,9 +14,6 @@ import (
 	"pvfine/internal/pvf"
 )
 
-// maxEditableBytes:超过该大小的文件仅提供只读占位,避免编辑器载入超大文本。
-const maxEditableBytes = 8 << 20 // 8MB
-
 // EditorService: 文件内容读取、内存编辑、保存/另存为、导出与整包解包。
 type EditorService struct {
 	c        *core
@@ -29,6 +26,23 @@ func NewEditorService(c *core, settings ...*SettingsService) *EditorService {
 		service.settings = settings[0]
 	}
 	return service
+}
+
+// editableByteLimit reads the current setting so changes apply on the next open.
+func (s *EditorService) editableByteLimit() int32 {
+	if s.settings != nil {
+		return editableByteLimit(s.settings)
+	}
+	return s.c.editableByteLimit()
+}
+
+func editableByteLimit(service *SettingsService) int32 {
+	if service != nil {
+		if settings, err := service.GetSettings(); err == nil {
+			return int32(settings.MaxEditableSizeMB) << 20
+		}
+	}
+	return DefaultMaxEditableSizeMB << 20
 }
 
 // FileMeta 返回给前端的单个文件视图。
@@ -73,8 +87,8 @@ func (s *EditorService) GetFileBasic(index int32) (*FileMeta, error) {
 	}
 	switch file.DataType {
 	case pvf.TypeScript, pvf.TypeUnicode:
-		if file.DataSize > maxEditableBytes {
-			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节", file.DataSize, maxEditableBytes)
+		if maxEditableBytes := s.editableByteLimit(); file.DataSize > maxEditableBytes {
+			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节。可在设置 → 编辑器中调整大文件编辑阈值，然后关闭并重新打开此文件", file.DataSize, maxEditableBytes)
 			return meta, nil
 		}
 		text, ok := s.c.editorText[index]
@@ -128,8 +142,8 @@ func (s *EditorService) getFile(index int32) (*FileMeta, error) {
 	finishMetadata()
 	switch f.DataType {
 	case pvf.TypeScript, pvf.TypeUnicode:
-		if f.DataSize > maxEditableBytes {
-			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节", f.DataSize, maxEditableBytes)
+		if maxEditableBytes := s.editableByteLimit(); f.DataSize > maxEditableBytes {
+			meta.Text = fmt.Sprintf("; 文件过大(%d 字节),超过文本编辑上限 %d 字节。可在设置 → 编辑器中调整大文件编辑阈值，然后关闭并重新打开此文件", f.DataSize, maxEditableBytes)
 			return meta, nil
 		}
 		text, ok := s.c.editorText[index]
