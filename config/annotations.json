@@ -110,6 +110,52 @@
       }
     },
     {
+      "id": "equ.unique-option-fame-value",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "unique option fame value"
+      },
+      "annotation": {
+        "title": "冒险家名望",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "unique-option-fame",
+        "group": "summary",
+        "order": 11,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.fame-value",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fame value"
+      },
+      "annotation": {
+        "title": "冒险家名望",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "fame",
+        "group": "summary",
+        "order": 12,
+        "format": "text"
+      }
+    },
+    {
       "id": "equ.equipment-type",
       "match": {
         "extensions": [
@@ -799,6 +845,29 @@
         "role": "detail-explain",
         "group": "explain",
         "order": 20,
+        "format": "text"
+      }
+    },
+    {
+      "id": "equ.buff-basic-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "buff basic explain"
+      },
+      "annotation": {
+        "title": "辅助职业效果",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "buff-basic-explain",
+        "group": "explain",
+        "order": 30,
         "format": "text"
       }
     },

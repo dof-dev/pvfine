@@ -47,7 +47,7 @@ const skillLevelups = computed(() => document.value?.skillLevelups ?? []);
 const footerNeedsSeparator = computed(() => {
   const current = document.value;
   if (!current) return false;
-  const hasOtherEffect = !!current.baseExplain || !!current.detailExplain;
+  const hasOtherEffect = !!current.baseExplain || !!current.detailExplain || !!current.buffBasicExplain;
   const hasOtherAttribute = otherAttributes.value.length > 0;
   return (hasOtherEffect || hasOtherAttribute) &&
     skillLevelups.value.length === 0 &&
@@ -281,6 +281,8 @@ onBeforeUnmount(() => {
         <div v-if="usableJobs.length" class="equ-summary-line equ-summary-line--right">{{ usableJobs.join("、") }}可以使用</div>
       </div>
 
+      <div v-if="document.fameText" class="equ-section equ-fame">{{ document.fameText }}</div>
+
       <div v-if="fourDimensions.length" class="equ-section">
         <div v-for="attribute in fourDimensions" :key="`four:${attribute.label}`" :class="attributeClass(attribute)">
           {{ attribute.label }}{{ attribute.value }}
@@ -302,6 +304,11 @@ onBeforeUnmount(() => {
 
       <div v-if="explanation" class="equ-section equ-explain" :class="{ 'equ-explain--detail': detailMode }">
         {{ explanation }}
+      </div>
+
+      <div v-if="document.buffBasicExplain" class="equ-section">
+        <div class="equ-buff-title">辅助职业效果</div>
+        <div class="equ-explain">{{ document.buffBasicExplain }}</div>
       </div>
 
       <div v-if="document.flavorText" class="equ-section equ-flavor">{{ document.flavorText }}</div>
@@ -402,6 +409,9 @@ onBeforeUnmount(() => {
 .equ-summary {
   color: #eee;
 }
+.equ-fame {
+  color: #b89b58;
+}
 .equ-summary-top {
   display: flex;
   align-items: baseline;
@@ -469,6 +479,9 @@ onBeforeUnmount(() => {
 }
 .equ-explain--detail {
   color: #5fdcff;
+}
+.equ-buff-title {
+  color: #999;
 }
 .equ-detail-toggle {
   display: flex;

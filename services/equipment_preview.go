@@ -54,12 +54,14 @@ type EquipmentPreviewDocument struct {
 	AttachType       string                       `json:"attachType"`
 	MinimumLevelText string                       `json:"minimumLevelText"`
 	UsableJobs       []string                     `json:"usableJobs"`
+	FameText         string                       `json:"fameText"`
 	BaseAttributes   []EquipmentPreviewAttribute  `json:"baseAttributes"`
 	FourDimensions   []EquipmentPreviewAttribute  `json:"fourDimensions"`
 	OtherAttributes  []EquipmentPreviewAttribute  `json:"otherAttributes"`
 	SkillLevelups    []EquipmentSkillLevelup      `json:"skillLevelups"`
 	BaseExplain      string                       `json:"baseExplain"`
 	DetailExplain    string                       `json:"detailExplain"`
+	BuffBasicExplain string                       `json:"buffBasicExplain"`
 	FlavorText       string                       `json:"flavorText"`
 	DurabilityText   string                       `json:"durabilityText"`
 	WeightText       string                       `json:"weightText"`
@@ -114,6 +116,7 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 	finishNames()
 	doc.BaseExplain = normalizeExplain(resolvePreviewDescription(s.c.archive, doc.BaseExplain))
 	doc.DetailExplain = normalizeExplain(resolvePreviewDescription(s.c.archive, doc.DetailExplain))
+	doc.BuffBasicExplain = normalizeExplain(resolvePreviewDescription(s.c.archive, doc.BuffBasicExplain))
 	doc.FlavorText = normalizeDisplayText(resolvePreviewDescription(s.c.archive, doc.FlavorText))
 	doc.PartSet = s.readEquipmentSetPreviewLocked(text, &doc.Issues)
 	return doc, nil
@@ -227,6 +230,18 @@ func buildEquipmentPreview(filePath, text string, engine *annotationrules.Engine
 		}
 	}
 
+	for _, role := range []string{"unique-option-fame", "fame"} {
+		if value, ok := first(role); ok {
+			fame, err := strconv.ParseInt(strings.TrimSpace(firstValue(value.Values)), 10, 32)
+			if err != nil || fame < 0 {
+				addPreviewIssue(&document.Issues, text, value.Start, "warning", value.Field.Target.Section, "冒险家名望不是有效的非负整数")
+				continue
+			}
+			document.FameText = "冒险家名望 " + strconv.FormatInt(fame, 10)
+			break
+		}
+	}
+
 	for _, occurrence := range roleValues["base-attribute"] {
 		if attribute, ok := parseEquipmentAttribute(occurrence, text, &document.Issues); ok {
 			document.BaseAttributes = append(document.BaseAttributes, attribute)
@@ -277,6 +292,9 @@ func buildEquipmentPreview(filePath, text string, engine *annotationrules.Engine
 	}
 	if value, ok := first("detail-explain"); ok {
 		document.DetailExplain = normalizeExplain(joinFieldValues(value.Values))
+	}
+	if value, ok := first("buff-basic-explain"); ok {
+		document.BuffBasicExplain = normalizeExplain(joinFieldValues(value.Values))
 	}
 	if value, ok := first("flavor-text"); ok {
 		document.FlavorText = normalizeDisplayText(joinFieldValuesPreserve(value.Values))

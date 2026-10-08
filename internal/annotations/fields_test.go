@@ -125,3 +125,47 @@ func TestLoadDefaultIncludesEquipmentPreviewFields(t *testing.T) {
 		t.Fatalf("equipment fields = %d", len(fields))
 	}
 }
+
+func TestDefaultFameSections(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine = engine.ForVersion("110US")
+	for _, section := range []string{"unique option fame value", "fame value"} {
+		t.Run(section, func(t *testing.T) {
+			view := pvf.ParseScriptView("[" + section + "]\n748")
+			results := engine.Annotate("equipment/test.equ", view, nil)
+			if len(results) != 1 || results[0].Title != "冒险家名望" {
+				t.Fatalf("annotations = %#v", results)
+			}
+			values := engine.ExtractPreviewFields("equipment/test.equ", view, "equ")
+			if len(values) != 1 || len(values[0].Values) != 1 || values[0].Values[0] != "748" {
+				t.Fatalf("preview fields = %#v", values)
+			}
+			if results := engine.Annotate("item/test.stk", view, nil); len(results) != 0 {
+				t.Fatalf("non-equ annotations = %#v", results)
+			}
+		})
+	}
+}
+
+func TestDefaultBuffBasicExplainSection(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine = engine.ForVersion("110US")
+	view := pvf.ParseScriptView("[buff basic explain]\n{10=`<1::buff>`}")
+	results := engine.Annotate("equipment/test.equ", view, nil)
+	if len(results) != 1 || results[0].Title != "辅助职业效果" {
+		t.Fatalf("annotations = %#v", results)
+	}
+	values := engine.ExtractPreviewFields("equipment/test.equ", view, "equ")
+	if len(values) != 1 || values[0].Field.ID != "equ.buff-basic-explain" || values[0].Field.Preview.Role != "buff-basic-explain" {
+		t.Fatalf("preview fields = %#v", values)
+	}
+	if results := engine.Annotate("item/test.stk", view, nil); len(results) != 0 {
+		t.Fatalf("non-equ annotations = %#v", results)
+	}
+}

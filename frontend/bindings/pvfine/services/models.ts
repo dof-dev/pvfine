@@ -336,12 +336,14 @@ export interface EquipmentPreviewDocument {
     "attachType": string;
     "minimumLevelText": string;
     "usableJobs": string[] | null;
+    "fameText": string;
     "baseAttributes": EquipmentPreviewAttribute[] | null;
     "fourDimensions": EquipmentPreviewAttribute[] | null;
     "otherAttributes": EquipmentPreviewAttribute[] | null;
     "skillLevelups": EquipmentSkillLevelup[] | null;
     "baseExplain": string;
     "detailExplain": string;
+    "buffBasicExplain": string;
     "flavorText": string;
     "durabilityText": string;
     "weightText": string;

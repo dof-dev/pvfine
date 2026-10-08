@@ -181,10 +181,14 @@ func TestPreviewServiceParseEQUResolvesDescriptionPlaceholders(t *testing.T) {
 		t.Run("token="+tokenType, func(t *testing.T) {
 			text := "[basic explain]\n{" + tokenType + "=`<1::basic>`}\n" +
 				"[detail explain]\n{" + tokenType + "=`<1::detail>`}\n" +
+				"[buff basic explain]\n{" + tokenType + "=`<1::basic>`}\n" +
 				"[flavor text]\n{" + tokenType + "=`<1::flavor>`}"
 			result, err := service.ParseEQU(index, text)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if result.BuffBasicExplain != "力量 +10%\n智力 +20" {
+				t.Fatalf("buff explanation = %q", result.BuffBasicExplain)
 			}
 			if result.BaseExplain != "力量 +10%\n智力 +20" || result.DetailExplain != "详细说明\n技能伤害 +5%" || result.FlavorText != "  第一段\n  第二段  " {
 				t.Fatalf("descriptions = %q, %q, %q", result.BaseExplain, result.DetailExplain, result.FlavorText)
@@ -200,6 +204,46 @@ func TestPreviewServiceParseEQUResolvesDescriptionPlaceholders(t *testing.T) {
 			t.Fatalf("descriptions = %q, %q, %q", result.BaseExplain, result.DetailExplain, result.FlavorText)
 		}
 	})
+}
+
+func TestPreviewServiceParseEQUFame(t *testing.T) {
+	for _, tc := range []struct{ name, text, want string }{
+		{"unique", "[unique option fame value]\n748", "冒险家名望 748"},
+		{"fame", "[fame value]\n748", "冒险家名望 748"},
+		{"both", "[fame value]\n100\n[unique option fame value]\n748", "冒险家名望 748"},
+		{"both-reversed", "[unique option fame value]\n748\n[fame value]\n100", "冒险家名望 748"},
+		{"zero", "[unique option fame value]\n0\n[fame value]\n100", "冒险家名望 0"},
+		{"missing", "[name]\n`测试装备`", ""},
+		{"negative", "[fame value]\n-1", ""},
+		{"invalid", "[fame value]\n`错误`", ""},
+		{"fallback", "[unique option fame value]\n-1\n[fame value]\n748", "冒险家名望 748"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := NewPreviewService().ParseEQU(-1, tc.text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.FameText != tc.want {
+				t.Fatalf("fame = %q, want %q", result.FameText, tc.want)
+			}
+		})
+	}
+}
+
+func TestPreviewServiceParseEQUBuffBasicExplain(t *testing.T) {
+	for _, tc := range []struct{ text, want string }{
+		{"[buff basic explain]\n`增益量 +10%%\\n力量 +20`", "增益量 +10%\n力量 +20"},
+		{"[basic explain]\n`普通效果`", ""},
+		{"[buff basic explain]\n``", ""},
+	} {
+		result, err := NewPreviewService().ParseEQU(-1, tc.text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.BuffBasicExplain != tc.want {
+			t.Fatalf("buff explanation = %q, want %q", result.BuffBasicExplain, tc.want)
+		}
+	}
 }
 
 func TestPreviewServiceParseEQUResolvesNamePlaceholder(t *testing.T) {
@@ -419,6 +463,51 @@ func TestPreviewServiceParseEQUSetPreview(t *testing.T) {
 				t.Fatalf("partSet = %#v, issues = %#v, err = %v", got.PartSet, got.Issues, err)
 			}
 		})
+	}
+}
+
+func TestPreviewServiceParseEQUSetPreviewResolvesDescriptions(t *testing.T) {
+	a := pvf.New()
+	if _, err := a.AddFileText("list/n_string.lst", "3 `String/Set.uv.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	var table []byte
+	for _, r := range "basic>力量 +50%%\\n智力 +50\r\ndetail>详细效果\\n技能伤害 +10%%\r\n" {
+		table = append(table, byte(r), byte(r>>8))
+	}
+	a.AddFile("String/Set.uv.str", table, pvf.TypeScript)
+	if _, err := a.AddFileText(equipmentPartSetListPath,
+		"[equipment part set]\n42 `sets/effect.etc` `测试套装` `上衣` 1 2 3\n[/equipment part set]", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	effects := "[piece set ability]\n3\n[parameter basic explain]\n{10=`<3::basic>`}\n[/parameter basic explain]\n" +
+		"[parameter detail explain]\n{8=`<3::detail>`}\n[/parameter detail explain]\n[/piece set ability]\n" +
+		"[piece set ability]\n5\n[parameter basic explain]\n`前缀 <3::basic>`\n[/parameter basic explain]\n" +
+		"[parameter detail explain]\n{10=`<3::missing>`}\n[/parameter detail explain]\n[/piece set ability]"
+	if _, err := a.AddFileText("equipment/sets/effect.etc", effects, pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	equipmentText := "[name]\n`测试装备`\n[part set index]\n42"
+	index, err := a.AddFileText("equipment/test.equ", equipmentText, pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	result, err := NewPreviewService(c).ParseEQU(index, equipmentText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.PartSet == nil || len(result.PartSet.Abilities) != 2 {
+		t.Fatalf("set = %#v, issues = %#v", result.PartSet, result.Issues)
+	}
+	first, second := result.PartSet.Abilities[0], result.PartSet.Abilities[1]
+	if first.BaseExplain != "力量 +50%\n智力 +50" || first.DetailExplain != "详细效果\n技能伤害 +10%" ||
+		second.BaseExplain != "前缀 力量 +50%\n智力 +50" || second.DetailExplain != "<3::missing>" {
+		t.Fatalf("abilities = %#v", result.PartSet.Abilities)
 	}
 }
 
