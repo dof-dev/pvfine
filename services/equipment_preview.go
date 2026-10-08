@@ -112,6 +112,9 @@ func (s *PreviewService) ParseEQU(fileIndex int32, text string) (*EquipmentPrevi
 	doc.Name = resolvePreviewText(s.c.archive, doc.Name)
 	doc.Name2 = resolvePreviewText(s.c.archive, doc.Name2)
 	finishNames()
+	doc.BaseExplain = normalizeExplain(resolvePreviewDescription(s.c.archive, doc.BaseExplain))
+	doc.DetailExplain = normalizeExplain(resolvePreviewDescription(s.c.archive, doc.DetailExplain))
+	doc.FlavorText = normalizeDisplayText(resolvePreviewDescription(s.c.archive, doc.FlavorText))
 	doc.PartSet = s.readEquipmentSetPreviewLocked(text, &doc.Issues)
 	return doc, nil
 }
@@ -139,6 +142,16 @@ func resolvePreviewText(a *pvf.Archive, text string) string {
 		return s
 	}
 	return a.ResolvePlaceholdersMarked(s, untranslatedMark)
+}
+
+// resolvePreviewDescription preserves literal whitespace while unwrapping
+// exported string tokens and resolving their string-table references.
+func resolvePreviewDescription(a *pvf.Archive, text string) string {
+	s := strings.TrimSpace(text)
+	if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+		return resolvePreviewText(a, text)
+	}
+	return a.ResolvePlaceholdersMarked(text, untranslatedMark)
 }
 
 func buildEquipmentPreview(filePath, text string, engine *annotationrules.Engine, resolver annotationrules.ContextResolver) *EquipmentPreviewDocument {

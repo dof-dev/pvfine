@@ -157,6 +157,51 @@ func TestPreviewServiceParseEQUPreservesDisplayLineBreaks(t *testing.T) {
 	}
 }
 
+func TestPreviewServiceParseEQUResolvesDescriptionPlaceholders(t *testing.T) {
+	a := pvf.New()
+	if _, err := a.AddFileText("list/n_string.lst", "1 `String/Test.uv.str`", pvf.TypeScript); err != nil {
+		t.Fatal(err)
+	}
+	var table []byte
+	for _, r := range "basic>力量 +10%%\\n智力 +20\r\ndetail>详细说明\\r\\n技能伤害 +5%%\r\nflavor>  第一段\\n  第二段  \r\n" {
+		table = append(table, byte(r), byte(r>>8))
+	}
+	a.AddFile("String/Test.uv.str", table, pvf.TypeScript)
+	index, err := a.AddFileText("equipment/test.equ", "[name]\n`测试装备`", pvf.TypeScript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore()
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	service := NewPreviewService(c)
+	for _, tokenType := range []string{"8", "10"} {
+		t.Run("token="+tokenType, func(t *testing.T) {
+			text := "[basic explain]\n{" + tokenType + "=`<1::basic>`}\n" +
+				"[detail explain]\n{" + tokenType + "=`<1::detail>`}\n" +
+				"[flavor text]\n{" + tokenType + "=`<1::flavor>`}"
+			result, err := service.ParseEQU(index, text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.BaseExplain != "力量 +10%\n智力 +20" || result.DetailExplain != "详细说明\n技能伤害 +5%" || result.FlavorText != "  第一段\n  第二段  " {
+				t.Fatalf("descriptions = %q, %q, %q", result.BaseExplain, result.DetailExplain, result.FlavorText)
+			}
+		})
+	}
+	t.Run("embedded-and-missing", func(t *testing.T) {
+		result, err := service.ParseEQU(index, "[basic explain]\n`前缀 <1::basic>`\n[detail explain]\n{10=`<1::missing>`}\n[flavor text]\n`  原始文本\\n  保留缩进  `")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.BaseExplain != "前缀 力量 +10%\n智力 +20" || result.DetailExplain != "<1::missing>" || result.FlavorText != "  原始文本\n  保留缩进  " {
+			t.Fatalf("descriptions = %q, %q, %q", result.BaseExplain, result.DetailExplain, result.FlavorText)
+		}
+	})
+}
+
 func TestPreviewServiceParseEQUResolvesNamePlaceholder(t *testing.T) {
 	a := pvf.New()
 	strTable := make([]byte, 0, 64)
