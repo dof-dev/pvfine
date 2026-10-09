@@ -35,6 +35,27 @@ const sizeText = computed(() => {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 });
+const fileTypeText = computed(() => {
+  const type = editor.activeTab?.dataType;
+  switch (type) {
+    case 1:
+      return "PVF 脚本 (1)";
+    case 3:
+      return "Unicode 文本 (3)";
+    default:
+      return `未知类型 (${type ?? "—"})`;
+  }
+});
+const fileTypeDescription = computed(() => {
+  switch (editor.activeTab?.dataType) {
+    case 1:
+      return "归档文件类型 1：PVF 二进制 token 脚本";
+    case 3:
+      return "归档文件类型 3：UTF-16LE 文本";
+    default:
+      return `归档文件类型 ${editor.activeTab?.dataType ?? "—"}：暂未识别`;
+  }
+});
 const unpackPct = computed(() =>
   archive.unpackProgress.total
     ? Math.round((archive.unpackProgress.done / archive.unpackProgress.total) * 100)
@@ -329,7 +350,7 @@ async function onRebuildSearchIndex(): Promise<void> {
         />
       </span>
 
-      <!-- 当前活动文件路径与大小 -->
+      <!-- 当前活动文件路径、大小与归档文件类型 -->
       <template v-if="currentPath">
         <span class="sb-sep" />
         <NTooltip trigger="hover">
@@ -357,6 +378,17 @@ async function onRebuildSearchIndex(): Promise<void> {
           </template>
           文件大小: {{ (editor.activeTab?.size ?? 0).toLocaleString() }} 字节
         </NTooltip>
+        <template v-if="editor.activeTab && !editor.activeTab.loading && !editor.activeTab.loadError">
+          <span class="sb-sep" />
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <span class="sb-item" :aria-label="`文件类型：${fileTypeText}`">
+                {{ fileTypeText }}
+              </span>
+            </template>
+            {{ fileTypeDescription }}
+          </NTooltip>
+        </template>
       </template>
     </template>
     <span v-else class="sb-spacer" />
