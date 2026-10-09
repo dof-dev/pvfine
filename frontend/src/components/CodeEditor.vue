@@ -878,6 +878,14 @@ watch(
 }
 /* 字符串表占位符的译文：文档里仍是占位符，这里只做展示。 */
 .code-editor :deep(.cm-annotation-tag--placeholder) {
+  display: inline-block;
+  max-width: 480px;
+  height: auto;
+  min-height: 18px;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: pre-wrap;
   font-style: italic;
   border-style: dashed;
 }
