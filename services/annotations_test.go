@@ -556,6 +556,79 @@ func TestContextualSkillReferenceAnnotations(t *testing.T) {
 	}
 }
 
+func TestSkillReferencesUseSourceListContext(t *testing.T) {
+	index := 0
+	relation := annotationrules.RelationSpec{
+		Kind: "contextual", IDToken: 0, PathToken: 1, RecordTokens: 2, NameSection: "name",
+		ContextPaths: map[string]string{
+			"[fighter]":    "skill/fighterskill.lst",
+			"[at fighter]": "skill/atfighterskill.lst",
+		},
+	}
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version:   1,
+		Relations: map[string]annotationrules.RelationSpec{"技能": relation},
+		Rules: []annotationrules.Rule{
+			{
+				ID:         "skl.feature.skill.index.ref",
+				Match:      annotationrules.MatchSpec{Extensions: []string{".skl"}},
+				Target:     annotationrules.TargetSpec{Kind: "token", Section: "feature skill index", Index: &index, RecordTokens: 1},
+				Annotation: annotationrules.AnnotationSpec{Title: "特性技能", Type: "reference", Relation: "技能"},
+			},
+			{
+				ID:         "skl.pre.required.skill.ref",
+				Match:      annotationrules.MatchSpec{Extensions: []string{".skl"}},
+				Target:     annotationrules.TargetSpec{Kind: "token", Section: "pre required skill", Index: &index, RecordTokens: 2},
+				Annotation: annotationrules.AnnotationSpec{Title: "前置技能", Type: "reference", Relation: "技能"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	mustAddText(t, a, "skill/fighterskill.lst", "20 `fighter/20.skl` 19 `fighter/19.skl`", pvf.TypeScript)
+	mustAddText(t, a, "skill/atfighterskill.lst", "20 `atfighter/20.skl` 19 `atfighter/19.skl`", pvf.TypeScript)
+	fighter := mustAddText(t, a, "skill/fighter/20.skl", "[name]\n`男格斗技能`", pvf.TypeScript)
+	atFighter := mustAddText(t, a, "skill/atfighter/20.skl", "[name]\n`女格斗技能`", pvf.TypeScript)
+	fighterReference := mustAddText(t, a, "skill/fighter/19.skl", "[feature skill index]\n20\n[pre required skill]\n20 3", pvf.TypeScript)
+	atFighterReference := mustAddText(t, a, "skill/atfighter/19.skl", "[feature skill index]\n20\n[pre required skill]\n20 3", pvf.TypeScript)
+	unlisted := mustAddText(t, a, "skill/unknown.skl", "[feature skill index]\n20", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	for _, test := range []struct {
+		file   int32
+		target int32
+		name   string
+	}{
+		{fighterReference, fighter, "男格斗技能"},
+		{atFighterReference, atFighter, "女格斗技能"},
+	} {
+		annotations, err := NewEditorService(c).GetAnnotations(test.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(annotations) != 2 {
+			t.Fatalf("file %d: annotations = %#v", test.file, annotations)
+		}
+		for _, annotation := range annotations {
+			if annotation.TargetFileIndex != test.target || annotation.Title != test.name {
+				t.Fatalf("file %d: annotation = %#v", test.file, annotation)
+			}
+		}
+	}
+	annotations, err := NewEditorService(c).GetAnnotations(unlisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(annotations) != 1 || annotations[0].TargetFileIndex != -1 {
+		t.Fatalf("unlisted skill annotations = %#v", annotations)
+	}
+}
+
 func TestUnionReferenceResolvesEquipmentAndItemIDs(t *testing.T) {
 	index := 0
 	engine, err := annotationrules.Compile(annotationrules.Document{

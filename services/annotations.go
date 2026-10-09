@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 
 	annotationrules "pvfine/internal/annotations"
@@ -146,8 +147,23 @@ func (c *core) editorAnnotationsLocked(index int32, text string) ([]EditorAnnota
 	})
 	finishParse()
 	finishRules := debugPhase("annotations.rules-and-relations", filePath)
+	sourceContexts := make(map[string]string)
+	checkedContexts := make(map[string]bool)
+	resolveReference := func(relationName, id, context string) (annotationrules.Reference, bool) {
+		relation, ok := c.annotationEngine.Relation(relationName)
+		if ok && relation.Kind == "contextual" && strings.EqualFold(path.Ext(filePath), ".skl") && (context == "" || context == id) {
+			if !checkedContexts[relationName] {
+				sourceContexts[relationName] = c.annotationContextForSourceLocked(index, relationName, relation)
+				checkedContexts[relationName] = true
+			}
+			if sourceContexts[relationName] != "" {
+				context = sourceContexts[relationName]
+			}
+		}
+		return c.resolveAnnotationReferenceContextLocked(relationName, id, context)
+	}
 	results := c.annotationEngine.AnnotateWithResolvers(
-		filePath, view, c.resolveAnnotationReferenceContextLocked, c.resolveListAnnotationReferenceLocked,
+		filePath, view, resolveReference, c.resolveListAnnotationReferenceLocked,
 		func(root, value string) (int32, bool) {
 			value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
 			if value == "" {
@@ -478,6 +494,39 @@ func (c *core) buildContextualAnnotationRelationLocked(relation annotationrules.
 		return map[string]*relationTarget{}
 	}
 	return c.buildAnnotationRelationFromListLocked(relation, listPath)
+}
+
+// A skill file has no job token in its feature/pre-required skill records.
+// Determine its job from the list that contains the current file. If multiple
+// lists contain it, leave the reference unresolved rather than choose one.
+func (c *core) annotationContextForSourceLocked(fileIndex int32, relationName string, relation annotationrules.RelationSpec) string {
+	if c.annotationRelations == nil {
+		c.annotationRelations = make(map[string]map[string]*relationTarget)
+	}
+	contexts := make([]string, 0, len(relation.ContextPaths))
+	for context := range relation.ContextPaths {
+		contexts = append(contexts, context)
+	}
+	sort.Strings(contexts)
+	var found string
+	for _, context := range contexts {
+		cacheKey := relationName + "\x00" + normalizeAnnotationContext(context)
+		targets, ok := c.annotationRelations[cacheKey]
+		if !ok {
+			targets = c.buildContextualAnnotationRelationLocked(relation, context)
+			c.annotationRelations[cacheKey] = targets
+		}
+		for _, target := range targets {
+			if target.reference.FileIndex != fileIndex {
+				continue
+			}
+			if found != "" && found != context {
+				return ""
+			}
+			found = context
+		}
+	}
+	return found
 }
 
 func (c *core) buildAnnotationRelationFromListLocked(relation annotationrules.RelationSpec, listPath string) map[string]*relationTarget {

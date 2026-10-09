@@ -1479,6 +1479,8978 @@
         "relation": "物品"
       },
       "group": "etc"
+    },
+    {
+      "id": "equ.sec.grade",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "grade"
+      },
+      "annotation": {
+        "title": "装备等级",
+        "type": "text",
+        "content": "物品等级(LV)，影响基础属性、掉落经验与售价"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.sub-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "sub type"
+      },
+      "annotation": {
+        "title": "装备子类型",
+        "type": "text",
+        "content": "在装备类型之下进一步细分的部位或武器种类"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.item-category",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item category"
+      },
+      "annotation": {
+        "title": "物品分类",
+        "type": "text",
+        "content": "背包与商店中显示的分类"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.price",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "price"
+      },
+      "annotation": {
+        "title": "购买价格",
+        "type": "text",
+        "content": "在 NPC 商店购买所需金币"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.repair-price",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "repair price"
+      },
+      "annotation": {
+        "title": "修理费用",
+        "type": "text",
+        "content": "耐久度归零后修理所需金币"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-price",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add price"
+      },
+      "annotation": {
+        "title": "附加价格",
+        "type": "text",
+        "content": "随强化/品级追加的金币"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-value",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add value"
+      },
+      "annotation": {
+        "title": "附加售价",
+        "type": "text",
+        "content": "随强化/品级追加的出售价"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.creation-rate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "creation rate"
+      },
+      "annotation": {
+        "title": "生成概率",
+        "type": "text",
+        "content": "掉落或随机生成时的权重"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "explain"
+      },
+      "annotation": {
+        "title": "装备说明",
+        "type": "text",
+        "content": "一句话说明文本"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.parameter-basic-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "parameter basic explain"
+      },
+      "annotation": {
+        "title": "参数说明",
+        "type": "text",
+        "content": "带占位参数的简要说明"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.parameter-detail-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "parameter detail explain"
+      },
+      "annotation": {
+        "title": "参数详细说明",
+        "type": "text",
+        "content": "带占位参数的详细说明"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.dictionary-text",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dictionary text"
+      },
+      "annotation": {
+        "title": "词典文本",
+        "type": "text",
+        "content": "图鉴/词典中显示的文本"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.impossible-contents",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "impossible contents"
+      },
+      "annotation": {
+        "title": "禁止包含",
+        "type": "text",
+        "content": "禁止与指定内容同时存在"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.inventory-limit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "inventory limit"
+      },
+      "annotation": {
+        "title": "负重上限",
+        "type": "text",
+        "content": "增加角色背包负重上限"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stackable-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stackable type"
+      },
+      "annotation": {
+        "title": "可堆叠类型",
+        "type": "text",
+        "content": "道具堆叠/使用类型"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.minimum-itemmaking-level",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "minimum itemmaking level"
+      },
+      "annotation": {
+        "title": "最低制作等级",
+        "type": "text",
+        "content": "制作该装备所需的最低制作等级"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.expertjob-only",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expertjob only"
+      },
+      "annotation": {
+        "title": "仅副职业可用",
+        "type": "text",
+        "content": "仅对应副职业可以制作或使用"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.usable-period",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable period"
+      },
+      "annotation": {
+        "title": "使用期限",
+        "type": "text",
+        "content": "道具有效期(天)"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.expiration-date",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expiration date"
+      },
+      "annotation": {
+        "title": "到期时间",
+        "type": "text",
+        "content": "道具过期时间"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.usable-expired-item",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable expired item"
+      },
+      "annotation": {
+        "title": "过期仍可用",
+        "type": "text",
+        "content": "过期后是否仍能使用"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.cash",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cash"
+      },
+      "annotation": {
+        "title": "点券道具",
+        "type": "text",
+        "content": "是否为商城点券道具"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.medal",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "medal"
+      },
+      "annotation": {
+        "title": "勋章",
+        "type": "text",
+        "content": "勋章类装备标记"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.emblem-socket-default",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "emblem socket default"
+      },
+      "annotation": {
+        "title": "默认徽章镶嵌孔",
+        "type": "text",
+        "content": "默认开放的徽章镶嵌孔"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.item-group-name",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item group name"
+      },
+      "annotation": {
+        "title": "装备小类",
+        "type": "text",
+        "content": "装备的细分小类名称"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.avatar-type-select",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar type select"
+      },
+      "annotation": {
+        "title": "时装类型选择",
+        "type": "text",
+        "content": "可选择的时装部位或类型"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.avatar-select-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar select ability"
+      },
+      "annotation": {
+        "title": "时装可选能力",
+        "type": "text",
+        "content": "时装可选的属性能力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.avatar-func-filter",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar func filter"
+      },
+      "annotation": {
+        "title": "时装功能过滤",
+        "type": "text",
+        "content": "时装功能筛选标记"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.enable-dye",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "enable dye"
+      },
+      "annotation": {
+        "title": "允许染色",
+        "type": "text",
+        "content": "是否允许使用染色剂"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hide-equipment",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hide equipment"
+      },
+      "annotation": {
+        "title": "隐藏装备",
+        "type": "text",
+        "content": "穿戴后是否隐藏本体外观"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hide-layer",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hide layer"
+      },
+      "annotation": {
+        "title": "隐藏图层",
+        "type": "text",
+        "content": "隐藏指定的角色图层"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hide-grow-avatar",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hide grow avatar"
+      },
+      "annotation": {
+        "title": "隐藏成长时装",
+        "type": "text",
+        "content": "隐藏成长型时装外观"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.animation-job",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "animation job"
+      },
+      "annotation": {
+        "title": "动画职业",
+        "type": "text",
+        "content": "指定使用的角色动画职业"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.variation",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "variation"
+      },
+      "annotation": {
+        "title": "动画变体",
+        "type": "text",
+        "content": "同一装备的不同动画变体"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.layer-variation",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "layer variation"
+      },
+      "annotation": {
+        "title": "图层变体",
+        "type": "text",
+        "content": "同一装备的不同图层变体"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.layer",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "layer"
+      },
+      "annotation": {
+        "title": "图层",
+        "type": "text",
+        "content": "动画图层编号"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.spectrum",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "spectrum"
+      },
+      "annotation": {
+        "title": "残影特效",
+        "type": "text",
+        "content": "残影/拖尾颜色与持续时间"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.custom-animation",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "custom animation"
+      },
+      "annotation": {
+        "title": "自定义动画",
+        "type": "text",
+        "content": "自定义动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.item-aura",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item aura"
+      },
+      "annotation": {
+        "title": "物品光环",
+        "type": "text",
+        "content": "物品光环特效"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.aura",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "aura"
+      },
+      "annotation": {
+        "title": "光环",
+        "type": "text",
+        "content": "装备光环特效"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.aura-active",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "aura active"
+      },
+      "annotation": {
+        "title": "光环激活",
+        "type": "text",
+        "content": "是否默认激活光环"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.aura-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "aura ability"
+      },
+      "annotation": {
+        "title": "光环能力",
+        "type": "text",
+        "content": "光环提供的属性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.aura-hud-icon",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "aura hud icon"
+      },
+      "annotation": {
+        "title": "光环HUD图标",
+        "type": "text",
+        "content": "光环在 HUD 上的图标"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.aura-pos-datas",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "aura pos datas"
+      },
+      "annotation": {
+        "title": "光环位置数据",
+        "type": "text",
+        "content": "光环挂点位置"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.appendage",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "appendage"
+      },
+      "annotation": {
+        "title": "附加物",
+        "type": "text",
+        "content": "召唤/附加对象记录"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.my-appendage",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "my appendage"
+      },
+      "annotation": {
+        "title": "自身附加物",
+        "type": "text",
+        "content": "仅自身可见的附加对象"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.target-appendage",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "target appendage"
+      },
+      "annotation": {
+        "title": "目标附加物",
+        "type": "text",
+        "content": "作用于目标的附加对象"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.remove-appendage",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "remove appendage"
+      },
+      "annotation": {
+        "title": "移除附加物",
+        "type": "text",
+        "content": "满足条件时移除附加对象"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.appendage-control",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "appendage control"
+      },
+      "annotation": {
+        "title": "附加物控制",
+        "type": "text",
+        "content": "附加对象的控制参数"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.appendage-unique",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "appendage unique"
+      },
+      "annotation": {
+        "title": "附加物唯一",
+        "type": "text",
+        "content": "附加对象唯一性标记"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.gauge-appendage-state",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "gauge appendage state"
+      },
+      "annotation": {
+        "title": "计量条附加状态",
+        "type": "text",
+        "content": "以计量条显示的附加状态"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.part-set-index",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "part set index"
+      },
+      "annotation": {
+        "title": "部件套装索引",
+        "type": "text",
+        "content": "套装部件编号"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.piece-set-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "piece set ability"
+      },
+      "annotation": {
+        "title": "分件套装效果",
+        "type": "text",
+        "content": "按穿戴件数生效的套装效果"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.set-name",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "set name"
+      },
+      "annotation": {
+        "title": "套装名称",
+        "type": "text",
+        "content": "所属套装的名称"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.set-item",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "set item"
+      },
+      "annotation": {
+        "title": "套装物品",
+        "type": "text",
+        "content": "套装包含的物品列表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.set-item-master",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "set item master"
+      },
+      "annotation": {
+        "title": "套装主物品",
+        "type": "text",
+        "content": "套装的主物品定义"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.set-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "set ability"
+      },
+      "annotation": {
+        "title": "套装效果",
+        "type": "text",
+        "content": "穿戴多件时激活的效果"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.fullset-basic-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fullset basic explain"
+      },
+      "annotation": {
+        "title": "套装简要说明",
+        "type": "text",
+        "content": "集齐整套时的简要说明"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.fullset-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fullset explain"
+      },
+      "annotation": {
+        "title": "套装说明",
+        "type": "text",
+        "content": "集齐整套时的说明"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.fullset-detail-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fullset detail explain"
+      },
+      "annotation": {
+        "title": "套装详细说明",
+        "type": "text",
+        "content": "集齐整套时的详细说明"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.ability-case-index",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "ability case index"
+      },
+      "annotation": {
+        "title": "能力条目索引",
+        "type": "text",
+        "content": "能力条目的索引号"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.unique-stat-by-condition",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "unique stat by condition"
+      },
+      "annotation": {
+        "title": "条件唯一属性",
+        "type": "text",
+        "content": "满足条件时生效的唯一属性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stat-by-condition",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat by condition"
+      },
+      "annotation": {
+        "title": "条件属性",
+        "type": "text",
+        "content": "满足条件时生效的属性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.level-section-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "level section ability"
+      },
+      "annotation": {
+        "title": "等级分段能力",
+        "type": "text",
+        "content": "按等级区间生效的能力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.level-linear-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "level linear ability"
+      },
+      "annotation": {
+        "title": "等级线性能力",
+        "type": "text",
+        "content": "随等级线性成长的能力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stat-change",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat change"
+      },
+      "annotation": {
+        "title": "属性变更",
+        "type": "text",
+        "content": "属性替换或转换规则"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.special-ability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "special ability"
+      },
+      "annotation": {
+        "title": "特殊能力",
+        "type": "text",
+        "content": "特殊能力定义"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.custom-ability-count",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "custom ability count"
+      },
+      "annotation": {
+        "title": "自定义能力数量",
+        "type": "text",
+        "content": "自定义能力的数量"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.custom-ability-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "custom ability type"
+      },
+      "annotation": {
+        "title": "自定义能力类型",
+        "type": "text",
+        "content": "自定义能力的类型"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.extra-condition",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "extra condition"
+      },
+      "annotation": {
+        "title": "额外条件",
+        "type": "text",
+        "content": "额外的生效条件"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.extra-icon",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "extra icon"
+      },
+      "annotation": {
+        "title": "额外图标",
+        "type": "text",
+        "content": "附加显示的图标"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.if",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "if"
+      },
+      "annotation": {
+        "title": "条件",
+        "type": "text",
+        "content": "条件判断开始"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.then",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "then"
+      },
+      "annotation": {
+        "title": "结果",
+        "type": "text",
+        "content": "条件成立时的结果"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.multiple-then",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "multiple then"
+      },
+      "annotation": {
+        "title": "多重结果",
+        "type": "text",
+        "content": "一个条件对应多个结果"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.then-probability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "then probability"
+      },
+      "annotation": {
+        "title": "结果概率",
+        "type": "text",
+        "content": "条件成立时结果的触发概率"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.required-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "required skill"
+      },
+      "annotation": {
+        "title": "前置技能",
+        "type": "text",
+        "content": "使用装备所需的前置技能"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.required-job-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "required job skill"
+      },
+      "annotation": {
+        "title": "职业前置技能",
+        "type": "text",
+        "content": "按职业要求的前置技能"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-info",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill info"
+      },
+      "annotation": {
+        "title": "技能信息",
+        "type": "text",
+        "content": "技能相关配置信息"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-duration",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill duration"
+      },
+      "annotation": {
+        "title": "技能持续时间",
+        "type": "text",
+        "content": "装备赋予技能的持续时间"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-super-armor",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill super armor"
+      },
+      "annotation": {
+        "title": "技能霸体",
+        "type": "text",
+        "content": "装备赋予技能是否带霸体"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.event-use-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "event use skill"
+      },
+      "annotation": {
+        "title": "活动使用技能",
+        "type": "text",
+        "content": "活动期间可使用的技能"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.use-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "use skill"
+      },
+      "annotation": {
+        "title": "使用技能",
+        "type": "text",
+        "content": "装备可主动使用的技能"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.normal-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "normal skill"
+      },
+      "annotation": {
+        "title": "普通技能",
+        "type": "text",
+        "content": "关联的普通技能列表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.over-skill",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "over skill"
+      },
+      "annotation": {
+        "title": "终结技能",
+        "type": "text",
+        "content": "关联的终结技能列表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.use-command",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "use command"
+      },
+      "annotation": {
+        "title": "使用指令",
+        "type": "text",
+        "content": "使用装备的指令键"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hp-max",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hp max"
+      },
+      "annotation": {
+        "title": "最大HP",
+        "type": "text",
+        "content": "增加角色最大生命值"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.mp-max",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "mp max"
+      },
+      "annotation": {
+        "title": "最大MP",
+        "type": "text",
+        "content": "增加角色最大魔法值"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hp-regen-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hp regen speed"
+      },
+      "annotation": {
+        "title": "HP恢复速度",
+        "type": "text",
+        "content": "增加 HP 自然恢复速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.mp-regen-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "mp regen speed"
+      },
+      "annotation": {
+        "title": "MP恢复速度",
+        "type": "text",
+        "content": "增加 MP 自然恢复速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.mp-max-rate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "mp max rate"
+      },
+      "annotation": {
+        "title": "MP上限增加率",
+        "type": "text",
+        "content": "按百分比增加 MP 上限"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.mp-regen-speed-rate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "mp regen speed rate"
+      },
+      "annotation": {
+        "title": "MP恢复速度增加率",
+        "type": "text",
+        "content": "按百分比增加 MP 恢复速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.move-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "move speed"
+      },
+      "annotation": {
+        "title": "移动速度",
+        "type": "text",
+        "content": "增加移动速度，单位 0.1%"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.jump-power",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "jump power"
+      },
+      "annotation": {
+        "title": "跳跃力",
+        "type": "text",
+        "content": "增加跳跃高度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hit-recovery",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hit recovery"
+      },
+      "annotation": {
+        "title": "硬直恢复",
+        "type": "text",
+        "content": "增加受击硬直恢复速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.rigidity",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "rigidity"
+      },
+      "annotation": {
+        "title": "硬直度",
+        "type": "text",
+        "content": "增加自身硬直"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.attack-success",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "attack success"
+      },
+      "annotation": {
+        "title": "攻击成功率",
+        "type": "text",
+        "content": "增加攻击命中判定"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stuck-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stuck resistance"
+      },
+      "annotation": {
+        "title": "僵直抗性",
+        "type": "text",
+        "content": "增加对僵直状态的抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.all-activestatus-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all activestatus resistance"
+      },
+      "annotation": {
+        "title": "全异常状态抗性",
+        "type": "text",
+        "content": "同时增加所有异常状态抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.all-elemental-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all elemental attack"
+      },
+      "annotation": {
+        "title": "全属性强化",
+        "type": "text",
+        "content": "同时增加所有属性攻击强化"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.all-elemental-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all elemental resistance"
+      },
+      "annotation": {
+        "title": "全属性抗性",
+        "type": "text",
+        "content": "同时增加所有属性抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.element",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "element"
+      },
+      "annotation": {
+        "title": "元素属性",
+        "type": "text",
+        "content": "装备的固有元素属性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.elemental-property",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "elemental property"
+      },
+      "annotation": {
+        "title": "属性攻击",
+        "type": "text",
+        "content": "赋予攻击属性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.elemental-weapon",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "elemental weapon"
+      },
+      "annotation": {
+        "title": "属性武器",
+        "type": "text",
+        "content": "武器属性攻击配置"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.fire-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fire attack"
+      },
+      "annotation": {
+        "title": "火属性强化",
+        "type": "text",
+        "content": "增加火属性攻击强化"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.water-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "water attack"
+      },
+      "annotation": {
+        "title": "水属性强化",
+        "type": "text",
+        "content": "增加水属性攻击强化"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.light-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "light attack"
+      },
+      "annotation": {
+        "title": "光属性强化",
+        "type": "text",
+        "content": "增加光属性攻击强化"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.dark-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dark attack"
+      },
+      "annotation": {
+        "title": "暗属性强化",
+        "type": "text",
+        "content": "增加暗属性攻击强化"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.fire-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fire resistance"
+      },
+      "annotation": {
+        "title": "火属性抗性",
+        "type": "text",
+        "content": "增加火属性抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.water-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "water resistance"
+      },
+      "annotation": {
+        "title": "水属性抗性",
+        "type": "text",
+        "content": "增加水属性抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.light-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "light resistance"
+      },
+      "annotation": {
+        "title": "光属性抗性",
+        "type": "text",
+        "content": "增加光属性抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.dark-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dark resistance"
+      },
+      "annotation": {
+        "title": "暗属性抗性",
+        "type": "text",
+        "content": "增加暗属性抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.freeze-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "freeze resistance"
+      },
+      "annotation": {
+        "title": "冰冻抗性",
+        "type": "text",
+        "content": "增加冰冻抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.poison-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "poison resistance"
+      },
+      "annotation": {
+        "title": "中毒抗性",
+        "type": "text",
+        "content": "增加中毒抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stun-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stun resistance"
+      },
+      "annotation": {
+        "title": "眩晕抗性",
+        "type": "text",
+        "content": "增加眩晕抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.curse-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "curse resistance"
+      },
+      "annotation": {
+        "title": "诅咒抗性",
+        "type": "text",
+        "content": "增加诅咒抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.blind-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "blind resistance"
+      },
+      "annotation": {
+        "title": "失明抗性",
+        "type": "text",
+        "content": "增加失明抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.lightning-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "lightning resistance"
+      },
+      "annotation": {
+        "title": "感电抗性",
+        "type": "text",
+        "content": "增加感电抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stone-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stone resistance"
+      },
+      "annotation": {
+        "title": "石化抗性",
+        "type": "text",
+        "content": "增加石化抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.sleep-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "sleep resistance"
+      },
+      "annotation": {
+        "title": "睡眠抗性",
+        "type": "text",
+        "content": "增加睡眠抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.bleeding-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "bleeding resistance"
+      },
+      "annotation": {
+        "title": "出血抗性",
+        "type": "text",
+        "content": "增加出血抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.confuse-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "confuse resistance"
+      },
+      "annotation": {
+        "title": "混乱抗性",
+        "type": "text",
+        "content": "增加混乱抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.hold-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hold resistance"
+      },
+      "annotation": {
+        "title": "束缚抗性",
+        "type": "text",
+        "content": "增加束缚抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.burn-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "burn resistance"
+      },
+      "annotation": {
+        "title": "灼伤抗性",
+        "type": "text",
+        "content": "增加灼伤抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.slow-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "slow resistance"
+      },
+      "annotation": {
+        "title": "缓慢抗性",
+        "type": "text",
+        "content": "增加缓慢抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-attack-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add attack speed"
+      },
+      "annotation": {
+        "title": "附加攻击速度",
+        "type": "text",
+        "content": "额外增加的攻击速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-cast-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add cast speed"
+      },
+      "annotation": {
+        "title": "附加施放速度",
+        "type": "text",
+        "content": "额外增加的施放速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-move-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add move speed"
+      },
+      "annotation": {
+        "title": "附加移动速度",
+        "type": "text",
+        "content": "额外增加的移动速度"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-stuck",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add stuck"
+      },
+      "annotation": {
+        "title": "附加命中率",
+        "type": "text",
+        "content": "额外增加的命中率"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-stuck-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add stuck resistance"
+      },
+      "annotation": {
+        "title": "附加僵直抗性",
+        "type": "text",
+        "content": "额外增加的僵直抗性"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-physical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add physical attack"
+      },
+      "annotation": {
+        "title": "附加力量",
+        "type": "text",
+        "content": "额外增加力量"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-magical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add magical attack"
+      },
+      "annotation": {
+        "title": "附加智力",
+        "type": "text",
+        "content": "额外增加智力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-physical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add physical defense"
+      },
+      "annotation": {
+        "title": "附加体力",
+        "type": "text",
+        "content": "额外增加体力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-magical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add magical defense"
+      },
+      "annotation": {
+        "title": "附加精力",
+        "type": "text",
+        "content": "额外增加精神"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-separate-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add separate attack"
+      },
+      "annotation": {
+        "title": "附加独立攻击",
+        "type": "text",
+        "content": "额外增加独立攻击力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-anti-evil",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add anti evil"
+      },
+      "annotation": {
+        "title": "附加抗魔",
+        "type": "text",
+        "content": "额外增加抗魔值"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-equipment-physical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add equipment physical attack"
+      },
+      "annotation": {
+        "title": "附加物理攻击力",
+        "type": "text",
+        "content": "额外增加装备物理攻击力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-equipment-magical-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add equipment magical attack"
+      },
+      "annotation": {
+        "title": "附加魔法攻击力",
+        "type": "text",
+        "content": "额外增加装备魔法攻击力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-equipment-physical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add equipment physical defense"
+      },
+      "annotation": {
+        "title": "附加物理防御力",
+        "type": "text",
+        "content": "额外增加装备物理防御力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-equipment-magical-defense",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add equipment magical defense"
+      },
+      "annotation": {
+        "title": "附加魔法防御力",
+        "type": "text",
+        "content": "额外增加装备魔法防御力"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-rate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add rate"
+      },
+      "annotation": {
+        "title": "附加比率",
+        "type": "text",
+        "content": "额外增加的百分比比率"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-absolute-damage",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add absolute damage"
+      },
+      "annotation": {
+        "title": "附加绝对伤害",
+        "type": "text",
+        "content": "额外增加的固定伤害"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.move-wav",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "move wav"
+      },
+      "annotation": {
+        "title": "移动音效",
+        "type": "text",
+        "content": "拾取/移动时播放的音效"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.custom-wav",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "custom wav"
+      },
+      "annotation": {
+        "title": "自定义音效",
+        "type": "text",
+        "content": "自定义音效"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.specific-sound",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "specific sound"
+      },
+      "annotation": {
+        "title": "特定音效",
+        "type": "text",
+        "content": "特定动作播放的音效"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.attack-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "attack motion"
+      },
+      "annotation": {
+        "title": "攻击动画",
+        "type": "text",
+        "content": "攻击动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.move-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "move motion"
+      },
+      "annotation": {
+        "title": "移动动画",
+        "type": "text",
+        "content": "移动动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.jump-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "jump motion"
+      },
+      "annotation": {
+        "title": "跳跃动画",
+        "type": "text",
+        "content": "跳跃动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.damage-motion-1",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "damage motion 1"
+      },
+      "annotation": {
+        "title": "受击动画1",
+        "type": "text",
+        "content": "受击动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.damage-motion-2",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "damage motion 2"
+      },
+      "annotation": {
+        "title": "受击动画2",
+        "type": "text",
+        "content": "受击动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.sit-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "sit motion"
+      },
+      "annotation": {
+        "title": "坐下动画",
+        "type": "text",
+        "content": "坐下动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.down-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "down motion"
+      },
+      "annotation": {
+        "title": "倒地动画",
+        "type": "text",
+        "content": "倒地动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.overturn-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "overturn motion"
+      },
+      "annotation": {
+        "title": "起身动画",
+        "type": "text",
+        "content": "起身动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.buff-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "buff motion"
+      },
+      "annotation": {
+        "title": "BUFF动画",
+        "type": "text",
+        "content": "Buff 动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.dash-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dash motion"
+      },
+      "annotation": {
+        "title": "冲刺动画",
+        "type": "text",
+        "content": "冲刺动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.dashattack-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dashattack motion"
+      },
+      "annotation": {
+        "title": "冲刺攻击动画",
+        "type": "text",
+        "content": "冲刺攻击动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.jumpattack-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "jumpattack motion"
+      },
+      "annotation": {
+        "title": "跳跃攻击动画",
+        "type": "text",
+        "content": "跳跃攻击动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.getitem-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "getitem motion"
+      },
+      "annotation": {
+        "title": "拾取动画",
+        "type": "text",
+        "content": "拾取动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.rest-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "rest motion"
+      },
+      "annotation": {
+        "title": "休息动画",
+        "type": "text",
+        "content": "休息动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.etc-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "etc motion"
+      },
+      "annotation": {
+        "title": "其它动画",
+        "type": "text",
+        "content": "其它动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.waiting-motion",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "waiting motion"
+      },
+      "annotation": {
+        "title": "待机动画",
+        "type": "text",
+        "content": "待机动作动画资源"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.duration",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duration"
+      },
+      "annotation": {
+        "title": "持续时间",
+        "type": "text",
+        "content": "效果持续时间"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.probability",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "probability"
+      },
+      "annotation": {
+        "title": "概率",
+        "type": "text",
+        "content": "效果触发概率"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.target",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "target"
+      },
+      "annotation": {
+        "title": "目标",
+        "type": "text",
+        "content": "作用目标"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.stat",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat"
+      },
+      "annotation": {
+        "title": "属性",
+        "type": "text",
+        "content": "属性记录"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.equipment-ani-script",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment ani script"
+      },
+      "annotation": {
+        "title": "装备动画脚本",
+        "type": "text",
+        "content": "装备动画图层记录"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.add-repair-price",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add repair price"
+      },
+      "annotation": {
+        "title": "附加修理费用",
+        "type": "text",
+        "content": "额外增加的修理费用"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.level-section-ani",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "level section ani"
+      },
+      "annotation": {
+        "title": "等级分段动画",
+        "type": "text",
+        "content": "按等级分段切换的动画"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.emancipate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "emancipate"
+      },
+      "annotation": {
+        "title": "解封(净化)",
+        "type": "text",
+        "content": "解除封装/开启净化的配置"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.force-result-item-rule",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "force result item rule"
+      },
+      "annotation": {
+        "title": "强制结果物品规则",
+        "type": "text",
+        "content": "强制指定结果物品的规则"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.emancipate-explain",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "emancipate explain"
+      },
+      "annotation": {
+        "title": "解封说明",
+        "type": "text",
+        "content": "解封/净化界面的说明文本"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.cooltime",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cooltime"
+      },
+      "annotation": {
+        "title": "冷却时间",
+        "type": "text",
+        "content": "冷却时间数值"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.time",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "time"
+      },
+      "annotation": {
+        "title": "时间参数",
+        "type": "text",
+        "content": "时间相关参数"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.all-skill-item",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all skill item"
+      },
+      "annotation": {
+        "title": "全技能道具",
+        "type": "text",
+        "content": "作用于所有技能的道具"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.all-skill-item-container",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all skill item container"
+      },
+      "annotation": {
+        "title": "全技能道具容器",
+        "type": "text",
+        "content": "全技能道具的容器"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.item-growtype",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item growtype"
+      },
+      "annotation": {
+        "title": "适用转职",
+        "type": "text",
+        "content": "生效的转职列表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.upper-bound-level",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "upper bound level"
+      },
+      "annotation": {
+        "title": "等级上限",
+        "type": "text",
+        "content": "生效的等级上限"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.lower-bound-level",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "lower bound level"
+      },
+      "annotation": {
+        "title": "等级下限",
+        "type": "text",
+        "content": "生效的等级下限"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-apply-condition",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill apply condition"
+      },
+      "annotation": {
+        "title": "技能生效条件",
+        "type": "text",
+        "content": "装备赋予技能的生效条件"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-group",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill group"
+      },
+      "annotation": {
+        "title": "技能分组",
+        "type": "text",
+        "content": "装备赋予技能的分组"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.skill-phase",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill phase"
+      },
+      "annotation": {
+        "title": "技能阶段",
+        "type": "text",
+        "content": "装备赋予技能的阶段"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.int-data",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "int data"
+      },
+      "annotation": {
+        "title": "整数数据",
+        "type": "text",
+        "content": "自定义整数数据表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.string-data",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "string data"
+      },
+      "annotation": {
+        "title": "字符串数据",
+        "type": "text",
+        "content": "自定义字符串数据表"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.random-option",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random option"
+      },
+      "annotation": {
+        "title": "随机选项",
+        "type": "text",
+        "content": "随机词条选项"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.effect-part-set-index",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "effect part set index"
+      },
+      "annotation": {
+        "title": "特效部件套装索引",
+        "type": "text",
+        "content": "特效对应的套装部件编号"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.reference-effect-part-set-index",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "reference effect part set index"
+      },
+      "annotation": {
+        "title": "引用部件套装索引",
+        "type": "text",
+        "content": "引用的套装部件编号"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.equipment-duration",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment duration"
+      },
+      "annotation": {
+        "title": "装备持续时间",
+        "type": "text",
+        "content": "装备效果的持续时间"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.active-status",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status"
+      },
+      "annotation": {
+        "title": "异常状态",
+        "type": "text",
+        "content": "装备附加的异常状态"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.emancipate-type",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "emancipate type"
+      },
+      "annotation": {
+        "title": "解封类型",
+        "type": "text",
+        "content": "解封/净化的类型"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.equipment-grade",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment grade"
+      },
+      "annotation": {
+        "title": "装备品级",
+        "type": "text",
+        "content": "装备的品级"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.equipment-grow",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment grow"
+      },
+      "annotation": {
+        "title": "装备成长",
+        "type": "text",
+        "content": "装备成长/喂养配置"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.equipment-upgrade",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment upgrade"
+      },
+      "annotation": {
+        "title": "装备升级",
+        "type": "text",
+        "content": "装备升级配置"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.passive-object",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "passive object"
+      },
+      "annotation": {
+        "title": "被动对象",
+        "type": "text",
+        "content": "装备生成的被动对象"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "equ.sec.revisionpvpgrade",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "revisionpvpgrade"
+      },
+      "annotation": {
+        "title": "决斗场品级修正",
+        "type": "text",
+        "content": "决斗场中的品级修正"
+      },
+      "group": "equ"
+    },
+    {
+      "id": "skl.sec.name",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "name"
+      },
+      "annotation": {
+        "title": "技能名称",
+        "type": "text",
+        "content": "技能显示名称"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.name2",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "name2"
+      },
+      "annotation": {
+        "title": "技能副名称",
+        "type": "text",
+        "content": "技能的第二名称"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.explain",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "explain"
+      },
+      "annotation": {
+        "title": "技能说明",
+        "type": "text",
+        "content": "技能详细说明文本"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.basic-explain",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "basic explain"
+      },
+      "annotation": {
+        "title": "简要说明",
+        "type": "text",
+        "content": "技能简要说明文本"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.basic-explain-ex",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "basic explain ex"
+      },
+      "annotation": {
+        "title": "EX简要说明",
+        "type": "text",
+        "content": "EX 技能简要说明"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.explain-ex",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "explain ex"
+      },
+      "annotation": {
+        "title": "EX技能说明",
+        "type": "text",
+        "content": "EX 技能详细说明"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.caption",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "caption"
+      },
+      "annotation": {
+        "title": "提示文本",
+        "type": "text",
+        "content": "技能提示/引导文本"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "type"
+      },
+      "annotation": {
+        "title": "技能类型",
+        "type": "text",
+        "content": "`[active]` 主动技能 / `[passive]` 被动技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-class",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill class"
+      },
+      "annotation": {
+        "title": "技能分类",
+        "type": "text",
+        "content": "技能所属分类编号"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.maximum-level",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "maximum level"
+      },
+      "annotation": {
+        "title": "最大等级",
+        "type": "text",
+        "content": "技能可提升的最大等级"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.growtype-maximum-level",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "growtype maximum level"
+      },
+      "annotation": {
+        "title": "各职业最大等级",
+        "type": "text",
+        "content": "各转职对应的最大等级"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.second-growtype-maximum-level",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "second growtype maximum level"
+      },
+      "annotation": {
+        "title": "二觉各职业最大等级",
+        "type": "text",
+        "content": "二次觉醒各职业最大等级"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-fitness-growtype",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill fitness growtype"
+      },
+      "annotation": {
+        "title": "适用职业",
+        "type": "text",
+        "content": "可使用该技能的转职列表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-fitness-second-growtype",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill fitness second growtype"
+      },
+      "annotation": {
+        "title": "二觉适用职业",
+        "type": "text",
+        "content": "二次觉醒适用职业列表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.character-type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "character type"
+      },
+      "annotation": {
+        "title": "角色类型",
+        "type": "text",
+        "content": "区分角色/召唤物等载体"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.purchase-cost",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "purchase cost"
+      },
+      "annotation": {
+        "title": "学习SP",
+        "type": "text",
+        "content": "每级学习消耗的 SP"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.special-purchase-cost",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "special purchase cost"
+      },
+      "annotation": {
+        "title": "学习TP",
+        "type": "text",
+        "content": "每级学习消耗的 TP"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.purchase-gold",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "purchase gold"
+      },
+      "annotation": {
+        "title": "购买金币",
+        "type": "text",
+        "content": "购买该技能所需金币"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.purchase-gsp",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "purchase gsp"
+      },
+      "annotation": {
+        "title": "购买GSP",
+        "type": "text",
+        "content": "购买该技能所需 GSP"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.required-level",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "required level"
+      },
+      "annotation": {
+        "title": "学习等级",
+        "type": "text",
+        "content": "学习所需的最低角色等级"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.required-level-range",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "required level range"
+      },
+      "annotation": {
+        "title": "等级区间",
+        "type": "text",
+        "content": "每级所需的等级跨度"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.pre-required-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "pre required skill"
+      },
+      "annotation": {
+        "title": "前置技能",
+        "type": "text",
+        "content": "学习前必须满足的前置技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.level-info",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "level info"
+      },
+      "annotation": {
+        "title": "等级数据",
+        "type": "text",
+        "content": "各等级对应的数值表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.static-data",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "static data"
+      },
+      "annotation": {
+        "title": "静态数据",
+        "type": "text",
+        "content": "不随等级变化的固定参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.level-property",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "level property"
+      },
+      "annotation": {
+        "title": "等级属性",
+        "type": "text",
+        "content": "技能面板属性与说明文本"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.special-level-up",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "special level up"
+      },
+      "annotation": {
+        "title": "特殊成长",
+        "type": "text",
+        "content": "额外等级成长规则"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.add-level-info",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add level info"
+      },
+      "annotation": {
+        "title": "追加等级数据",
+        "type": "text",
+        "content": "附加的等级数据表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.add-static-data",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add static data"
+      },
+      "annotation": {
+        "title": "追加静态数据",
+        "type": "text",
+        "content": "附加的固定参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.cooltime-level-info",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cooltime level info"
+      },
+      "annotation": {
+        "title": "冷却等级数据",
+        "type": "text",
+        "content": "按等级区分的冷却数据"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.start-cool-time",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "start cool time"
+      },
+      "annotation": {
+        "title": "初始冷却",
+        "type": "text",
+        "content": "进入场景时的初始冷却"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.consume-mp",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "consume mp"
+      },
+      "annotation": {
+        "title": "消耗MP",
+        "type": "text",
+        "content": "每次施放消耗的 MP"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.maintain-mp",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "maintain mp"
+      },
+      "annotation": {
+        "title": "持续消耗MP",
+        "type": "text",
+        "content": "持续施放时每秒消耗的 MP"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.casting-time",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "casting time"
+      },
+      "annotation": {
+        "title": "施法时间",
+        "type": "text",
+        "content": "技能施放耗时(毫秒)"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.durability-decrease-rate",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "durability decrease rate"
+      },
+      "annotation": {
+        "title": "耐久消耗率",
+        "type": "text",
+        "content": "施放时武器耐久消耗"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.consume-item",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "consume item"
+      },
+      "annotation": {
+        "title": "消耗物品",
+        "type": "text",
+        "content": "施放时消耗的道具"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.limit-count",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "limit count"
+      },
+      "annotation": {
+        "title": "使用次数",
+        "type": "text",
+        "content": "每日/每图可用次数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.auto-limit-count-reduce",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "auto limit count reduce"
+      },
+      "annotation": {
+        "title": "次数自动恢复",
+        "type": "text",
+        "content": "使用次数是否自动恢复"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.seal-enable",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "seal enable"
+      },
+      "annotation": {
+        "title": "可封印",
+        "type": "text",
+        "content": "技能是否可被封印"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.shake-screen",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "shake screen"
+      },
+      "annotation": {
+        "title": "屏幕震动",
+        "type": "text",
+        "content": "命中时的屏幕震动参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.weapon-effect-type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "weapon effect type"
+      },
+      "annotation": {
+        "title": "武器属性类型",
+        "type": "text",
+        "content": "`[physical]`/`[magical]`/`[none]`"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-explain-icon",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill explain icon"
+      },
+      "annotation": {
+        "title": "说明图标",
+        "type": "text",
+        "content": "技能说明中显示的图标列表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.command",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "command"
+      },
+      "annotation": {
+        "title": "操作指令",
+        "type": "text",
+        "content": "技能指令键序列"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.command-key-explain",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "command key explain"
+      },
+      "annotation": {
+        "title": "指令说明",
+        "type": "text",
+        "content": "操作指令的文本说明"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-command-advantage",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill command advantage"
+      },
+      "annotation": {
+        "title": "指令优势",
+        "type": "text",
+        "content": "用指令施放时的 MP/冷却减免"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.command-customizing",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "command customizing"
+      },
+      "annotation": {
+        "title": "指令自定义",
+        "type": "text",
+        "content": "自定义指令键"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-preloading-image",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill preloading image"
+      },
+      "annotation": {
+        "title": "预加载资源",
+        "type": "text",
+        "content": "提前加载的动画/特效资源"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.feature-skill-type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "feature skill type"
+      },
+      "annotation": {
+        "title": "特性技能类型",
+        "type": "text",
+        "content": "1=特性技能，0/缺省=普通技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.feature-skill-index",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "feature skill index"
+      },
+      "annotation": {
+        "title": "特性技能索引",
+        "type": "text",
+        "content": "对应特性技能的索引号"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.feature-skill-static-data",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "feature skill static data"
+      },
+      "annotation": {
+        "title": "特性静态数据",
+        "type": "text",
+        "content": "特性技能的固定参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.feature-skill-level-property",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "feature skill level property"
+      },
+      "annotation": {
+        "title": "特性等级属性",
+        "type": "text",
+        "content": "特性技能的面板属性"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.feature-skill-level-info",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "feature skill level info"
+      },
+      "annotation": {
+        "title": "特性等级数据",
+        "type": "text",
+        "content": "特性技能的等级数据"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.dungeon",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dungeon"
+      },
+      "annotation": {
+        "title": "地下城数值",
+        "type": "text",
+        "content": "地下城场景下生效的数值"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.pvp",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "pvp"
+      },
+      "annotation": {
+        "title": "决斗场数值",
+        "type": "text",
+        "content": "决斗场场景下生效的数值"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.death-tower",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "death tower"
+      },
+      "annotation": {
+        "title": "死亡之塔数值",
+        "type": "text",
+        "content": "死亡之塔场景下生效的数值"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.warroom",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "warroom"
+      },
+      "annotation": {
+        "title": "战争房间数值",
+        "type": "text",
+        "content": "战争房间场景下生效的数值"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duel-skill-cool-time",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duel skill cool time"
+      },
+      "annotation": {
+        "title": "决斗技能冷却",
+        "type": "text",
+        "content": "决斗场专用技能冷却"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duel-skill-consume-mp",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duel skill consume mp"
+      },
+      "annotation": {
+        "title": "决斗技能MP",
+        "type": "text",
+        "content": "决斗场专用 MP 消耗"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duel-skill-consume-item",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duel skill consume item"
+      },
+      "annotation": {
+        "title": "决斗技能消耗",
+        "type": "text",
+        "content": "决斗场专用消耗道具"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duel-skill-icon",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duel skill icon"
+      },
+      "annotation": {
+        "title": "决斗技能图标",
+        "type": "text",
+        "content": "决斗场专用技能图标"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duel-skill-ref-skill-info",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duel skill ref skill info"
+      },
+      "annotation": {
+        "title": "决斗技能引用",
+        "type": "text",
+        "content": "决斗场技能引用的原技能信息"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-damage-tool-data",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill damage tool data"
+      },
+      "annotation": {
+        "title": "技能工具数据",
+        "type": "text",
+        "content": "技能编辑器使用的结构数据"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.executable-states",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "executable states"
+      },
+      "annotation": {
+        "title": "可执行状态",
+        "type": "text",
+        "content": "允许施放该技能的角色状态"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.executable-skills",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "executable skills"
+      },
+      "annotation": {
+        "title": "可执行技能",
+        "type": "text",
+        "content": "可衔接/取消到的技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status"
+      },
+      "annotation": {
+        "title": "异常状态",
+        "type": "text",
+        "content": "技能附加的异常状态"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status-buff",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status buff"
+      },
+      "annotation": {
+        "title": "异常状态Buff",
+        "type": "text",
+        "content": "异常状态增益"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status-debuff",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status debuff"
+      },
+      "annotation": {
+        "title": "异常状态Debuff",
+        "type": "text",
+        "content": "异常状态减益"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status-duration",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status duration"
+      },
+      "annotation": {
+        "title": "异常状态时长",
+        "type": "text",
+        "content": "异常状态持续时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status-recovery",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status recovery"
+      },
+      "annotation": {
+        "title": "异常状态恢复",
+        "type": "text",
+        "content": "使用后解除的异常状态"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.active-status-buff-event-type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status buff event type"
+      },
+      "annotation": {
+        "title": "异常状态事件",
+        "type": "text",
+        "content": "异常状态触发事件类型"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.ignore-active-status",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "ignore active status"
+      },
+      "annotation": {
+        "title": "无视异常状态",
+        "type": "text",
+        "content": "施放时无视的异常状态"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.change-status-buff",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "change status buff"
+      },
+      "annotation": {
+        "title": "转换状态Buff",
+        "type": "text",
+        "content": "状态转换配置"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.stat-by-condition",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat by condition"
+      },
+      "annotation": {
+        "title": "条件属性",
+        "type": "text",
+        "content": "按条件生效的属性"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.elemental-property",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "elemental property"
+      },
+      "annotation": {
+        "title": "属性攻击",
+        "type": "text",
+        "content": "技能属性攻击配置"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.elemental-weapon",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "elemental weapon"
+      },
+      "annotation": {
+        "title": "属性武器",
+        "type": "text",
+        "content": "技能属性武器配置"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.passive",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "passive"
+      },
+      "annotation": {
+        "title": "被动技能",
+        "type": "text",
+        "content": "被动技能标记"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.expert-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expert skill"
+      },
+      "annotation": {
+        "title": "副职业技能",
+        "type": "text",
+        "content": "副职业专属技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.guild-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "guild skill"
+      },
+      "annotation": {
+        "title": "公会技能",
+        "type": "text",
+        "content": "公会专属技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.awakening-explain",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "awakening explain"
+      },
+      "annotation": {
+        "title": "觉醒说明",
+        "type": "text",
+        "content": "觉醒技能说明"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.auto-skill-list",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "auto skill list"
+      },
+      "annotation": {
+        "title": "自动技能列表",
+        "type": "text",
+        "content": "自动学习的技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.auto-cooltime-apply",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "auto cooltime apply"
+      },
+      "annotation": {
+        "title": "冷却自动应用",
+        "type": "text",
+        "content": "冷却时间是否自动计算"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.classic-skill-list",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "classic skill list"
+      },
+      "annotation": {
+        "title": "经典技能列表",
+        "type": "text",
+        "content": "经典(旧版)技能列表"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.increase-all-skill-damage",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "increase all skill damage"
+      },
+      "annotation": {
+        "title": "全技能伤害增加",
+        "type": "text",
+        "content": "提升所有技能伤害"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.increase-appoint-skill-damage",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "increase appoint skill damage"
+      },
+      "annotation": {
+        "title": "指定技能伤害增加",
+        "type": "text",
+        "content": "提升指定技能伤害"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.increase-except-skill-damage",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "increase except skill damage"
+      },
+      "annotation": {
+        "title": "例外技能伤害增加",
+        "type": "text",
+        "content": "除指定技能外伤害增加"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.increase-skill-damage-auto-start-off",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "increase skill damage auto start off"
+      },
+      "annotation": {
+        "title": "伤害增加自动关闭",
+        "type": "text",
+        "content": "是否默认关闭伤害增加"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.reference-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "reference skill"
+      },
+      "annotation": {
+        "title": "引用技能",
+        "type": "text",
+        "content": "引用其它技能的配置"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.linked-blast-add-point",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "linked blast add point"
+      },
+      "annotation": {
+        "title": "连环爆炸加分",
+        "type": "text",
+        "content": "连环爆炸加分配置"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.is-linked-blast",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "is linked blast"
+      },
+      "annotation": {
+        "title": "连环爆炸",
+        "type": "text",
+        "content": "是否为连环爆炸技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.usable-passiveobject",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable passiveobject"
+      },
+      "annotation": {
+        "title": "可用被动对象",
+        "type": "text",
+        "content": "技能可生成的被动对象"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.grow-type-cool-time",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "grow type cool time"
+      },
+      "annotation": {
+        "title": "职业冷却",
+        "type": "text",
+        "content": "按职业区分的冷却时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.warning-box",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "warning box"
+      },
+      "annotation": {
+        "title": "警告框",
+        "type": "text",
+        "content": "技能警告提示框"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-final-attackrate",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool final attackrate"
+      },
+      "annotation": {
+        "title": "最终攻击率",
+        "type": "text",
+        "content": "技能工具数据中的最终攻击率"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-attackrate-level-data",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool attackrate level data"
+      },
+      "annotation": {
+        "title": "攻击率等级数据",
+        "type": "text",
+        "content": "按等级的攻击率数据"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-cool-time",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool cool time"
+      },
+      "annotation": {
+        "title": "工具冷却时间",
+        "type": "text",
+        "content": "技能工具数据中的冷却时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-attackrangex",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool attackrangex"
+      },
+      "annotation": {
+        "title": "攻击范围X",
+        "type": "text",
+        "content": "技能攻击范围 X"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-attackrangey",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool attackrangey"
+      },
+      "annotation": {
+        "title": "攻击范围Y",
+        "type": "text",
+        "content": "技能攻击范围 Y"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-dummyvariable",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool dummyvariable"
+      },
+      "annotation": {
+        "title": "傀儡变量",
+        "type": "text",
+        "content": "技能傀儡变量参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-attacktime",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool attacktime"
+      },
+      "annotation": {
+        "title": "攻击持续时间",
+        "type": "text",
+        "content": "攻击判定持续时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-cubeskill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool cubeskill"
+      },
+      "annotation": {
+        "title": "立方体技能",
+        "type": "text",
+        "content": "立方体技能参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-etc-explain",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool etc explain"
+      },
+      "annotation": {
+        "title": "其它说明",
+        "type": "text",
+        "content": "技能工具数据中的其它说明"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-predelay",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool predelay"
+      },
+      "annotation": {
+        "title": "前置延迟",
+        "type": "text",
+        "content": "技能前置延迟"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-superarmour",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool superarmour"
+      },
+      "annotation": {
+        "title": "霸体",
+        "type": "text",
+        "content": "技能霸体参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-installedskill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool installedskill"
+      },
+      "annotation": {
+        "title": "安装技能",
+        "type": "text",
+        "content": "安装类技能参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-superholdtime",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool superholdtime"
+      },
+      "annotation": {
+        "title": "超级霸体时间",
+        "type": "text",
+        "content": "超级霸体持续时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skill-under-cooltime-effect",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill under cooltime effect"
+      },
+      "annotation": {
+        "title": "冷却中技能效果",
+        "type": "text",
+        "content": "冷却期间可触发的效果"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.skillstyle-name",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skillstyle name"
+      },
+      "annotation": {
+        "title": "技能风格名称",
+        "type": "text",
+        "content": "技能风格名称"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.experience-sub-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "experience sub skill"
+      },
+      "annotation": {
+        "title": "经验子技能",
+        "type": "text",
+        "content": "随经验成长的子技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-mutualrigidity",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool mutualrigidity"
+      },
+      "annotation": {
+        "title": "相互僵直",
+        "type": "text",
+        "content": "技能相互僵直参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-awakeningskill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool awakeningskill"
+      },
+      "annotation": {
+        "title": "觉醒技能",
+        "type": "text",
+        "content": "觉醒技能标记"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.duration",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "duration"
+      },
+      "annotation": {
+        "title": "持续时间",
+        "type": "text",
+        "content": "效果持续时间"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.tool-dummyvariablesimple",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tool dummyvariablesimple"
+      },
+      "annotation": {
+        "title": "简易傀儡变量",
+        "type": "text",
+        "content": "简化傀儡变量参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.fixed-level-skill",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fixed level skill"
+      },
+      "annotation": {
+        "title": "固定等级技能",
+        "type": "text",
+        "content": "固定等级的技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.interval-level",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "interval level"
+      },
+      "annotation": {
+        "title": "间隔等级",
+        "type": "text",
+        "content": "等级间隔"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.add-level-per-interval",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add level per interval"
+      },
+      "annotation": {
+        "title": "按间隔增加等级",
+        "type": "text",
+        "content": "按等级间隔增加的效果"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.hold-type",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hold type"
+      },
+      "annotation": {
+        "title": "抓取类型",
+        "type": "text",
+        "content": "抓取/束缚类型"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.assault",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "assault"
+      },
+      "annotation": {
+        "title": "突进",
+        "type": "text",
+        "content": "突进参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.pre-teleport",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "pre teleport"
+      },
+      "annotation": {
+        "title": "传送前",
+        "type": "text",
+        "content": "传送前的位置参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.sec.post-teleport",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "post teleport"
+      },
+      "annotation": {
+        "title": "传送后",
+        "type": "text",
+        "content": "传送后的位置参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "stk.sec.name",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "name"
+      },
+      "annotation": {
+        "title": "物品名称",
+        "type": "text",
+        "content": "道具显示名称"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.name2",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "name2"
+      },
+      "annotation": {
+        "title": "物品副名称",
+        "type": "text",
+        "content": "道具第二名称"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.explain",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "explain"
+      },
+      "annotation": {
+        "title": "物品说明",
+        "type": "text",
+        "content": "道具详细说明文本"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.explain-alpha",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "explain alpha"
+      },
+      "annotation": {
+        "title": "说明透明度",
+        "type": "text",
+        "content": "道具说明背景透明度"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.flavor-text",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "flavor text"
+      },
+      "annotation": {
+        "title": "风味文本",
+        "type": "text",
+        "content": "道具背景描述文本"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.grade",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "grade"
+      },
+      "annotation": {
+        "title": "物品等级",
+        "type": "text",
+        "content": "道具等级(LV)"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.rarity-possible-explain",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "rarity possible explain"
+      },
+      "annotation": {
+        "title": "可用品质说明",
+        "type": "text",
+        "content": "按品质显示的说明"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.weight",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "weight"
+      },
+      "annotation": {
+        "title": "重量",
+        "type": "text",
+        "content": "道具重量"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.minimum-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "minimum level"
+      },
+      "annotation": {
+        "title": "最低使用等级",
+        "type": "text",
+        "content": "使用所需的最低等级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.maximum-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "maximum level"
+      },
+      "annotation": {
+        "title": "最高使用等级",
+        "type": "text",
+        "content": "可使用的最高等级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stack-limit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stack limit"
+      },
+      "annotation": {
+        "title": "堆叠上限",
+        "type": "text",
+        "content": "单格最大堆叠数量"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.attach-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "attach type"
+      },
+      "annotation": {
+        "title": "交易类型",
+        "type": "text",
+        "content": "绑定与交易限制"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.trade-limit-max",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "trade limit max"
+      },
+      "annotation": {
+        "title": "交易上限",
+        "type": "text",
+        "content": "可交易次数上限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.price",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "price"
+      },
+      "annotation": {
+        "title": "购买价格",
+        "type": "text",
+        "content": "NPC 商店购买价格"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.value",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "value"
+      },
+      "annotation": {
+        "title": "售价",
+        "type": "text",
+        "content": "出售给 NPC 的价格"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.add-price",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "add price"
+      },
+      "annotation": {
+        "title": "附加价格",
+        "type": "text",
+        "content": "额外增加的价格"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.creation-rate",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "creation rate"
+      },
+      "annotation": {
+        "title": "生成概率",
+        "type": "text",
+        "content": "掉落/生成权重"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-job",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable job"
+      },
+      "annotation": {
+        "title": "可用职业",
+        "type": "text",
+        "content": "可使用该道具的职业"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.suitable-job",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "suitable job"
+      },
+      "annotation": {
+        "title": "适用职业",
+        "type": "text",
+        "content": "该道具适用的职业"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.impossible-jobs",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "impossible jobs"
+      },
+      "annotation": {
+        "title": "禁用职业",
+        "type": "text",
+        "content": "禁止使用该道具的职业"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.item-category",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item category"
+      },
+      "annotation": {
+        "title": "物品分类",
+        "type": "text",
+        "content": "背包中的分类"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.item-group-name",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item group name"
+      },
+      "annotation": {
+        "title": "物品分组",
+        "type": "text",
+        "content": "物品分组名称"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.category",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "category"
+      },
+      "annotation": {
+        "title": "分类",
+        "type": "text",
+        "content": "道具分类"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.sub-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "sub type"
+      },
+      "annotation": {
+        "title": "物品子类型",
+        "type": "text",
+        "content": "道具子类型编号"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stackable-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stackable type"
+      },
+      "annotation": {
+        "title": "道具类型",
+        "type": "text",
+        "content": "道具的使用/堆叠类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.invisible-stackable-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "invisible stackable type"
+      },
+      "annotation": {
+        "title": "隐藏类道具类型",
+        "type": "text",
+        "content": "不在背包显示的堆叠类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.material-count",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "material count"
+      },
+      "annotation": {
+        "title": "材料数量",
+        "type": "text",
+        "content": "材料相关数量参数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.materials",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "materials"
+      },
+      "annotation": {
+        "title": "材料列表",
+        "type": "text",
+        "content": "合成/制作材料列表"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.variable-need-material",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "variable need material"
+      },
+      "annotation": {
+        "title": "可变需求材料",
+        "type": "text",
+        "content": "随条件变化的材料需求"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.minimum-itemmaking-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "minimum itemmaking level"
+      },
+      "annotation": {
+        "title": "最低制作等级",
+        "type": "text",
+        "content": "制作所需最低制作等级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.input-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "input item"
+      },
+      "annotation": {
+        "title": "投入物品",
+        "type": "text",
+        "content": "合成/转化投入的物品"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.output-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "output item"
+      },
+      "annotation": {
+        "title": "产出物品",
+        "type": "text",
+        "content": "合成/转化产出的物品"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.fail-output",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fail output"
+      },
+      "annotation": {
+        "title": "失败产出",
+        "type": "text",
+        "content": "制作失败时的产出"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.target-item-id",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "target item id"
+      },
+      "annotation": {
+        "title": "目标物品ID",
+        "type": "text",
+        "content": "作用目标物品"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.result-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "result item"
+      },
+      "annotation": {
+        "title": "结果物品",
+        "type": "text",
+        "content": "条件判定的结果物品"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.a-condition-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "a condition item"
+      },
+      "annotation": {
+        "title": "条件物品A",
+        "type": "text",
+        "content": "条件判定物品 A"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.b-condition-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "b condition item"
+      },
+      "annotation": {
+        "title": "条件物品B",
+        "type": "text",
+        "content": "条件判定物品 B"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.compound-need-material-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "compound need material info"
+      },
+      "annotation": {
+        "title": "合成材料信息",
+        "type": "text",
+        "content": "合成所需材料信息"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.if",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "if"
+      },
+      "annotation": {
+        "title": "条件",
+        "type": "text",
+        "content": "条件判断开始"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.then",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "then"
+      },
+      "annotation": {
+        "title": "结果",
+        "type": "text",
+        "content": "条件成立时的结果"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.random",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random"
+      },
+      "annotation": {
+        "title": "随机",
+        "type": "text",
+        "content": "随机结果"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.random-list",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random list"
+      },
+      "annotation": {
+        "title": "随机列表",
+        "type": "text",
+        "content": "随机候选列表"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.random-probability",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random probability"
+      },
+      "annotation": {
+        "title": "随机概率",
+        "type": "text",
+        "content": "随机概率参数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.success-rate",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "success rate"
+      },
+      "annotation": {
+        "title": "成功率",
+        "type": "text",
+        "content": "制作/强化成功率"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action type"
+      },
+      "annotation": {
+        "title": "使用动作",
+        "type": "text",
+        "content": "道具使用时执行的动作"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-usable-place",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action usable place"
+      },
+      "annotation": {
+        "title": "可用地点",
+        "type": "text",
+        "content": "可使用的地图/场所"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-usable-dungeon",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action usable dungeon"
+      },
+      "annotation": {
+        "title": "可用地下城",
+        "type": "text",
+        "content": "可使用的副本"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-usable-server-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action usable server type"
+      },
+      "annotation": {
+        "title": "可用服务器类型",
+        "type": "text",
+        "content": "可使用的服务器类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-usable-condition",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action usable condition"
+      },
+      "annotation": {
+        "title": "可用条件",
+        "type": "text",
+        "content": "使用道具的前置条件"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-disable-map",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action disable map"
+      },
+      "annotation": {
+        "title": "禁用地图",
+        "type": "text",
+        "content": "禁止使用的地图"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.cooltime-group",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cooltime group"
+      },
+      "annotation": {
+        "title": "冷却组",
+        "type": "text",
+        "content": "共享冷却的组"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.cooltime-maintenance",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cooltime maintenance"
+      },
+      "annotation": {
+        "title": "冷却保留",
+        "type": "text",
+        "content": "跨场景是否保留冷却"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-period",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable period"
+      },
+      "annotation": {
+        "title": "使用期限",
+        "type": "text",
+        "content": "道具有效天数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-datetime",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable datetime"
+      },
+      "annotation": {
+        "title": "使用时段",
+        "type": "text",
+        "content": "限定使用的日期时段"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-expired-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable expired item"
+      },
+      "annotation": {
+        "title": "过期可用",
+        "type": "text",
+        "content": "过期后是否仍可使用"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.expiration-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expiration info"
+      },
+      "annotation": {
+        "title": "过期信息",
+        "type": "text",
+        "content": "过期提示信息"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.expiration-date",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expiration date"
+      },
+      "annotation": {
+        "title": "到期时间",
+        "type": "text",
+        "content": "道具过期时间"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-world",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable world"
+      },
+      "annotation": {
+        "title": "可用世界",
+        "type": "text",
+        "content": "限定使用的世界"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.hp-recovery",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hp recovery"
+      },
+      "annotation": {
+        "title": "HP恢复",
+        "type": "text",
+        "content": "使用后恢复的 HP"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.mp-recovery",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "mp recovery"
+      },
+      "annotation": {
+        "title": "MP恢复",
+        "type": "text",
+        "content": "使用后恢复的 MP"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.buff",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "buff"
+      },
+      "annotation": {
+        "title": "Buff",
+        "type": "text",
+        "content": "使用后附加的增益效果"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stat-change",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat change"
+      },
+      "annotation": {
+        "title": "属性变更",
+        "type": "text",
+        "content": "使用后改变的属性"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stat-change-duration",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat change duration"
+      },
+      "annotation": {
+        "title": "属性变更时长",
+        "type": "text",
+        "content": "属性变更持续时间"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stat-desc",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stat desc"
+      },
+      "annotation": {
+        "title": "属性说明",
+        "type": "text",
+        "content": "属性文本说明"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.effect-maintenance",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "effect maintenance"
+      },
+      "annotation": {
+        "title": "效果维持",
+        "type": "text",
+        "content": "效果维持参数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.maintain-ability",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "maintain ability"
+      },
+      "annotation": {
+        "title": "维持能力",
+        "type": "text",
+        "content": "持续生效的能力"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.active-status-recovery",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "active status recovery"
+      },
+      "annotation": {
+        "title": "异常状态恢复",
+        "type": "text",
+        "content": "使用后解除的异常状态"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.except-status-recovery",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "except status recovery"
+      },
+      "annotation": {
+        "title": "例外异常恢复",
+        "type": "text",
+        "content": "不受恢复影响的异常状态"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.monster-card-id",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "monster card id"
+      },
+      "annotation": {
+        "title": "怪物卡片ID",
+        "type": "text",
+        "content": "对应的怪物卡片"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.monster-card-id-drop-prob",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "monster card id drop prob"
+      },
+      "annotation": {
+        "title": "卡片掉落概率",
+        "type": "text",
+        "content": "怪物卡片掉落概率"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.enchant",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "enchant"
+      },
+      "annotation": {
+        "title": "附魔",
+        "type": "text",
+        "content": "附魔相关配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.enchant-table",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "enchant table"
+      },
+      "annotation": {
+        "title": "附魔表",
+        "type": "text",
+        "content": "附魔条目表"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.enchant-index",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "enchant index"
+      },
+      "annotation": {
+        "title": "附魔索引",
+        "type": "text",
+        "content": "附魔条目索引"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.enchant-random",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "enchant random"
+      },
+      "annotation": {
+        "title": "随机附魔",
+        "type": "text",
+        "content": "随机附魔配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.random-title-enchant",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random title enchant"
+      },
+      "annotation": {
+        "title": "随机称号附魔",
+        "type": "text",
+        "content": "随机称号附魔配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.skill",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill"
+      },
+      "annotation": {
+        "title": "技能",
+        "type": "text",
+        "content": "附魔/礼包中的技能记录"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.skill-explain",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill explain"
+      },
+      "annotation": {
+        "title": "技能说明",
+        "type": "text",
+        "content": "技能效果说明文本"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.need-skill",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "need skill"
+      },
+      "annotation": {
+        "title": "需要技能",
+        "type": "text",
+        "content": "使用所需的技能"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.skill-apply-condition",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill apply condition"
+      },
+      "annotation": {
+        "title": "技能生效条件",
+        "type": "text",
+        "content": "技能生效条件"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.skill-group",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill group"
+      },
+      "annotation": {
+        "title": "技能分组",
+        "type": "text",
+        "content": "技能分组"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.skill-phase",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "skill phase"
+      },
+      "annotation": {
+        "title": "技能阶段",
+        "type": "text",
+        "content": "技能阶段"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.hide-skill",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hide skill"
+      },
+      "annotation": {
+        "title": "隐藏技能",
+        "type": "text",
+        "content": "隐藏指定技能"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.all-skill-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all skill item"
+      },
+      "annotation": {
+        "title": "全技能道具",
+        "type": "text",
+        "content": "作用于所有技能的道具"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.all-skill-item-container",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "all skill item container"
+      },
+      "annotation": {
+        "title": "全技能道具容器",
+        "type": "text",
+        "content": "全技能道具的容器"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.item-growtype",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "item growtype"
+      },
+      "annotation": {
+        "title": "适用转职",
+        "type": "text",
+        "content": "道具适用的转职"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.upper-bound-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "upper bound level"
+      },
+      "annotation": {
+        "title": "等级上限",
+        "type": "text",
+        "content": "生效的等级上限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.lower-bound-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "lower bound level"
+      },
+      "annotation": {
+        "title": "等级下限",
+        "type": "text",
+        "content": "生效的等级下限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster info"
+      },
+      "annotation": {
+        "title": "增强剂信息",
+        "type": "text",
+        "content": "增强剂奖励配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-select-category",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster select category"
+      },
+      "annotation": {
+        "title": "增强剂选择分类",
+        "type": "text",
+        "content": "增强剂的可选分类"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-selection-num",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster selection num"
+      },
+      "annotation": {
+        "title": "增强剂可选数量",
+        "type": "text",
+        "content": "增强剂可选数量"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-category-num",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster category num"
+      },
+      "annotation": {
+        "title": "增强剂分类数量",
+        "type": "text",
+        "content": "增强剂分类数量"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-category-name",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster category name"
+      },
+      "annotation": {
+        "title": "增强剂分类名称",
+        "type": "text",
+        "content": "增强剂分类名称"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.package-data",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "package data"
+      },
+      "annotation": {
+        "title": "礼包数据",
+        "type": "text",
+        "content": "礼包内容配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.package-data-selection",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "package data selection"
+      },
+      "annotation": {
+        "title": "礼包选择",
+        "type": "text",
+        "content": "礼包可选内容"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.avatar-package-preview-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar package preview info"
+      },
+      "annotation": {
+        "title": "礼包时装预览",
+        "type": "text",
+        "content": "礼包中时装的预览信息"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.avatar",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar"
+      },
+      "annotation": {
+        "title": "时装奖励",
+        "type": "text",
+        "content": "增强剂中的时装奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.creature",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "creature"
+      },
+      "annotation": {
+        "title": "宠物奖励",
+        "type": "text",
+        "content": "增强剂中的宠物奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment"
+      },
+      "annotation": {
+        "title": "装备奖励",
+        "type": "text",
+        "content": "增强剂中的装备奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stackable",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stackable"
+      },
+      "annotation": {
+        "title": "道具奖励",
+        "type": "text",
+        "content": "增强剂中的道具奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.etc",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "etc"
+      },
+      "annotation": {
+        "title": "其它奖励",
+        "type": "text",
+        "content": "增强剂中的其它奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.cera",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cera"
+      },
+      "annotation": {
+        "title": "点券奖励",
+        "type": "text",
+        "content": "增强剂中的点券奖励"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.emblem",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "emblem"
+      },
+      "annotation": {
+        "title": "徽章",
+        "type": "text",
+        "content": "徽章道具配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.bead-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "bead item"
+      },
+      "annotation": {
+        "title": "宝珠道具",
+        "type": "text",
+        "content": "宝珠相关配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.avatar-emblem-target-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "avatar emblem target type"
+      },
+      "annotation": {
+        "title": "时装徽章目标",
+        "type": "text",
+        "content": "时装徽章镶嵌目标"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.special-avatar",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "special avatar"
+      },
+      "annotation": {
+        "title": "特殊时装",
+        "type": "text",
+        "content": "特殊时装配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.disguise-appendage",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "disguise appendage"
+      },
+      "annotation": {
+        "title": "伪装附加物",
+        "type": "text",
+        "content": "伪装外观配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.creature-minimum-level",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "creature minimum level"
+      },
+      "annotation": {
+        "title": "宠物最低等级",
+        "type": "text",
+        "content": "宠物使用等级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.summon-apc",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "summon apc"
+      },
+      "annotation": {
+        "title": "召唤APC",
+        "type": "text",
+        "content": "使用后召唤 APC"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.summon-npc",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "summon npc"
+      },
+      "annotation": {
+        "title": "召唤NPC",
+        "type": "text",
+        "content": "使用后召唤 NPC"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.monster-summons",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "monster summons"
+      },
+      "annotation": {
+        "title": "召唤怪物",
+        "type": "text",
+        "content": "使用后召唤怪物"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.passive-object-in-stackable",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "passive object in stackable"
+      },
+      "annotation": {
+        "title": "被动对象",
+        "type": "text",
+        "content": "使用后生成的被动对象"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.do-not-delete",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "do not delete"
+      },
+      "annotation": {
+        "title": "禁止删除",
+        "type": "text",
+        "content": "道具不可被删除"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.npc-gift-disallowance",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "npc gift disallowance"
+      },
+      "annotation": {
+        "title": "禁止赠送NPC",
+        "type": "text",
+        "content": "不可赠送给 NPC"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.daily-purchase-limit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "daily purchase limit"
+      },
+      "annotation": {
+        "title": "每日购买上限",
+        "type": "text",
+        "content": "每日购买次数上限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.purchase-limit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "purchase limit"
+      },
+      "annotation": {
+        "title": "购买上限",
+        "type": "text",
+        "content": "购买次数上限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.reset-daily-purchase-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "reset daily purchase item"
+      },
+      "annotation": {
+        "title": "重置每日购买",
+        "type": "text",
+        "content": "重置每日购买次数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.impossible-contents",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "impossible contents"
+      },
+      "annotation": {
+        "title": "禁止内容",
+        "type": "text",
+        "content": "禁止包含的内容"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.inventory-limit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "inventory limit"
+      },
+      "annotation": {
+        "title": "负重上限",
+        "type": "text",
+        "content": "增加角色负重上限"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.packagable",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "packagable"
+      },
+      "annotation": {
+        "title": "可打包",
+        "type": "text",
+        "content": "是否可打包为礼包"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.cs-display-only",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cs display only"
+      },
+      "annotation": {
+        "title": "仅商城显示",
+        "type": "text",
+        "content": "仅在商城显示"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.cash",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cash"
+      },
+      "annotation": {
+        "title": "点券道具",
+        "type": "text",
+        "content": "是否为商城点券道具"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.move-wav",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "move wav"
+      },
+      "annotation": {
+        "title": "移动音效",
+        "type": "text",
+        "content": "拾取时播放的音效"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.use-wav",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "use wav"
+      },
+      "annotation": {
+        "title": "使用音效",
+        "type": "text",
+        "content": "使用时播放的音效"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.pickup-wav",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "pickup wav"
+      },
+      "annotation": {
+        "title": "拾取音效",
+        "type": "text",
+        "content": "拾取时播放的音效"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.disable-icon",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "disable icon"
+      },
+      "annotation": {
+        "title": "禁用图标",
+        "type": "text",
+        "content": "禁用状态下的图标"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.icon-animation",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "icon animation"
+      },
+      "annotation": {
+        "title": "图标动画",
+        "type": "text",
+        "content": "图标动画配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.damage-font-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "damage font info"
+      },
+      "annotation": {
+        "title": "伤害字体",
+        "type": "text",
+        "content": "自定义伤害字体"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.int-data",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "int data"
+      },
+      "annotation": {
+        "title": "整数数据",
+        "type": "text",
+        "content": "自定义整数数据表"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.string-data",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "string data"
+      },
+      "annotation": {
+        "title": "字符串数据",
+        "type": "text",
+        "content": "自定义字符串数据表"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.module",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "module"
+      },
+      "annotation": {
+        "title": "模块",
+        "type": "text",
+        "content": "功能模块配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.use-action-packet",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "use action packet"
+      },
+      "annotation": {
+        "title": "使用动作包",
+        "type": "text",
+        "content": "客户端动作包"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.output-system-message",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "output system message"
+      },
+      "annotation": {
+        "title": "输出系统消息",
+        "type": "text",
+        "content": "使用后提示的系统消息"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.not-enough-item-msg",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "not enough item msg"
+      },
+      "annotation": {
+        "title": "材料不足提示",
+        "type": "text",
+        "content": "材料不足时的提示"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.broadcast-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "broadcast type"
+      },
+      "annotation": {
+        "title": "广播类型",
+        "type": "text",
+        "content": "全服广播类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.advance-altar-need-gage",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "advance altar need gage"
+      },
+      "annotation": {
+        "title": "祭坛所需进度",
+        "type": "text",
+        "content": "进阶祭坛所需进度"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.expert-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "expert type"
+      },
+      "annotation": {
+        "title": "副职业类型",
+        "type": "text",
+        "content": "对应的副职业"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.lottery-use-cost",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "lottery use cost"
+      },
+      "annotation": {
+        "title": "抽奖消耗",
+        "type": "text",
+        "content": "抽奖所需消耗"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.daily-rebirth-box",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "daily rebirth box"
+      },
+      "annotation": {
+        "title": "每日重生箱",
+        "type": "text",
+        "content": "每日重生箱配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.randombox",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "randombox"
+      },
+      "annotation": {
+        "title": "随机箱",
+        "type": "text",
+        "content": "随机箱配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.check-usable-itemlevel",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "check usable itemlevel"
+      },
+      "annotation": {
+        "title": "可用等级校验",
+        "type": "text",
+        "content": "校验可用等级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.check-usable-equip-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "check usable equip type"
+      },
+      "annotation": {
+        "title": "可用装备类型校验",
+        "type": "text",
+        "content": "校验可用装备类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.recommend",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "recommend"
+      },
+      "annotation": {
+        "title": "推荐",
+        "type": "text",
+        "content": "推荐标记"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.check",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "check"
+      },
+      "annotation": {
+        "title": "校验",
+        "type": "text",
+        "content": "使用道具的前置校验"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.random-option-unseal",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "random option unseal"
+      },
+      "annotation": {
+        "title": "随机选项解封",
+        "type": "text",
+        "content": "随机词条解封配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-equipment-upgrade",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster equipment upgrade"
+      },
+      "annotation": {
+        "title": "增强剂装备升级",
+        "type": "text",
+        "content": "增强剂中的装备升级配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-equipment-separate",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster equipment separate"
+      },
+      "annotation": {
+        "title": "增强剂装备分离",
+        "type": "text",
+        "content": "增强剂中的装备分离配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.booster-equipment-grade",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "booster equipment grade"
+      },
+      "annotation": {
+        "title": "增强剂装备品级",
+        "type": "text",
+        "content": "增强剂中的装备品级"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.levelup-range",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "levelup range"
+      },
+      "annotation": {
+        "title": "升级区间",
+        "type": "text",
+        "content": "道具升级等级区间"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.daily-delete-item",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "daily delete item"
+      },
+      "annotation": {
+        "title": "每日删除道具",
+        "type": "text",
+        "content": "每日定时删除的道具"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment-reinforcement-ticket",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment reinforcement ticket"
+      },
+      "annotation": {
+        "title": "装备强化券",
+        "type": "text",
+        "content": "装备强化券配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment-amplify-reinforcement-ticket",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment amplify reinforcement ticket"
+      },
+      "annotation": {
+        "title": "装备增幅券",
+        "type": "text",
+        "content": "装备增幅券配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment-separate-reinforcement-ticket",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment separate reinforcement ticket"
+      },
+      "annotation": {
+        "title": "装备分离券",
+        "type": "text",
+        "content": "装备分离券配置"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.total-usable-count",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "total usable count"
+      },
+      "annotation": {
+        "title": "总可用次数",
+        "type": "text",
+        "content": "道具总可用次数"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.exp-bonus-rate",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "exp bonus rate"
+      },
+      "annotation": {
+        "title": "经验加成率",
+        "type": "text",
+        "content": "使用后的经验加成"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.minimum-rank",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "minimum rank"
+      },
+      "annotation": {
+        "title": "最低品阶",
+        "type": "text",
+        "content": "使用所需的最低品阶"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.default-select",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "default select"
+      },
+      "annotation": {
+        "title": "默认选择",
+        "type": "text",
+        "content": "默认选中的选项"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.action-expiration-info",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "action expiration info"
+      },
+      "annotation": {
+        "title": "动作过期信息",
+        "type": "text",
+        "content": "动作有效期的提示信息"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.increase-status-type",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "increase status type"
+      },
+      "annotation": {
+        "title": "增强状态类型",
+        "type": "text",
+        "content": "增强的状态类型"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.appendage-group",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "appendage group"
+      },
+      "annotation": {
+        "title": "附加物分组",
+        "type": "text",
+        "content": "附加物分组编号"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.require-ap",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "require ap"
+      },
+      "annotation": {
+        "title": "需要AP",
+        "type": "text",
+        "content": "使用所需的 AP"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.open-confirm-window-on-use",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "open confirm window on use"
+      },
+      "annotation": {
+        "title": "使用时确认弹窗",
+        "type": "text",
+        "content": "使用时是否弹出确认框"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.fire-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "fire attack"
+      },
+      "annotation": {
+        "title": "火属性强化",
+        "type": "text",
+        "content": "增加火属性攻击强化"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.water-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "water attack"
+      },
+      "annotation": {
+        "title": "水属性强化",
+        "type": "text",
+        "content": "增加水属性攻击强化"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.light-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "light attack"
+      },
+      "annotation": {
+        "title": "光属性强化",
+        "type": "text",
+        "content": "增加光属性攻击强化"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.dark-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "dark attack"
+      },
+      "annotation": {
+        "title": "暗属性强化",
+        "type": "text",
+        "content": "增加暗属性攻击强化"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment-physical-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment physical attack"
+      },
+      "annotation": {
+        "title": "装备物理攻击力",
+        "type": "text",
+        "content": "增加装备物理攻击力"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.equipment-magical-attack",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "equipment magical attack"
+      },
+      "annotation": {
+        "title": "装备魔法攻击力",
+        "type": "text",
+        "content": "增加装备魔法攻击力"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.physical-critical-hit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "physical critical hit"
+      },
+      "annotation": {
+        "title": "物理暴击",
+        "type": "text",
+        "content": "增加物理暴击率"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.magical-critical-hit",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "magical critical hit"
+      },
+      "annotation": {
+        "title": "魔法暴击",
+        "type": "text",
+        "content": "增加魔法暴击率"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.attack-speed",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "attack speed"
+      },
+      "annotation": {
+        "title": "攻击速度",
+        "type": "text",
+        "content": "增加攻击速度"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.hp-max",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "hp max"
+      },
+      "annotation": {
+        "title": "最大HP",
+        "type": "text",
+        "content": "增加最大生命值"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.stackable-action-limit-indexes",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "stackable action limit indexes"
+      },
+      "annotation": {
+        "title": "动作限制索引",
+        "type": "text",
+        "content": "道具动作次数限制索引"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.sec.usable-avatar-index",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "usable avatar index"
+      },
+      "annotation": {
+        "title": "可用时装索引",
+        "type": "text",
+        "content": "限定可用的时装索引"
+      },
+      "group": "stk"
+    },
+    {
+      "id": "skl.type.enum",
+      "description": "技能主动/被动类型",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "技能类型",
+        "type": "enum",
+        "values": {
+          "[active]": "主动技能",
+          "[passive]": "被动技能"
+        }
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.weapon.effect.type.enum",
+      "description": "技能武器属性类型",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "weapon effect type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "武器属性",
+        "type": "enum",
+        "values": {
+          "[none]": "无属性",
+          "[physical]": "物理",
+          "[magical]": "魔法"
+        }
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.feature.skill.type.enum",
+      "description": "是否为特性技能",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "feature skill type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "特性技能",
+        "type": "enum",
+        "values": {
+          "0": "普通技能",
+          "1": "特性技能"
+        }
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.tab",
+      "description": "技能工具数据分组",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "tab"
+      },
+      "annotation": {
+        "title": "工具数据分组",
+        "type": "text",
+        "content": "技能伤害工具数据中的一组参数"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.feature.skill.index.ref",
+      "description": "特性技能索引关联技能",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "feature skill index",
+        "index": 0,
+        "recordTokens": 1
+      },
+      "annotation": {
+        "title": "特性技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.pre.required.skill.ref",
+      "description": "前置技能关联",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "pre required skill",
+        "index": 0,
+        "recordTokens": 2
+      },
+      "annotation": {
+        "title": "前置技能",
+        "type": "reference",
+        "relation": "技能"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "skl.consume.item.ref",
+      "description": "消耗物品关联",
+      "match": {
+        "extensions": [
+          ".skl"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "consume item",
+        "index": 0,
+        "recordTokens": 3
+      },
+      "annotation": {
+        "title": "物品",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "skl"
+    },
+    {
+      "id": "stk.attach.type.enum",
+      "description": "道具交易类型",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "attach type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "交易类型",
+        "type": "enum",
+        "values": {
+          "[free]": "不限制",
+          "[trade]": "可交易",
+          "[trade limit]": "限次交易",
+          "[trade delete]": "交易后删除",
+          "[account]": "帐号绑定",
+          "[character]": "角色绑定",
+          "[sealing]": "封装",
+          "[sealing trade]": "封装且不可交易"
+        }
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.stackable.type.enum",
+      "description": "道具堆叠/使用类型",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stackable type",
+        "index": 0
+      },
+      "annotation": {
+        "title": "道具类型",
+        "type": "enum",
+        "values": {
+          "[material]": "材料",
+          "[material expert job]": "副职业材料",
+          "[etc]": "杂物",
+          "[waste]": " 消耗品",
+          "[enchant waste]": "附魔消耗品",
+          "[unlimited waste]": "无限制消耗品",
+          "[recipe]": "配方",
+          "[booster]": "盒子",
+          "[booster selection]": "可选盒子",
+          "[cera booster]": "点券盒子",
+          "[cera package]": "点券礼包",
+          "[usable cera package]": "可用点券礼包",
+          "[upgradable legacy]": "可升级传承",
+          "[contract]": "契约",
+          "[dye]": "染色剂",
+          "[monster card]": "怪物卡片",
+          "[enhance]": "强化材料",
+          "[flag gem]": "守护珠"
+        }
+      },
+      "group": "stk"
+    },
+    {
+      "id": "stk.usable.job.enum",
+      "description": "道具可用职业",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "usable job",
+        "index": 0
+      },
+      "annotation": {
+        "title": "可用职业",
+        "type": "enum",
+        "values": {
+          "[all]": "全职业",
+          "[swordman]": "鬼剑士",
+          "[fighter]": "格斗家",
+          "[gunner]": "神枪手",
+          "[mage]": "魔法师",
+          "[priest]": "圣职者",
+          "[thief]": "暗夜使者",
+          "[knight]": "守护者",
+          "[at swordman]": "鬼剑士·女",
+          "[at fighter]": "格斗家·男",
+          "[at gunner]": "神枪手·女",
+          "[at mage]": "魔法师·男",
+          "[at priest]": "圣职者·女",
+          "[demonic swordman]": "黑暗武士",
+          "[demonic lancer]": "魔枪士",
+          "[creator mage]": "缔造者"
+        }
+      },
+      "group": "stk"
+    },
+    {
+      "id": "equ.set.item.ref",
+      "description": "套装物品关联",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "set item",
+        "index": 0,
+        "recordTokens": 1
+      },
+      "annotation": {
+        "title": "套装物品",
+        "type": "reference",
+        "relation": "装备"
+      },
+      "group": "equ"
     }
   ]
 }
