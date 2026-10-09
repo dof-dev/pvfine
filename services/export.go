@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -464,20 +463,7 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 	if err := writer.Write(temp, pkg); err != nil {
 		return "", err
 	}
-	// Windows and macOS refuse to rename a directory over an existing directory.
-	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-		if err := os.Rename(temp, dest); err != nil {
-			return "", err
-		}
-		return dest, nil
-	}
-	// Other platforms reserve the name exclusively. Rename replaces only our
-	// empty reservation; never delete an existing package to publish an export.
-	if err := os.Mkdir(dest, 0o755); err != nil {
-		return "", fmt.Errorf("无法创建 mod 目录（可能已存在）: %w", err)
-	}
-	if err := os.Rename(temp, dest); err != nil {
-		_ = os.Remove(dest) // Remove refuses a nonempty directory.
+	if err := publishModDirectory(temp, dest); err != nil {
 		return "", err
 	}
 	return dest, nil

@@ -658,6 +658,64 @@ func TestModPublishRejectsExistingAndCleansFailure(t *testing.T) {
 	}
 }
 
+type concurrentDestinationModWriter struct {
+	modpkg.Extend110Writer
+	createDestination func() error
+}
+
+func (w concurrentDestinationModWriter) Write(root string, pkg modpkg.Package) error {
+	if err := w.Extend110Writer.Write(root, pkg); err != nil {
+		return err
+	}
+	return w.createDestination()
+}
+
+func TestModPublishRejectsDestinationCreatedDuringWrite(t *testing.T) {
+	for _, kind := range []string{"empty directory", "nonempty directory", "file"} {
+		t.Run(kind, func(t *testing.T) {
+			parent := t.TempDir()
+			pkg := modpkg.Package{Metadata: modpkg.Metadata{Name: "test"}, Entries: []modpkg.Entry{
+				{Path: "a.etc", Operation: modpkg.ReplaceFile, Encoding: modpkg.Text, DataType: 1, Data: []byte("1")},
+			}}
+			dest := filepath.Join(parent, pkg.Metadata.Name)
+			writer := concurrentDestinationModWriter{createDestination: func() error {
+				if kind == "file" {
+					return os.WriteFile(dest, []byte("existing"), 0o644)
+				}
+				if err := os.Mkdir(dest, 0o755); err != nil {
+					return err
+				}
+				if kind == "nonempty directory" {
+					return os.WriteFile(filepath.Join(dest, "keep.txt"), []byte("existing"), 0o644)
+				}
+				return nil
+			}}
+			if _, err := writeModDirectory(parent, pkg, writer); err == nil {
+				t.Fatal("destination created during export was overwritten")
+			}
+			entries, err := os.ReadDir(parent)
+			if err != nil || len(entries) != 1 || entries[0].Name() != pkg.Metadata.Name {
+				t.Fatalf("destination removed or temporary directory leaked: %#v, %v", entries, err)
+			}
+			if kind == "empty directory" {
+				entries, err := os.ReadDir(dest)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("empty destination changed: %#v, %v", entries, err)
+				}
+			} else {
+				path := dest
+				if kind == "nonempty directory" {
+					path = filepath.Join(dest, "keep.txt")
+				}
+				data, err := os.ReadFile(path)
+				if err != nil || string(data) != "existing" {
+					t.Fatalf("destination content changed: %q, %v", data, err)
+				}
+			}
+		})
+	}
+}
+
 func TestExportListDeltaAndEmptyString(t *testing.T) {
 	before := exportContent{path: "list/test.lst", dataType: pvf.TypeScript, data: []byte("1 `a.stk`\n2 `b.stk`")}
 	after := exportContent{path: before.path, dataType: pvf.TypeScript, data: []byte("1 `changed.stk`\n3 `new.stk`")}
