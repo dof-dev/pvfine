@@ -47,6 +47,16 @@ const openShortcut = computed(() => {
   return binding ? formatBinding(binding) : "";
 });
 
+const archiveFormatNames: Record<string, string> = {
+  standard: "90US",
+  alternate: "90CN",
+  paged110: "110US",
+  recovered: "UNKNOWN",
+};
+const archiveFormatName = computed(
+  () => archiveFormatNames[archive.info?.format ?? ""] ?? "UNKNOWN",
+);
+
 const props = defineProps<{
   themeId: ResolvedThemeId;
 }>();
@@ -187,6 +197,9 @@ function isCancel(e: any): boolean {
             type="success"
           >
             {{ archive.modifiedCount }} 个未保存修改
+          </NTag>
+          <NTag size="small" round :bordered="false">
+            变体类型：{{ archiveFormatName }}
           </NTag>
         </div>
 
