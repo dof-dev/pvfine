@@ -158,3 +158,80 @@ func TestAdvancedSearchRealArchive(t *testing.T) {
 		t.Fatalf("real binary search returned no hits")
 	}
 }
+
+func TestAdvancedQuickSearchMatchesExplorerWithScopeAndPagination(t *testing.T) {
+	for _, disk := range []bool{false, true} {
+		t.Run(map[bool]string{false: "memory", true: "sqlite"}[disk], func(t *testing.T) {
+			c := NewCore()
+			svc := NewArchiveService(c)
+			path := writeSearchFixture(t, "quick-search.pvf")
+			if disk {
+				if _, err := svc.Open(path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				a := mustReopen(t, path)
+				if err := c.setArchive(a); err != nil {
+					t.Fatal(err)
+				}
+				c.startSearchIndex()
+			}
+			t.Cleanup(c.closeArchive)
+			waitForSearchIndex(t, c)
+			for _, exact := range []bool{false, true} {
+				mode := AdvancedSearchModeQuick
+				if exact {
+					mode = AdvancedSearchModeQuickExact
+				}
+				for _, query := range []string{"1008", "烈火之心项链", "readme", "MISC/README.TXT", "*.equ", "misc/readme.tx?", "*"} {
+					for _, scope := range []string{"", "equipment", "./EQUIPMENT/", "stackable", "equip", "missing"} {
+						baseline, err := svc.search(query, 0, 1000, exact)
+						if err != nil {
+							t.Fatal(err)
+						}
+						expected := []*SearchHit{}
+						for _, hit := range baseline.Hits {
+							if advancedPathInScope(hit.Path, normalizeAdvancedScope(scope)) {
+								expected = append(expected, hit)
+							}
+						}
+						got := []*AdvancedSearchHit{}
+						cursor := 0
+						for page := 0; ; page++ {
+							if page > len(expected)+1 {
+								t.Fatal("pagination did not terminate")
+							}
+							result, err := svc.AdvancedSearch(mode, query, scope, false, cursor, 1)
+							if err != nil {
+								t.Fatal(err)
+							}
+							got = append(got, result.Hits...)
+							if result.NextCursor < 0 {
+								break
+							}
+							if result.NextCursor <= cursor {
+								t.Fatal("cursor did not advance")
+							}
+							cursor = result.NextCursor
+						}
+						if len(got) != len(expected) {
+							t.Fatalf("%s query=%q scope=%q: got %d, want %d", mode, query, scope, len(got), len(expected))
+						}
+						for n, hit := range got {
+							want := expected[n]
+							if hit.Path != want.Path || hit.Name != want.Name || hit.FileIndex != want.FileIndex {
+								t.Fatalf("unexpected hit: %#v, want %#v", hit, want)
+							}
+							if want.ID != "" && (len(hit.Details) != 1 || hit.Details[0].Kind != "id" || hit.Details[0].Value != want.ID) {
+								t.Fatalf("missing ID: %#v", hit)
+							}
+						}
+					}
+				}
+			}
+			if status := svc.AdvancedIndexStatus(); status.State != AdvancedIndexStateIdle {
+				t.Fatalf("quick search built string index: %#v", status)
+			}
+		})
+	}
+}

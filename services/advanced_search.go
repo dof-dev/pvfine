@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	AdvancedSearchModeBinary = "binary"
-	AdvancedSearchModeString = "string"
+	AdvancedSearchModeBinary     = "binary"
+	AdvancedSearchModeString     = "string"
+	AdvancedSearchModeQuick      = "quick"
+	AdvancedSearchModeQuickExact = "quick-exact"
 
 	AdvancedIndexStateIdle     = "idle"
 	AdvancedIndexStateBuilding = "building"
@@ -83,7 +85,7 @@ func (s *ArchiveService) AdvancedIndexStatus() AdvancedSearchIndexStatus {
 	return s.c.advancedStatus
 }
 
-// AdvancedSearch searches raw token bytes or string-pool references.
+// AdvancedSearch searches raw token bytes, string-pool references, or explorer metadata.
 // Pass NextCursor back unchanged; string-mode cursors identify the query
 // session and position, while binary mode retains its legacy offset. Limit is 1..1000.
 func (s *ArchiveService) AdvancedSearch(mode, query, scopePath string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {
@@ -103,11 +105,30 @@ func (s *ArchiveService) AdvancedSearch(mode, query, scopePath string, regex boo
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case AdvancedSearchModeBinary:
 		return s.searchAdvancedBinary(query, scope, cursor, limit)
+	case AdvancedSearchModeQuick, AdvancedSearchModeQuickExact:
+		return s.searchAdvancedQuick(query, scope, strings.EqualFold(strings.TrimSpace(mode), AdvancedSearchModeQuickExact), cursor, limit)
 	case AdvancedSearchModeString:
 		return s.searchAdvancedString(query, scope, regex, cursor, limit)
 	default:
 		return nil, fmt.Errorf("未知高级搜索模式: %s", mode)
 	}
+}
+
+// Quick search shares explorer matching and filters directory scope before pagination.
+func (s *ArchiveService) searchAdvancedQuick(query, scope string, exact bool, cursor, limit int) (*AdvancedSearchResult, error) {
+	page, err := s.searchScoped(query, cursor, limit, exact, false, "", scope)
+	if err != nil {
+		return nil, err
+	}
+	result := &AdvancedSearchResult{Hits: []*AdvancedSearchHit{}, NextCursor: page.NextCursor, Scanned: page.Scanned}
+	for _, hit := range page.Hits {
+		details := []*AdvancedSearchDetail{}
+		if hit.ID != "" {
+			details = append(details, &AdvancedSearchDetail{Kind: "id", Value: hit.ID})
+		}
+		result.Hits = append(result.Hits, &AdvancedSearchHit{Name: hit.Name, Path: hit.Path, Size: hit.Size, DataType: hit.DataType, FileIndex: hit.FileIndex, Details: details})
+	}
+	return result, nil
 }
 
 func (s *ArchiveService) searchAdvancedString(query, scope string, regex bool, cursor, limit int) (*AdvancedSearchResult, error) {

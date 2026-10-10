@@ -757,7 +757,7 @@ func (s *ArchiveService) SearchExact(query string, cursor int, limit int) (*Sear
 }
 
 func (s *ArchiveService) search(query string, cursor int, limit int, exact bool) (*SearchResult, error) {
-	return s.searchScoped(query, cursor, limit, exact, false, "")
+	return s.searchScoped(query, cursor, limit, exact, false, "", "")
 }
 
 // SearchItems searches only registered equipment and stackable items. Filtering
@@ -801,7 +801,7 @@ func (s *ArchiveService) SearchItems(query string, cursor int, limit int) (*Sear
 	if exact != nil && firstPage {
 		limit--
 	}
-	result, err := s.searchScoped(query, rawCursor, limit, false, true, excludeID)
+	result, err := s.searchScoped(query, rawCursor, limit, false, true, excludeID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -822,7 +822,7 @@ func (s *ArchiveService) SearchItems(query string, cursor int, limit int) (*Sear
 	return result, nil
 }
 
-func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
+func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact, itemsOnly bool, excludeID, scope string) (*SearchResult, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
 	res := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -836,7 +836,7 @@ func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact
 		if s.c.indexStatus.State == IndexStateError {
 			return nil, errors.New(s.c.indexStatus.Error)
 		}
-		result, err := s.c.diskIndex.searchScoped(query, cursor, limit, exact, itemsOnly, excludeID)
+		result, err := s.c.diskIndex.searchScoped(query, cursor, limit, exact, itemsOnly, excludeID, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -872,6 +872,9 @@ func (s *ArchiveService) searchScoped(query string, cursor int, limit int, exact
 	i := cursor
 	for ; i < len(records) && len(res.Hits) < limit; i++ {
 		record := &records[i]
+		if !advancedPathInScope(record.hit.Path, scope) {
+			continue
+		}
 		if excludeID != "" && record.hit.ID == excludeID {
 			continue
 		}

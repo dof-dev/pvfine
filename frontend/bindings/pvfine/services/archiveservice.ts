@@ -22,7 +22,7 @@ export function AdvancedIndexStatus(): $CancellablePromise<$models.AdvancedSearc
 }
 
 /**
- * AdvancedSearch searches raw token bytes or string-pool references.
+ * AdvancedSearch searches raw token bytes, string-pool references, or explorer metadata.
  * Pass NextCursor back unchanged; string-mode cursors identify the query
  * session and position, while binary mode retains its legacy offset. Limit is 1..1000.
  */

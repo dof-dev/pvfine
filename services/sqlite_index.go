@@ -1085,10 +1085,10 @@ func (i *sqliteArchiveIndex) visuals(fileIndex int32) fileVisuals {
 }
 
 func (i *sqliteArchiveIndex) search(query string, cursor, limit int, exact bool) (*SearchResult, error) {
-	return i.searchScoped(query, cursor, limit, exact, false, "")
+	return i.searchScoped(query, cursor, limit, exact, false, "", "")
 }
 
-func (i *sqliteArchiveIndex) searchScoped(query string, cursor, limit int, exact, itemsOnly bool, excludeID string) (*SearchResult, error) {
+func (i *sqliteArchiveIndex) searchScoped(query string, cursor, limit int, exact, itemsOnly bool, excludeID, scope string) (*SearchResult, error) {
 	i.dbMu.RLock()
 	defer i.dbMu.RUnlock()
 	result := &SearchResult{Hits: []*SearchHit{}, NextCursor: -1}
@@ -1107,6 +1107,10 @@ func (i *sqliteArchiveIndex) searchScoped(query string, cursor, limit int, exact
 	if excludeID != "" {
 		where += " AND record_id<>?"
 		args = append(args, excludeID)
+	}
+	if scope != "" {
+		where += " AND (lower_path=? OR substr(lower_path,1,?)=?)"
+		args = append(args, scope, len([]rune(scope))+1, scope+"/")
 	}
 	if itemsOnly {
 		where += " AND category IN (?,?)"

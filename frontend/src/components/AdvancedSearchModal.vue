@@ -12,6 +12,7 @@ import {
   NRadioButton,
   NRadioGroup,
   NSpin,
+  NSwitch,
   NTag,
   NText,
   useMessage,
@@ -57,6 +58,8 @@ interface HistoryItem {
   query: string;
   mode: AdvancedSearchMode;
   stringMatch?: AdvancedStringMatch;
+  exactMatch?: boolean;
+  scopePath?: string;
 }
 
 const HISTORY_KEY = "pvfine_search_history";
@@ -72,7 +75,7 @@ function readSearchHistory(): HistoryItem[] {
         item &&
         typeof item.query === "string" &&
         item.query.trim().length > 0 &&
-        (item.mode === "string" || item.mode === "binary")
+        (item.mode === "string" || item.mode === "binary" || item.mode === "quick")
     );
   } catch {
     return [];
@@ -85,7 +88,7 @@ function addSearchHistory(query: string, mode: AdvancedSearchMode, stringMatch?:
   const text = query.trim();
   if (!text) return;
   const current = searchHistory.value.filter((item) => item.query !== text);
-  const next: HistoryItem[] = [{ query: text, mode, stringMatch }, ...current].slice(0, 8);
+  const next: HistoryItem[] = [{ query: text, mode, stringMatch, exactMatch: search.exactMatch, scopePath: search.scopePath }, ...current].slice(0, 8);
   searchHistory.value = next;
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
@@ -100,6 +103,16 @@ function clearSearchHistory(): void {
 }
 
 const presetChips = computed<PresetChip[]>(() => {
+  if (search.mode === "quick") {
+    return [
+      { label: "*.equ", value: "*.equ", desc: "装备文件" },
+      { label: "*.stk", value: "*.stk", desc: "道具文件" },
+      { label: "*.skl", value: "*.skl", desc: "技能文件" },
+      { label: "*.dgn", value: "*.dgn", desc: "地下城文件" },
+      { label: "*.npc", value: "*.npc", desc: "NPC 文件" },
+      { label: "*.lst", value: "*.lst", desc: "列表文件" },
+    ];
+  }
   if (search.regexEnabled) {
     return [
       { label: "[name]", value: "\\[name\\]", desc: "正则匹配: [name] 名称标签" },
@@ -133,7 +146,10 @@ const presetChips = computed<PresetChip[]>(() => {
   ];
 });
 
+const scopePresets = ["equipment", "stackable", "dungeon", "skill", "npc", "n_quest"];
+
 const modeOptions = [
+  { label: "快速搜索", value: "quick" },
   { label: "字符串", value: "string" },
   { label: "二进制", value: "binary" },
 ];
@@ -144,7 +160,9 @@ const stringMatchOptions = [
 ];
 
 const queryPlaceholder = computed(() =>
-  search.mode === "binary"
+  search.mode === "quick"
+    ? "搜索路径、名称或 id（支持 *、?）…"
+    : search.mode === "binary"
     ? "输入脚本片段，例如 [name]\\n`alpha`"
     : search.regexEnabled
       ? "输入 RE2 正则，例如 ^烈火.*项链$"
@@ -155,16 +173,16 @@ watch(
   () => search.hits,
   (hits) => {
     expandedRowKeys.value = hits
-      .filter((row) => row.details.length > 0)
+      .filter((row) => row.details.some((detail) => detail.kind !== "id"))
       .map((row) => row.key);
   },
   { deep: true, immediate: true }
 );
 
-const columns: DataTableColumns<AdvancedSearchItem> = [
+const columns = computed<DataTableColumns<AdvancedSearchItem>>(() => [
   {
     type: "expand",
-    expandable: (row) => row.details.length > 0,
+    expandable: (row) => search.mode !== "quick" && row.details.length > 0,
     renderExpand: renderDetails,
   },
   {
@@ -179,7 +197,13 @@ const columns: DataTableColumns<AdvancedSearchItem> = [
     ellipsis: { tooltip: true },
     render: (row) => row.name || "—",
   },
-];
+  ...(search.mode === "quick" ? [{
+    title: "ID",
+    key: "id",
+    width: 120,
+    render: (row: AdvancedSearchItem) => row.details.filter((detail) => detail.kind === "id").map((detail) => detail.value).join(" / ") || "—",
+  }] : []),
+]);
 
 function typeLabel(dataType: number): string {
   if (dataType === 1) return "script";
@@ -360,6 +384,8 @@ function applyHistory(item: HistoryItem): void {
   if (item.stringMatch) {
     search.stringMatch = item.stringMatch;
   }
+  search.exactMatch = item.exactMatch === true;
+  onScopePathUpdate(typeof item.scopePath === "string" ? item.scopePath : "");
   search.query = item.query;
   doSearch();
 }
@@ -411,6 +437,10 @@ function onScopeKeydown(event: KeyboardEvent): void {
               {{ option.label }}
             </NRadioButton>
           </NRadioGroup>
+          <label v-if="search.mode === 'quick'" class="advanced-search-exact">
+            <NSwitch v-model:value="search.exactMatch" size="small" />
+            精确搜索
+          </label>
         </div>
 
         <div class="advanced-search-shortcut-hint">
@@ -463,7 +493,7 @@ function onScopeKeydown(event: KeyboardEvent): void {
               :key="item.query"
               class="search-chip search-chip-history"
               type="button"
-              :title="`填入历史: ${item.query} (${item.mode === 'binary' ? '二进制' : item.stringMatch === 'regex' ? '正则' : '普通文本'})`"
+              :title="`填入历史: ${item.query} (${item.mode === 'quick' ? (item.exactMatch ? '快速精确搜索' : '快速搜索') : item.mode === 'binary' ? '二进制' : item.stringMatch === 'regex' ? '正则' : '普通文本'})`"
               @click="applyHistory(item)"
             >
               {{ item.query }}
@@ -498,6 +528,21 @@ function onScopeKeydown(event: KeyboardEvent): void {
         </NAutoComplete>
       </div>
 
+      <div class="advanced-search-chips-row">
+        <span class="chips-row-label">目录预设:</span>
+        <div class="chips-scroll">
+          <button
+            v-for="scope in scopePresets"
+            :key="scope"
+            class="search-chip search-chip-preset"
+            :class="{ 'search-chip-active': search.scopePath === scope }"
+            type="button"
+            :aria-pressed="search.scopePath === scope"
+            @click="onScopePathUpdate(scope)"
+          >{{ scope }}</button>
+        </div>
+      </div>
+
       <NAlert v-if="search.stale" type="warning" :show-icon="false" class="advanced-search-alert">
         归档内容已变化，当前结果可能已过期，请重新搜索。
       </NAlert>
@@ -506,8 +551,8 @@ function onScopeKeydown(event: KeyboardEvent): void {
       </NAlert>
 
       <div class="advanced-search-meta">
-        <NText depth="3">命中 {{ search.hits.length.toLocaleString() }} 个文件</NText>
-        <NTag v-if="search.indexStatus.state === 'building'" size="small" type="info" :bordered="false">
+        <NText depth="3">命中 {{ search.hits.length.toLocaleString() }} {{ search.mode === "quick" ? "条记录" : "个文件" }}</NText>
+        <NTag v-if="search.mode === 'string' && search.indexStatus.state === 'building'" size="small" type="info" :bordered="false">
           正在构建字符串索引（{{ search.indexStatus.done.toLocaleString() }}/{{ search.indexStatus.total.toLocaleString() }}），首次搜索可能慢一些
         </NTag>
         <NTag v-else-if="search.stale" size="small" type="warning" :bordered="false">结果已过期</NTag>
@@ -576,10 +621,22 @@ function onScopeKeydown(event: KeyboardEvent): void {
   justify-content: space-between;
   gap: 12px;
 }
+.advanced-search-exact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pvf-text-secondary);
+}
+.search-chip-active {
+  color: var(--pvf-primary-base);
+  border-color: var(--pvf-primary-base);
+}
 .advanced-search-modes {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .advanced-search-shortcut-hint {
   display: flex;

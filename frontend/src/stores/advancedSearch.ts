@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService } from "../../bindings/pvfine/services";
@@ -9,7 +9,7 @@ import type {
 } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "./archive";
 
-export type AdvancedSearchMode = "binary" | "string";
+export type AdvancedSearchMode = "binary" | "string" | "quick";
 export type AdvancedStringMatch = "text" | "regex";
 
 export interface AdvancedSearchItem {
@@ -26,7 +26,8 @@ export interface AdvancedSearchItem {
 export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
   const archive = useArchiveStore();
   const visible = ref(false);
-  const mode = ref<AdvancedSearchMode>("string");
+  const mode = ref<AdvancedSearchMode>("quick");
+  const exactMatch = ref(false);
   const stringMatch = ref<AdvancedStringMatch>("text");
   const query = ref("");
   const scopePath = ref("");
@@ -69,7 +70,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
 
   function toItem(hit: AdvancedSearchHit): AdvancedSearchItem {
     return {
-      key: `${hit.fileIndex}:${hit.path}`,
+      key: `${hit.fileIndex}:${hit.path}:${hit.name ?? ""}:${(hit.details ?? []).filter((detail) => detail?.kind === "id").map((detail) => detail?.value).join(",")}`,
       name: hit.name ?? "",
       path: hit.path,
       size: hit.size,
@@ -103,7 +104,8 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
   function resetForArchive() {
     requestId++;
     visible.value = false;
-    mode.value = "string";
+    mode.value = "quick";
+    exactMatch.value = false;
     stringMatch.value = "text";
     scopePath.value = "";
     clear();
@@ -139,7 +141,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     searching.value = true;
     try {
       const result = await ArchiveService.AdvancedSearch(
-        mode.value,
+        mode.value === "quick" && exactMatch.value ? "quick-exact" : mode.value,
         query.value,
         scopePath.value,
         regexEnabled.value,
@@ -184,7 +186,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     error.value = "";
     try {
       const result = await ArchiveService.AdvancedSearch(
-        mode.value,
+        mode.value === "quick" && exactMatch.value ? "quick-exact" : mode.value,
         query.value,
         scopePath.value,
         regexEnabled.value,
@@ -215,7 +217,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
       let cursor = nextCursor.value;
       while (cursor >= 0) {
         const result = await ArchiveService.AdvancedSearch(
-          mode.value,
+          mode.value === "quick" && exactMatch.value ? "quick-exact" : mode.value,
           query.value,
           scopePath.value,
           regexEnabled.value,
@@ -249,6 +251,21 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     if (query.value.trim() || hits.value.length > 0) stale.value = true;
   }
 
+  watch([mode, query, scopePath, stringMatch, exactMatch], () => {
+    requestId++;
+    searching.value = false;
+    retryAfterIndex = false;
+    nextCursor.value = -1;
+    if (hits.value.length > 0) stale.value = true;
+  }, { flush: "sync" });
+
+  Events.On("archive:index-ready", () => {
+    if (mode.value === "quick" && retryAfterIndex && visible.value) {
+      retryAfterIndex = false;
+      void search();
+    }
+  });
+
   Events.On("archive:opened", () => resetForArchive());
   Events.On("archive:closed", () => resetForArchive());
   Events.On("archive:advanced-search-stale", () => markStale());
@@ -270,6 +287,7 @@ export const useAdvancedSearchStore = defineStore("advancedSearch", () => {
     visible,
     mode,
     stringMatch,
+    exactMatch,
     query,
     scopePath,
     hits,
