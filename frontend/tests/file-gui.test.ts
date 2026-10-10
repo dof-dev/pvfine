@@ -20,6 +20,7 @@ function deferred<T>() {
 test("仅支持的文件有 GUI，默认文本，各窗格独立并可清理", () => {
   expect(getGUIProvider(file)?.readOnly).toBe(false);
   expect(getGUIProvider({ ...file, path: "itemshop/SHOP.SHP" })?.id).toBe("shop");
+  expect(getGUIProvider({ ...file, path: "skill/atgunner/C4.SKL" })?.id).toBe("skill");
   expect(getGUIProvider({ ...file, path: "a.equ" })).toBeNull();
   const left = createGUIModes(), right = createGUIModes();
   expect(left.entries.get(1)?.mode ?? "text").toBe("text");

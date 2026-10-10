@@ -31,6 +31,10 @@ export function ApplyWorldDropEdit(req: $models.WorldDropEditRequest): $Cancella
     return $Call.ByID(237649473, req);
 }
 
+export function ListSkills(): $CancellablePromise<$models.SkillEntry[] | null> {
+    return $Call.ByID(3606807130);
+}
+
 /**
  * ReadItem resolves the same item union used by shop lists and search pickers.
  */
@@ -44,6 +48,10 @@ export function ReadItem(id: string, drafts: $models.ShopDraft[] | null): $Cance
  */
 export function ReadShop(fileIndex: number, text: string): $CancellablePromise<$models.ShopDocument | null> {
     return $Call.ByID(603302160, fileIndex, text);
+}
+
+export function ReadSkill(fileIndex: number, text: string): $CancellablePromise<$models.SkillDocument | null> {
+    return $Call.ByID(3027074897, fileIndex, text);
 }
 
 /**

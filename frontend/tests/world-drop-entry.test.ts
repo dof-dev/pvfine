@@ -49,6 +49,28 @@ describe("world drop entry & editor store integration", () => {
     api.GetFileBasic.mockImplementation((index) => api.GetFile(index));
   });
 
+  it("saveFileTab: 保存指定技能，不受当前活动标签影响", async () => {
+    api.GetFile.mockImplementation((index: number) => Promise.resolve({
+      index, path: `skill/test/${index}.skl`, text: "original", editable: true,
+      dataType: 1, size: 8, tags: [], annotations: [], modified: false,
+    }));
+    api.SetText.mockResolvedValue(undefined);
+    api.GetAnnotations.mockResolvedValue([]);
+    const store = useEditorStore();
+    await store.openFile(20);
+    await store.openFile(21);
+    store.updateContent(20, "技能参数修改");
+    store.updateContent(21, "其他草稿");
+    expect(store.activeTab?.index).toBe(21);
+    expect(await store.saveFileTab(20)).toBe(true);
+    expect(api.SetText).toHaveBeenCalledExactlyOnceWith(20, "技能参数修改");
+    expect(store.tabs.find((tab) => tab.index === 20)?.original).toBe("技能参数修改");
+    expect(store.tabs.find((tab) => tab.index === 21)?.original).toBe("original");
+    expect(api.refreshInfo).toHaveBeenCalledOnce();
+    expect(await store.saveFileTab(20)).toBe(false);
+    expect(store.saving).toBe(false);
+  });
+
   it("openWorldDrop: 归档中缺少 etc/worlddrop.etc 时明确抛错", async () => {
     api.ResolveFiles.mockResolvedValue([]);
     const store = useEditorStore();

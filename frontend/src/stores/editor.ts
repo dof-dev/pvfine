@@ -78,6 +78,12 @@ interface LayoutReplacement {
 export const useEditorStore = defineStore("editor", () => {
   const initialPaneId = "pane-1";
   const tabs = ref<EditorTab[]>([]);
+  // 通用 GUI 的文件草稿独立于可见标签，仍参与保存和归档关闭保护。
+  const guiDrafts = ref<EditorTab[]>([]);
+  const allFiles = computed(() => [...tabs.value, ...guiDrafts.value]);
+  function getFileDraft(index: number | string): EditorTab | undefined {
+    return allFiles.value.find((file) => typeof index === "string" ? file.path === index : file.index === index);
+  }
   const paneStates = reactive<Record<EditorPaneId, EditorPaneState>>({
     [initialPaneId]: {
       id: initialPaneId,
@@ -161,7 +167,7 @@ export const useEditorStore = defineStore("editor", () => {
     return tab.editable && !isTextDirty(tab) && hasGUIDirty(tab.index);
   }
 
-  const dirtyCount = computed(() => tabs.value.filter(isDirty).length);
+  const dirtyCount = computed(() => allFiles.value.filter(isDirty).length);
   const pendingClose = ref<PendingTabClose | null>(null);
 
   function collectPaneIds(node: EditorLayoutNode, result: EditorPaneId[]): void {
@@ -232,8 +238,43 @@ export const useEditorStore = defineStore("editor", () => {
     if (tabs.value.length >= 20) {
       throw new Error("打开的标签过多,请先关闭一些(上限 20)");
     }
+    const draft = guiDrafts.value.find((file) => file.index === index);
+    if (draft) {
+      guiDrafts.value = guiDrafts.value.filter((file) => file !== draft);
+      tabs.value.push(draft);
+      script.showArchiveEditor();
+      addTabToPane(targetPaneId, index);
+      if (!draft.loading && !draft.loadError) void hydrateTabMetadata(draft, draft.path, draft.text);
+      return;
+    }
+    const tab = createFileDraft(index);
+    tabs.value.push(tab);
+    script.showArchiveEditor();
+    addTabToPane(targetPaneId, index);
+    await loadTab(tab);
+  }
+
+  /** 只加载文件内容，不创建、激活或占用编辑器标签。 */
+  async function openGUIFile(index: number): Promise<EditorTab> {
+    let file = getFileDraft(index);
+    if (file?.loading) throw new Error("文件正在加载，请稍后再试");
+    if (file && !file.loadError) return file;
+    if (!file) {
+      file = createFileDraft(index);
+      guiDrafts.value.push(file);
+    } else {
+      file.loading = true;
+      file.loadError = null;
+    }
+    await loadTab(file);
+    if (!allFiles.value.includes(file)) throw new Error("归档已切换，已忽略旧技能");
+    if (file.loadError) throw new Error(file.loadError);
+    return file;
+  }
+
+  function createFileDraft(index: number): EditorTab {
     const knownPath = useExplorerStore().getFilePath(index) ?? "";
-    const tab = reactive<EditorTab>({
+    return reactive<EditorTab>({
       index,
       path: knownPath,
       title: knownPath.split("/").pop() || `文件 ${index}`,
@@ -252,10 +293,6 @@ export const useEditorStore = defineStore("editor", () => {
       loading: true,
       loadError: null,
     });
-    tabs.value.push(tab);
-    script.showArchiveEditor();
-    addTabToPane(targetPaneId, index);
-    await loadTab(tab);
   }
 
   async function loadTab(tab: EditorTab): Promise<void> {
@@ -264,10 +301,10 @@ export const useEditorStore = defineStore("editor", () => {
     try {
       // 让 Vue 先提交加载态，再开始后端调用。
       await nextTick();
-      if (!tabs.value.includes(tab)) return;
+      if (!allFiles.value.includes(tab)) return;
       const meta: FileMeta | null = await EditorService.GetFileBasic(tab.index);
       // 关闭、重新打开或切换归档后，旧请求不能写入新标签。
-      if (!tabs.value.includes(tab)) return;
+      if (!allFiles.value.includes(tab)) return;
       if (!meta) throw new Error("文件不存在或无法读取");
       Object.assign(tab, {
         path: meta.path,
@@ -287,7 +324,7 @@ export const useEditorStore = defineStore("editor", () => {
       void hydrateTabMetadata(tab, meta.path, meta.text);
     } catch (error) {
       outcome = "failed";
-      if (tabs.value.includes(tab)) {
+      if (allFiles.value.includes(tab)) {
         tab.loadError = error instanceof Error ? error.message : String(error);
       }
     } finally {
@@ -600,7 +637,7 @@ export const useEditorStore = defineStore("editor", () => {
   /** 编辑器内容变化:只更新本地文本,写入 overlay 由保存动作显式触发。 */
   function updateContent(index: number, text: string) {
     if (guiApplying.value) return;
-    const tab = tabs.value.find((item) => item.index === index);
+    const tab = getFileDraft(index);
     if (!tab || !tab.editable) return;
     tab.text = text;
   }
@@ -632,7 +669,7 @@ export const useEditorStore = defineStore("editor", () => {
     if (!source || source.text !== request.text) throw new Error("商店草稿已变化，请关闭表单并重新打开");
     const gui = useFileGUIStore();
     const epoch = gui.epoch;
-    request = { ...request, drafts: tabs.value.filter(isDirty).map((tab) => ({ fileIndex: tab.index, path: tab.path, text: tab.text })) };
+    request = { ...request, drafts: allFiles.value.filter(isDirty).map((tab) => ({ fileIndex: tab.index, path: tab.path, text: tab.text })) };
     saving.value = true;
     guiApplying.value = true;
     guiRefreshWarning.value = "";
@@ -718,13 +755,13 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 把单个标签的本地文本写入后端 overlay,成功后重置脏基线。 */
   async function saveTab(index: number): Promise<boolean> {
-    const tab = tabs.value.find((item) => item.index === index);
+    const tab = getFileDraft(index);
     if (!tab || !isTextDirty(tab)) return false;
     const text = tab.text;
     await EditorService.SetText(tab.index, text);
     const annotations = (await EditorService.GetAnnotations(tab.index)) ?? [];
-    const current = tabs.value.find((item) => item.index === tab.index);
-    if (!current) return true;
+    const current = getFileDraft(tab.index);
+    if (current !== tab) return true;
     // 等待期间用户继续输入时保留其草稿,下一次保存再写入。
     if (current.text === text) {
       current.original = text;
@@ -734,12 +771,11 @@ export const useEditorStore = defineStore("editor", () => {
     return true;
   }
 
-  /** 保存指定窗格的活动标签(默认当前窗格)。无修改时为空操作。 */
-  async function saveActiveTab(requestedPaneId?: EditorPaneId): Promise<boolean> {
-    const paneId = resolvePaneId(requestedPaneId);
-    const index = paneStates[paneId]?.activeKey ?? null;
-    if (index === null || saving.value) return false;
-    const tab = tabs.value.find((item) => item.index === index);
+  /** 保存指定文件，供文件 GUI 与通用 GUI 共用。 */
+  async function saveFileTab(index: number): Promise<boolean> {
+    if (saving.value) return false;
+    const tab = getFileDraft(index);
+    if (!tab || !tab.editable) return false;
     if (tab && tab.editable && hasGUIDirty(tab.index)) {
       throw new Error(`当前文件存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
     }
@@ -753,9 +789,16 @@ export const useEditorStore = defineStore("editor", () => {
     }
   }
 
+  /** 保存指定窗格的活动标签(默认当前窗格)。无修改时为空操作。 */
+  async function saveActiveTab(requestedPaneId?: EditorPaneId): Promise<boolean> {
+    const paneId = resolvePaneId(requestedPaneId);
+    const index = paneStates[paneId]?.activeKey ?? null;
+    return index === null ? false : saveFileTab(index);
+  }
+
   /** 把所有本地有修改的标签写入 overlay(PVF 写盘前调用)。 */
   async function saveAllDirty(): Promise<number> {
-    const indexes = tabs.value.filter((tab) => isTextDirty(tab)).map((tab) => tab.index);
+    const indexes = allFiles.value.filter((tab) => isTextDirty(tab)).map((tab) => tab.index);
     let saved = 0;
     for (const index of indexes) {
       if (await saveTab(index)) saved += 1;
@@ -788,7 +831,7 @@ export const useEditorStore = defineStore("editor", () => {
   /** 保存到源文件 */
   async function save() {
     const archive = useArchiveStore();
-    const guiDirtyTab = tabs.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
+    const guiDirtyTab = allFiles.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
     if (guiDirtyTab) {
       throw new Error(`文件 ${guiDirtyTab.title || guiDirtyTab.path} 存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
     }
@@ -798,7 +841,7 @@ export const useEditorStore = defineStore("editor", () => {
       const info = await EditorService.Save();
       archive.info = info;
       // 保存成功后,文本与基准重置(overlay 已清空)
-      for (const tab of tabs.value) {
+      for (const tab of allFiles.value) {
         tab.original = tab.text;
         tab.modified = false;
       }
@@ -811,7 +854,7 @@ export const useEditorStore = defineStore("editor", () => {
   /** 另存为新 PVF,返回保存路径(取消返回 null) */
   async function saveAs() {
     const archive = useArchiveStore();
-    const guiDirtyTab = tabs.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
+    const guiDirtyTab = allFiles.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
     if (guiDirtyTab) {
       throw new Error(`文件 ${guiDirtyTab.title || guiDirtyTab.path} 存在未应用的界面修改，请先在界面中点击【应用修改】后再保存`);
     }
@@ -820,7 +863,7 @@ export const useEditorStore = defineStore("editor", () => {
       await saveAllDirty();
       const path = await EditorService.SaveAsDialog();
       if (path) {
-        for (const tab of tabs.value) {
+        for (const tab of allFiles.value) {
           tab.original = tab.text;
           tab.modified = false;
         }
@@ -903,9 +946,9 @@ export const useEditorStore = defineStore("editor", () => {
   /** 重新读取当前 renderer 生成的文本,但保留已修改标签的脏基线。 */
   async function refreshRenderedText() {
     await Promise.all(
-      tabs.value.filter((tab) => !tab.loading && !tab.loadError).map(async (tab) => {
+      allFiles.value.filter((tab) => !tab.loading && !tab.loadError).map(async (tab) => {
         const meta = await EditorService.GetFile(tab.index);
-        const current = tabs.value.find((item) => item.index === tab.index);
+        const current = allFiles.value.find((item) => item.index === tab.index);
         if (!current || !meta) return;
         current.path = meta.path;
         current.title = meta.path.split("/").pop() ?? meta.path;
@@ -931,7 +974,7 @@ export const useEditorStore = defineStore("editor", () => {
     const uniqueIndexes = [...new Set(indexes)];
     await Promise.all(
       uniqueIndexes.map(async (index) => {
-        const current = tabs.value.find((tab) => tab.index === index);
+        const current = allFiles.value.find((tab) => tab.index === index);
         if (!current) return;
         const meta = await EditorService.GetFile(index);
         if (!meta) return;
@@ -953,9 +996,10 @@ export const useEditorStore = defineStore("editor", () => {
     resetOriginal = false
   ): Promise<void> {
     // 结构变更后旧索引已失效；标签中的本地文本保留,后续保存会按新索引写入。
-    if (tabs.value.length === 0) return;
+    if (allFiles.value.length === 0) return;
 
-    const currentTabs = [...tabs.value];
+    const visibleTabs = new Set(tabs.value);
+    const currentTabs = [...allFiles.value];
     const nodes = (await ArchiveService.ResolveFiles(currentTabs.map((tab) => tab.path))) ?? [];
     const indexByPath = new Map(
       nodes
@@ -995,7 +1039,8 @@ export const useEditorStore = defineStore("editor", () => {
         null;
     }
 
-    tabs.value = remainingTabs;
+    tabs.value = remainingTabs.filter((tab) => visibleTabs.has(tab));
+    guiDrafts.value = remainingTabs.filter((tab) => !visibleTabs.has(tab));
     await Promise.all(
       remainingTabs
         .filter((tab) => pathsToRefresh.has(tab.path))
@@ -1045,9 +1090,11 @@ export const useEditorStore = defineStore("editor", () => {
   }
 
   Events.On("archive:reloaded", () => {
-    void refreshAfterArchiveChange(tabs.value.map((tab) => tab.path), true);
+    void refreshAfterArchiveChange(allFiles.value.map((tab) => tab.path), true);
   });
+  Events.On("archive:opened", () => { guiDrafts.value = []; });
   Events.On("archive:closed", () => {
+    guiDrafts.value = [];
     pendingClose.value = null;
     draggingTab.value = null;
     guiDirtyCheckers.clear();
@@ -1085,6 +1132,8 @@ export const useEditorStore = defineStore("editor", () => {
 
   return {
     tabs,
+    getFileDraft,
+    openGUIFile,
     panes,
     layout,
     activeKey,
@@ -1132,6 +1181,7 @@ export const useEditorStore = defineStore("editor", () => {
     toggleAnnotationsHidden,
     setPlaceholderText,
     saveTab,
+    saveFileTab,
     saveActiveTab,
     saveAllDirty,
     save,

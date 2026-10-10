@@ -899,6 +899,49 @@ export interface ShopTab {
     "groups": ShopGroup[] | null;
 }
 
+export interface SkillDocument {
+    "name": string;
+    "modes": SkillMode[] | null;
+}
+
+export interface SkillEntry {
+    "fileIndex": number;
+    "path": string;
+    "name": string;
+    "job": string;
+}
+
+export interface SkillMode {
+    "id": string;
+    "static": SkillNumber[] | null;
+    "width": number;
+    "levels": (SkillNumber[] | null)[] | null;
+    "properties": SkillProperty[] | null;
+    "issues": string[] | null;
+}
+
+/**
+ * SkillNumber retains exact UTF-16 source positions so GUI edits preserve all
+ * unrelated tags, formatting, and numeric token types in the editor draft.
+ */
+export interface SkillNumber {
+    "value": number;
+    "start": number;
+    "end": number;
+    "tokenType": number;
+}
+
+export interface SkillProperty {
+    "template": string;
+    "bindings": SkillPropertyBinding[] | null;
+}
+
+export interface SkillPropertyBinding {
+    "dynamic": boolean;
+    "index": number;
+    "multiplier": number;
+}
+
 export interface StoredFileSet {
     "id": string;
     "name": string;

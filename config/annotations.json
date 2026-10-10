@@ -271,7 +271,8 @@
           "[mage]": "魔法师",
           "[priest]": "圣职者",
           "[swordman]": "鬼剑士",
-          "[thief]": "暗夜使者"
+          "[thief]": "暗夜使者",
+          "[gunblader]": "枪剑士"
         }
       },
       "preview": {

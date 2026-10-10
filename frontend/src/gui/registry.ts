@@ -20,6 +20,13 @@ const providers: GUIProvider[] = [
     matches: (file) => ["etc/worlddrop.etc", "etc/(r)worlddrop.etc"].includes(normalizePath(file.path)),
     component: defineAsyncComponent(() => import("../components/gui/WorldDropViewer.vue")),
   },
+  {
+    id: "skill",
+    label: "技能",
+    readOnly: false,
+    matches: (file) => file.path.toLowerCase().endsWith(".skl"),
+    component: defineAsyncComponent(() => import("../components/gui/SkillViewer.vue")),
+  },
 ];
 
 export function getGUIProvider(file: GUIFile): GUIProvider | null {

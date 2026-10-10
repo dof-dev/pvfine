@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from "vue";
+import { computed, defineAsyncComponent, h, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import {
   FolderOpen24Regular,
@@ -41,6 +41,7 @@ import { useDropRateStore } from "../stores/dropRate";
 import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
 import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 
+const SkillBrowser = defineAsyncComponent(() => import("./gui/SkillBrowser.vue"));
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
@@ -53,6 +54,7 @@ const dropRate = useDropRateStore();
 const message = useMessage();
 const dialog = useDialog();
 const hashRegistrationVisible = ref(false);
+const skillBrowserVisible = ref(false);
 
 function shortcutHint(command: ShortcutCommandId): string {
   const binding = effectiveBinding(command, settings.shortcutOverrides);
@@ -116,6 +118,12 @@ const toolOptions = computed(() => [
     key: "world-drop",
     disabled: !archive.open,
     icon: () => h(NIcon, null, { default: () => h(Globe24Regular) }),
+  },
+  {
+    label: "技能参数",
+    key: "skills",
+    disabled: !archive.open,
+    icon: () => h(NIcon, null, { default: () => h(Code24Regular) }),
   },
 ]);
 watch(
@@ -245,6 +253,10 @@ function onCancelUnpack() {
 }
 
 async function onToolSelect(key: string): Promise<void> {
+  if (key === "skills") {
+    skillBrowserVisible.value = true;
+    return;
+  }
   if (key === "drop-rate") {
     const opened = await dropRate.open();
     if (!opened) {
@@ -272,6 +284,7 @@ function isCancel(e: any): boolean {
 </script>
 
 <template>
+  <SkillBrowser v-if="skillBrowserVisible" v-model:show="skillBrowserVisible" />
   <div class="toolbar" role="toolbar" aria-label="主工具栏">
     <div class="tb-group" role="group" aria-label="文件">
       <NTooltip trigger="hover">
