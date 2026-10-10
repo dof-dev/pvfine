@@ -7,6 +7,7 @@ import { logLevels, useLogStore } from "../stores/logs";
 const logs = useLogStore();
 const viewport = ref<HTMLElement | null>(null);
 let scrollRevision = 0;
+const timeFormatter = new Intl.DateTimeFormat("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 async function scrollToLatest() {
   const revision = ++scrollRevision;
@@ -27,7 +28,7 @@ function onScroll() {
 function timeText(timestamp: string): string {
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return timestamp;
-  return `${date.toLocaleTimeString("zh-CN", { hour12: false })}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+  return `${timeFormatter.format(date)}.${String(date.getMilliseconds()).padStart(3, "0")}`;
 }
 </script>
 
@@ -61,7 +62,7 @@ function timeText(timestamp: string): string {
       <div v-if="!logs.filtered.length" class="log-empty">
         {{ logs.entries.length ? "当前等级下暂无日志" : "暂无日志" }}
       </div>
-      <div v-for="entry in logs.filtered" :key="entry.id" class="log-line" :class="`log-line--${entry.level.toLowerCase()}`">
+      <div v-for="entry in logs.filtered" :key="entry.id" v-memo="[entry]" class="log-line" :class="`log-line--${entry.level.toLowerCase()}`">
         <time :datetime="entry.timestamp" :title="entry.timestamp">{{ timeText(entry.timestamp) }}</time>
         <span class="log-level">{{ entry.level === "ERROR" ? "ERR" : entry.level }}</span>
         <span class="log-message"><span class="log-source">[{{ entry.source }}]</span> {{ entry.message }}</span>

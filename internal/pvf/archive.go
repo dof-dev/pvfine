@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"pvfine/internal/buildmode"
 	"pvfine/internal/rendering"
 )
 
@@ -507,18 +508,23 @@ func pathExt(name string) string {
 
 // Chunk returns decompressed chunk ci, caching the result.
 func (a *Archive) Chunk(ci int32) ([]byte, error) {
-	started := time.Now()
+	var started time.Time
+	if buildmode.Development {
+		started = time.Now()
+	}
 	a.cacheMu.Lock()
 	defer a.cacheMu.Unlock()
-	wait := time.Since(started)
 	cached := false
 	bytes := 0
-	defer func() {
-		if elapsed := time.Since(started); elapsed >= 50*time.Millisecond {
-			log.Printf("[DEBUG] pvf.Chunk chunk=%d cache-hit=%t bytes=%d cache-lock-wait=%s work=%s total=%s",
-				ci, cached, bytes, wait, elapsed-wait, elapsed)
-		}
-	}()
+	if buildmode.Development {
+		wait := time.Since(started)
+		defer func() {
+			if elapsed := time.Since(started); elapsed >= 50*time.Millisecond {
+				log.Printf("[DEBUG] pvf.Chunk chunk=%d cache-hit=%t bytes=%d cache-lock-wait=%s work=%s total=%s",
+					ci, cached, bytes, wait, elapsed-wait, elapsed)
+			}
+		}()
+	}
 	if ch, ok := a.chunkCache[ci]; ok {
 		cached, bytes = true, len(ch)
 		a.chunkCacheClock++

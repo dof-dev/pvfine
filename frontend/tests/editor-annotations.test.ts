@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { ChangeSet } from "@codemirror/state";
-import { annotationAt, indexAnnotations, referenceAt } from "../src/editorAnnotations";
+import { annotationAt, forEachVisibleAnnotation, indexAnnotations, referenceAt } from "../src/editorAnnotations";
 import type { EditorAnnotation } from "../bindings/pvfine/services/models";
 
 function annotation(start: number, end: number, targetFileIndex = 7): EditorAnnotation {
@@ -46,4 +46,16 @@ test("五万条标注编辑后仍正确定位远端链接并共享对象", () =>
   const ranges = indexAnnotations(items, 1500000).map(ChangeSet.of({ from: 0, insert: "abc" }, 1500000));
   expect(referenceAt(ranges, 49999 * 30 + 3)).toBe(items[49999]);
   expect(ranges.size).toBe(50000);
+});
+
+test("大量标注只遍历可见范围，折叠后的重复范围只处理一次", () => {
+  const items = Array.from({ length: 50000 }, (_, index) => annotation(index * 30, index * 30 + 20, index));
+  const ranges = indexAnnotations(items, 1500000);
+  const visible: number[] = [];
+  forEachVisibleAnnotation(ranges, [
+    { from: 300, to: 360 },
+    { from: 320, to: 350 },
+    { from: 1499970, to: 1500000 },
+  ], (_from, _to, value) => visible.push(value.annotation.targetFileIndex));
+  expect(visible).toEqual([10, 11, 12, 49999]);
 });

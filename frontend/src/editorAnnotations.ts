@@ -20,6 +20,22 @@ export function indexAnnotations(annotations: readonly EditorAnnotation[], lengt
   }), true);
 }
 
+/** 仅遍历可见文本内的标注；折叠造成多个可见范围时同一标注只返回一次。 */
+export function forEachVisibleAnnotation(
+  ranges: RangeSet<AnnotationRange>,
+  visibleRanges: readonly { from: number; to: number }[],
+  callback: (from: number, to: number, value: AnnotationRange) => void,
+): void {
+  const seen = new Set<AnnotationRange>();
+  for (const visible of visibleRanges) {
+    ranges.between(visible.from, visible.to, (from, to, value) => {
+      if (seen.has(value)) return;
+      seen.add(value);
+      callback(from, to, value);
+    });
+  }
+}
+
 export function referenceAt(ranges: RangeSet<AnnotationRange>, position: number): EditorAnnotation | undefined {
   let result: EditorAnnotation | undefined;
   ranges.between(position, position, (from, to, value) => {

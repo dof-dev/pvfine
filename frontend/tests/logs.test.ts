@@ -1,8 +1,13 @@
-import { beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { isReactive, watch } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { formatLogValue, logCapacity, useLogStore } from "../src/stores/logs";
 
 beforeEach(() => setActivePinia(createPinia()));
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
 
 function backend(id: number, level = "INFO") {
   return { id, timestamp: "2026-10-07T10:00:00Z", source: "Go", level, message: `entry ${id}` };
@@ -67,4 +72,49 @@ test("formats exceptions, objects and circular console arguments", () => {
   const circular: { self?: unknown } = {};
   circular.self = circular;
   expect(formatLogValue(circular)).toBe("[object Object]");
+});
+
+test("日志突发异步合并为一次界面更新，并保留容量内的顺序与错误", () => {
+  vi.useFakeTimers();
+  const logs = useLogStore();
+  let publications = 0;
+  const stop = watch(() => logs.entries, () => publications++, { flush: "sync" });
+  for (let id = 4000; id > 0; id--) logs.enqueueBackendLogs(backend(id, id === 4000 ? "ERROR" : "DEBUG"));
+  expect(logs.entries).toHaveLength(0);
+  vi.runAllTimers();
+  expect(publications).toBe(1);
+  expect(logs.entries).toHaveLength(logCapacity);
+  expect(logs.entries[0].backendID).toBe(2001);
+  expect(logs.entries.at(-1)?.backendID).toBe(4000);
+  expect(logs.errorCount).toBe(1);
+  expect(isReactive(logs.entries[0])).toBe(false);
+  const previous = logs.entries;
+  logs.add("INFO", "test", "new entry");
+  expect(previous.at(-1)?.backendID).toBe(4000);
+  stop();
+});
+
+test("清空时取消待发布日志，延迟历史不会重新出现", () => {
+  vi.useFakeTimers();
+  const logs = useLogStore();
+  logs.enqueueBackendLogs([backend(10), backend(11)]);
+  logs.clear();
+  logs.enqueueBackendLogs([backend(10), backend(11), backend(12)]);
+  vi.runAllTimers();
+  expect(logs.entries.map((entry) => entry.backendID)).toEqual([12]);
+});
+
+test("生产日志保留操作结果和异常，跳过 DEBUG 与 Go 运行时信息", () => {
+  vi.stubEnv("DEV", false);
+  vi.stubEnv("MODE", "production");
+  const logs = useLogStore();
+  const format = vi.fn(() => "debug details");
+  logs.add("DEBUG", "performance", { toJSON: format });
+  logs.ingest([
+    backend(1, "DEBUG"), backend(2, "INFO"), backend(3, "WARN"), backend(4, "ERROR"),
+    { ...backend(5, "INFO"), source: "archive:saved" },
+    { ...backend(6, "INFO"), source: undefined },
+  ]);
+  expect(format).not.toHaveBeenCalled();
+  expect(logs.entries.map((entry) => entry.backendID)).toEqual([3, 4, 5]);
 });

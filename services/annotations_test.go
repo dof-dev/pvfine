@@ -270,6 +270,62 @@ func TestAnnotationServicesAndCacheInvalidation(t *testing.T) {
 	}
 }
 
+func TestRepeatedReferencesDoNotFloodLogsOnReopen(t *testing.T) {
+	index := 0
+	engine, err := annotationrules.Compile(annotationrules.Document{
+		Version: 1,
+		Relations: map[string]annotationrules.RelationSpec{
+			"equipment": {ListPath: "equipment/equipment.lst", IDToken: 0, PathToken: 1, RecordTokens: 2, NameSection: "name"},
+		},
+		Rules: []annotationrules.Rule{{
+			ID: "items", Match: annotationrules.MatchSpec{Extensions: []string{".shp"}},
+			Target:     annotationrules.TargetSpec{Kind: "token", Section: "items", Index: &index, RecordTokens: 1},
+			Annotation: annotationrules.AnnotationSpec{Type: "reference", Relation: "equipment"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pvf.New()
+	mustAddText(t, a, "equipment/equipment.lst", "1 `item.equ`", pvf.TypeScript)
+	target := mustAddText(t, a, "equipment/item.equ", "[name]\n`装备名称`", pvf.TypeScript)
+	source := mustAddText(t, a, "itemshop/large.shp", "[items]\n"+strings.Repeat("1\n", 1000), pvf.TypeScript)
+	other := mustAddText(t, a, "equipment/other.equ", "[name]\n`其他文件`", pvf.TypeScript)
+	c := &core{annotationEngine: engine}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	editor := NewEditorService(c)
+	for pass := 0; pass < 2; pass++ {
+		before := applicationLogs.snapshot()
+		lastID := uint64(0)
+		if len(before) > 0 {
+			lastID = before[len(before)-1].ID
+		}
+		meta, err := editor.GetFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(meta.Annotations) != 1000 || meta.Annotations[999].TargetFileIndex != target {
+			t.Fatalf("pass %d: annotations=%d", pass, len(meta.Annotations))
+		}
+		count := 0
+		for _, entry := range applicationLogs.snapshot() {
+			if entry.ID > lastID {
+				count++
+			}
+		}
+		if count > 50 {
+			t.Fatalf("pass %d: 1000 references emitted %d logs", pass, count)
+		}
+		// 切换文件替换单文件标注缓存，重开时必须重新解析关联。
+		if _, err := editor.GetFile(other); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestListFileAnnotationsResolveNamesAndTargets(t *testing.T) {
 	engine, err := annotationrules.Compile(annotationrules.Document{
 		Version: 1,

@@ -196,18 +196,18 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 	lockStartedAt := time.Now()
 	c.mu.Lock()
 	if waited := time.Since(lockStartedAt).Round(time.Millisecond); waited > 0 {
-		log.Printf("[pvfine:index] waited for core lock: elapsed=%s", waited)
+		developmentLog("[pvfine:index] waited for core lock: elapsed=%s", waited)
 	}
 	if c.archive == nil {
 		c.mu.Unlock()
-		log.Printf("[pvfine:index] index request ignored: no archive")
+		developmentLog("[pvfine:index] index request ignored: no archive")
 		return
 	}
 	dirty := c.indexDirty != nil && len(c.indexDirty) > 0
 	if c.diskIndex != nil {
 		dirty = c.diskIndex.dirty
 	}
-	log.Printf("[pvfine:index] index request: force=%t files=%d disk=%t ready=%t dirty=%t", force, c.archive.FileCount(), c.diskIndex != nil, c.indexStatus.State == IndexStateReady, dirty)
+	developmentLog("[pvfine:index] index request: force=%t files=%d disk=%t ready=%t dirty=%t", force, c.archive.FileCount(), c.diskIndex != nil, c.indexStatus.State == IndexStateReady, dirty)
 	if c.indexCancel != nil {
 		// Do not cancel an in-flight build for ordinary archive mutations.
 		// The mutation classifier has already accumulated the newest dirty
@@ -237,7 +237,7 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 		gen := c.indexGen
 		c.indexStartedAt = startedAt
 		if hasSnapshot {
-			log.Printf("[pvfine:index] cache hit: files=%d elapsed=%s", a.FileCount(), time.Since(startedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] cache hit: files=%d elapsed=%s", a.FileCount(), time.Since(startedAt).Round(time.Millisecond))
 			c.indexStatus = IndexStatus{State: IndexStateReady, Stage: "ready-cache", Done: int(a.FileCount()), Total: int(a.FileCount()), CacheHit: true, OpenDurationMs: c.indexStatus.OpenDurationMs}
 			status := c.indexStatus
 			c.indexCancel = nil
@@ -314,11 +314,11 @@ func (c *core) startSearchIndexWithOptions(force bool) {
 
 func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Archive, index *sqliteArchiveIndex, startedAt time.Time, force bool) {
 	specs := c.searchableListSpecs()
-	log.Printf("[pvfine:index] semantic build started: force=%t generation=%d files=%d specs=%d", force, gen, a.FileCount(), len(specs))
+	developmentLog("[pvfine:index] semantic build started: force=%t generation=%d files=%d specs=%d", force, gen, a.FileCount(), len(specs))
 	total, skipped, err := index.buildSemantic(ctx, c, a, specs, gen)
 	if err != nil {
 		if ctx.Err() != nil {
-			log.Printf("[pvfine:index] semantic build cancelled: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] semantic build cancelled: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
 			return
 		}
 		log.Printf("[pvfine:index] semantic build failed: generation=%d elapsed=%s error=%v", gen, time.Since(startedAt).Round(time.Millisecond), err)
@@ -350,7 +350,7 @@ func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Ar
 	c.mu.Lock()
 	if !c.indexIsCurrentLocked(a, gen) || c.diskIndex != index || ctx.Err() != nil {
 		c.mu.Unlock()
-		log.Printf("[pvfine:index] semantic build discarded: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
+		developmentLog("[pvfine:index] semantic build discarded: generation=%d elapsed=%s", gen, time.Since(startedAt).Round(time.Millisecond))
 		return
 	}
 	pendingRefresh = c.indexRefreshPending
@@ -369,7 +369,7 @@ func (c *core) buildSearchIndexSQLite(ctx context.Context, gen uint64, a *pvf.Ar
 	c.indexRefreshPendingForce = false
 	status := c.indexStatus
 	c.mu.Unlock()
-	log.Printf("[pvfine:index] semantic build finished: generation=%d records=%d skipped=%d elapsed=%s", gen, total, skipped, time.Since(startedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] semantic build finished: generation=%d records=%d skipped=%d elapsed=%s", gen, total, skipped, time.Since(startedAt).Round(time.Millisecond))
 	emitEvent("archive:index-ready", status)
 	if pendingRefresh {
 		c.startSearchIndexWithOptions(pendingForce)

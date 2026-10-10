@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -90,7 +89,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 		if result != nil {
 			count = result.FileCount
 		}
-		log.Printf("[pvfine:export] prepare finished: source=%s mode=%s dependencies=%t files=%d elapsed=%s error=%v",
+		developmentOrErrorLog(resultErr, "[pvfine:export] prepare finished: source=%s mode=%s dependencies=%t files=%d elapsed=%s error=%v",
 			request.Source, request.Mode, request.IncludeDependencies, count, time.Since(started).Round(time.Millisecond), resultErr)
 	}()
 	finish := s.c.archiveTasks.begin()
@@ -117,7 +116,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 	}
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
-	log.Printf("[pvfine:export] prepare phase=lock elapsed=%s", time.Since(started).Round(time.Millisecond))
+	developmentLog("[pvfine:export] prepare phase=lock elapsed=%s", time.Since(started).Round(time.Millisecond))
 	if s.c.archive == nil {
 		return nil, ErrNoArchive
 	}
@@ -135,7 +134,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 		}
 		next.preview.ID = fmt.Sprint(exportSequence.Add(1))
 		s.storePlan(&next)
-		log.Printf("[pvfine:export] prepare phase=content cache=hit")
+		developmentLog("[pvfine:export] prepare phase=content cache=hit")
 		preview := next.preview
 		return &preview, nil
 	}
@@ -149,7 +148,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[pvfine:export] prepare phase=source files=%d skipped_tables=%d elapsed=%s",
+	developmentLog("[pvfine:export] prepare phase=source files=%d skipped_tables=%d elapsed=%s",
 		len(changes), source.skippedTables, time.Since(phaseStarted).Round(time.Millisecond))
 	p := &exportPlan{
 		request: request, archive: s.c.archive, repo: s.c.versionRepo,
@@ -199,7 +198,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 			p.pkg.Entries = append(p.pkg.Entries, *entry)
 		}
 	}
-	log.Printf("[pvfine:export] prepare phase=diff elapsed=%s", time.Since(phaseStarted).Round(time.Millisecond))
+	developmentLog("[pvfine:export] prepare phase=diff elapsed=%s", time.Since(phaseStarted).Round(time.Millisecond))
 	if request.Mode == "mod" {
 		explicitPairs := make(map[string]int)
 		for _, entry := range p.pkg.Entries {
@@ -212,7 +211,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 				return nil, err
 			}
 			p.preview.DependencyCount = count
-			log.Printf("[pvfine:export] prepare phase=dependencies entries=%d elapsed=%s", count, time.Since(phaseStarted).Round(time.Millisecond))
+			developmentLog("[pvfine:export] prepare phase=dependencies entries=%d elapsed=%s", count, time.Since(phaseStarted).Round(time.Millisecond))
 		}
 		if source.skippedTables > 0 {
 			p.preview.Warnings = append(p.preview.Warnings, fmt.Sprintf("缺少准确的改动基线，跳过 %d 个 lst/str 文件；补齐依赖仅添加匹配条目", source.skippedTables))

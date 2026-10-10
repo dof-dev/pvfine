@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"pvfine/internal/buildmode"
 	"pvfine/internal/pvf"
 )
 
@@ -33,11 +34,31 @@ type logBuffer struct {
 
 var applicationLogs logBuffer
 
+var finishDisabledDebugPhase = func() {}
+
+func developmentLog(format string, args ...any) {
+	if buildmode.Development {
+		log.Printf(format, args...)
+	}
+}
+
+func developmentOrErrorLog(err error, format string, args ...any) {
+	if buildmode.Development || err != nil {
+		log.Printf(format, args...)
+	}
+}
+
 func debugLog(format string, args ...any) {
+	if !buildmode.Development {
+		return
+	}
 	recordLog("DEBUG", "performance", fmt.Sprintf(format, args...))
 }
 
 func debugPhase(operation, detail string) func() {
+	if !buildmode.Development {
+		return finishDisabledDebugPhase
+	}
 	started := time.Now()
 	debugLog("%s started %s", operation, detail)
 	return func() {
@@ -46,6 +67,9 @@ func debugPhase(operation, detail string) func() {
 }
 
 func debugLockAcquired(operation string, started time.Time) {
+	if !buildmode.Development {
+		return
+	}
 	debugLog("%s core-lock acquired wait=%.2fms", operation, elapsedMilliseconds(started))
 }
 
@@ -79,6 +103,9 @@ func recordLog(level, source, message string) {
 }
 
 func (b *logBuffer) record(level, source, message string) {
+	if !buildmode.Development && (level == "DEBUG" || source == "Go" && level != "WARN" && level != "ERROR") {
+		return
+	}
 	entry := b.append(level, source, message)
 	b.mu.Lock()
 	emit := b.emit
@@ -96,14 +123,24 @@ func (b *logBuffer) setEmitter(emit func(appLogEntry)) {
 
 type logCaptureWriter struct{ output io.Writer }
 
-// CaptureLogs preserves terminal output and forwards existing Go/Wails logs.
+// CaptureLogs captures Go/Wails output; production retains warnings and errors.
 func CaptureLogs(output io.Writer) io.Writer {
 	return &logCaptureWriter{output: output}
 }
 
 func (w *logCaptureWriter) Write(p []byte) (int, error) {
+	message := strings.TrimSpace(string(p))
+	level := classifyLogLevel(message)
+	if !buildmode.Development && level != "WARN" && level != "ERROR" {
+		return len(p), nil
+	}
 	n, err := w.output.Write(p)
-	for _, line := range strings.Split(strings.TrimSpace(string(p)), "\n") {
+	if !buildmode.Development {
+		// 保留异常的多行上下文，避免将堆栈的后续行误当成 INFO 丢弃。
+		recordLog(level, "Go", message)
+		return n, err
+	}
+	for _, line := range strings.Split(message, "\n") {
 		if line == "" {
 			continue
 		}
@@ -183,6 +220,9 @@ func describeLogEvent(name string, data any) (level, message, key, signature str
 	switch status := data.(type) {
 	case pvf.StringTableIndexEvent:
 		if status.Kind == "snapshot" {
+			return
+		}
+		if !buildmode.Development && status.Error == "" {
 			return
 		}
 		kind := "字符串表键值索引"

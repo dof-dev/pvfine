@@ -12,9 +12,11 @@ import {
   rectangularSelection,
   crosshairCursor,
   Decoration,
+  ViewPlugin,
   tooltips,
   WidgetType,
   type DecorationSet,
+  type ViewUpdate,
 } from "@codemirror/view";
 import {
   EditorState,
@@ -44,7 +46,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags } from "@lezer/highlight";
 import { vim } from "@replit/codemirror-vim";
 import { NTooltip } from "naive-ui";
-import { annotationAt, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
+import { annotationAt, forEachVisibleAnnotation, indexAnnotations, referenceAt, type AnnotationRange } from "../editorAnnotations";
 import { pvfHighlighting, pvfLanguage } from "../pvfLanguage";
 import { luaLanguage } from "../luaLanguage";
 import { pvfSectionFolding, sectionFoldTiming } from "../pvfSectionFolding";
@@ -398,42 +400,40 @@ watch(
 );
 
 function annotationDecorations(
-  state: EditorState,
-  display: AnnotationDisplay
+  view: EditorView,
+  display: AnnotationDisplay,
 ): DecorationSet {
   const ranges: Range<Decoration>[] = [];
-  for (const cursor = display.annotations.iter(); cursor.value; cursor.next()) {
-    const annotation = cursor.value.annotation;
-    const targetStart = cursor.from;
-    const targetEnd = cursor.to;
+  forEachVisibleAnnotation(display.annotations, view.visibleRanges, (targetStart, targetEnd, value) => {
+    const annotation = value.annotation;
 
     if (targetStart < targetEnd && (annotation.targetFileIndex >= 0 || display.placement === "hidden")) {
       const classes = [
         annotation.targetFileIndex >= 0 ? "cm-annotation-link" : "",
         display.placement === "hidden" ? "cm-annotation-hover" : "",
       ].filter(Boolean).join(" ");
-      ranges.push(
-        Decoration.mark({ class: classes }).range(targetStart, targetEnd)
-      );
+      ranges.push(Decoration.mark({ class: classes }).range(targetStart, targetEnd));
     }
 
     if (display.placement !== "hidden" && annotation.title.trim() !== "") {
-      const position =
-        display.placement === "line-end" ? state.doc.lineAt(targetEnd).to : targetEnd;
-      ranges.push(
-        Decoration.widget({
-          widget: new AnnotationWidget(
-            annotation,
-            (fileIndex) => emit("open-reference", fileIndex),
-            showAnnotationTooltip,
-            scheduleHideTooltip,
-            (request) => emit("edit-placeholder", request)
-          ),
-          side: 1,
-        }).range(position)
-      );
+      const position = display.placement === "line-end"
+        ? view.state.doc.lineAt(targetEnd).to : targetEnd;
+      if (view.visibleRanges.some((range) => position >= range.from && position <= range.to)) {
+        ranges.push(
+          Decoration.widget({
+            widget: new AnnotationWidget(
+              annotation,
+              (fileIndex) => emit("open-reference", fileIndex),
+              showAnnotationTooltip,
+              scheduleHideTooltip,
+              (request) => emit("edit-placeholder", request)
+            ),
+            side: 1,
+          }).range(position)
+        );
+      }
     }
-  }
+  });
   return Decoration.set(ranges, true);
 }
 
@@ -462,21 +462,21 @@ const annotationDisplayField = StateField.define<AnnotationDisplay>({
   },
 });
 
-const annotationField = StateField.define<DecorationSet>({
-  create(state) {
-    return annotationDecorations(state, state.field(annotationDisplayField));
-  },
-  update(decorations, transaction) {
-    let next = decorations.map(transaction.changes);
-    for (const effect of transaction.effects) {
-      if (effect.is(setAnnotations) || effect.is(setAnnotationPlacement)) {
-        return annotationDecorations(transaction.state, transaction.state.field(annotationDisplayField));
-      }
+const annotationPlugin = ViewPlugin.fromClass(class {
+  decorations: DecorationSet;
+
+  constructor(view: EditorView) {
+    this.decorations = annotationDecorations(view, view.state.field(annotationDisplayField));
+  }
+
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged || update.geometryChanged || update.transactions.some((transaction) =>
+      transaction.effects.some((effect) => effect.is(setAnnotations) || effect.is(setAnnotationPlacement))
+    )) {
+      this.decorations = annotationDecorations(update.view, update.state.field(annotationDisplayField));
     }
-    return next;
-  },
-  provide: (field) => EditorView.decorations.from(field),
-});
+  }
+}, { decorations: (plugin) => plugin.decorations });
 
 const diagnosticLineField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -584,7 +584,7 @@ function makeExtensions(themeId: ResolvedThemeId) {
     }),
     readOnlyComp.of(EditorState.readOnly.of(!!props.readOnly)),
     annotationDisplayField,
-    annotationField,
+    annotationPlugin,
     diagnosticLineField,
     indentUnit.of("\t"),
     isJavaScript

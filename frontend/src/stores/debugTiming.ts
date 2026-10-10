@@ -1,6 +1,10 @@
 import { useLogStore } from "./logs";
+import { developmentLoggingEnabled } from "../loggingEnvironment";
+
+const finishDisabledDebugTiming = () => {};
 
 export function startDebugTiming(operation: string, detail: string): (outcome?: string) => void {
+  if (!developmentLoggingEnabled()) return finishDisabledDebugTiming;
   const logs = useLogStore();
   const started = performance.now();
   logs.add("DEBUG", "performance", `${operation} started ${detail}`);

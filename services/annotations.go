@@ -392,7 +392,6 @@ func (c *core) resolveListAnnotationReferenceLocked(relationName, id, context, l
 }
 
 func (c *core) readRelationTargetNameLocked(fileIndex int32, listPath, nameSection string) string {
-	defer debugPhase("relation.target-name", fmt.Sprintf("file=%d list=%s section=%s", fileIndex, listPath, nameSection))()
 	text, err := c.archive.Text(fileIndex)
 	if err != nil {
 		return ""
@@ -452,8 +451,8 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 		cacheKey += "\x00" + normalizeAnnotationContext(context)
 	}
 	targets, ok := c.annotationRelations[cacheKey]
-	debugLog("relation.lookup relation=%s context=%s map-cache=%t", relationName, context, ok)
 	if !ok {
+		debugLog("relation.lookup relation=%s context=%s map-cache=false", relationName, context)
 		if relationOK && relation.Kind == "contextual" {
 			targets = c.buildContextualAnnotationRelationLocked(relation, context)
 		} else {
@@ -470,8 +469,6 @@ func (c *core) resolveAnnotationReferenceContextLocked(relationName, id, context
 		target.reference.Name = c.readRelationTargetNameLocked(
 			target.reference.FileIndex, target.listPath, target.nameSection,
 		)
-	} else {
-		debugLog("relation.target-name file=%d cache=hit", target.reference.FileIndex)
 	}
 	return target.reference, true
 }

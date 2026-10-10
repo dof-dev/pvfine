@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"path"
 	"strings"
 	"time"
@@ -133,7 +132,7 @@ func (s *ExportService) addExportDependenciesLocked(source *exportSource, pkg *m
 			cache[key] = nil
 			return nil
 		}
-		log.Printf("[pvfine:export] dependency table=%s rows=%d read=%s parse=%s",
+		developmentLog("[pvfine:export] dependency table=%s rows=%d read=%s parse=%s",
 			p, len(pairs), readElapsed.Round(time.Millisecond), (time.Since(started) - readElapsed).Round(time.Millisecond))
 		cache[key] = pairs
 		return pairs

@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	githubupdater "github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 
+	"pvfine/internal/buildmode"
 	"pvfine/services"
 )
 
@@ -131,11 +132,15 @@ func main() {
 	// One file set service backs both the sidebar and the script API, so a
 	// scripted change and a manual save target the same document.
 	fileSetService := services.NewFileSetService()
+	runtimeLogLevel := slog.LevelWarn
+	if buildmode.Development {
+		runtimeLogLevel = slog.LevelInfo
+	}
 
 	app := application.New(application.Options{
 		Name:             "pvfine",
 		Description:      "PVF 归档编辑器",
-		Logger:           slog.New(slog.NewTextHandler(logOutput, nil)),
+		Logger:           slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: runtimeLogLevel})),
 		MarshalError:     services.LogServiceError,
 		ErrorHandler:     func(err error) { services.LogServiceError(err) },
 		FileAssociations: []string{".pvf"},
@@ -257,7 +262,7 @@ func main() {
 	}
 
 	if err := app.Run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("[ERR] %v", err)
 	}
 }
 

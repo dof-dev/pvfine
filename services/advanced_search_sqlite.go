@@ -256,7 +256,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 		if d.restoreCache() {
 			d.ready = true
 			d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "ready-cache", Done: totalFiles, Total: totalFiles})
-			log.Printf("[pvfine:advanced] sqlite reverse index cache hit: files=%d elapsed=%s", totalFiles, time.Since(started).Round(time.Millisecond))
+			developmentLog("[pvfine:advanced] sqlite reverse index cache hit: files=%d elapsed=%s", totalFiles, time.Since(started).Round(time.Millisecond))
 			return nil
 		}
 	}
@@ -279,7 +279,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 	scanner := a.NewStringReferenceScanner()
 	c.mu.RUnlock()
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "strings", Total: total})
-	log.Printf("[pvfine:advanced] sqlite build started: files=%d", total)
+	developmentLog("[pvfine:advanced] sqlite build started: files=%d", total)
 	// Fixed-size transactions keep SQLite's pending writes bounded. Archive read
 	// locks cover decoding only, never database writes or index creation.
 	tx, err := d.db.BeginTx(d.ctx, nil)
@@ -360,7 +360,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 			return e
 		}
 	}
-	log.Printf("[pvfine:advanced] sqlite strings=%d elapsed=%s", entries, time.Since(started).Round(time.Millisecond))
+	developmentLog("[pvfine:advanced] sqlite strings=%d elapsed=%s", entries, time.Since(started).Round(time.Millisecond))
 	referencesStarted := time.Now()
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "references", Total: total})
 	workers := max(1, min(advancedMaxShards, runtime.GOMAXPROCS(0)-1, total))
@@ -405,7 +405,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	log.Printf("[pvfine:advanced] sqlite references=%d files=%d workers=%d elapsed=%s", refs, files, workers, time.Since(referencesStarted).Round(time.Millisecond))
+	developmentLog("[pvfine:advanced] sqlite references=%d files=%d workers=%d elapsed=%s", refs, files, workers, time.Since(referencesStarted).Round(time.Millisecond))
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateBuilding, Stage: "indexes", Done: files, Total: total})
 	if err = finishAdvancedShards(d.ctx, writers); err != nil {
 		return err
@@ -438,7 +438,7 @@ func (d *advancedSQLite) build(c *core, a *pvf.Archive) error {
 	d.ready = true
 	d.status(c, AdvancedSearchIndexStatus{State: AdvancedIndexStateReady, Stage: "ready-sqlite", Done: files, Total: total})
 	size := advancedIndexDirectorySize(d.dir)
-	log.Printf("[pvfine:advanced] sqlite build finished: strings=%d references=%d files=%d bytes=%d elapsed=%s", entries, refs, files, size, time.Since(started).Round(time.Millisecond))
+	developmentLog("[pvfine:advanced] sqlite build finished: strings=%d references=%d files=%d bytes=%d elapsed=%s", entries, refs, files, size, time.Since(started).Round(time.Millisecond))
 	return nil
 }
 
@@ -615,7 +615,7 @@ func (d *advancedSQLite) query(c *core, key advancedQueryKey, match func(string)
 	q.bytes = info.Size()
 	d.queries[id] = q
 	success = true
-	log.Printf("[pvfine:advanced] sqlite query finished: strings_scanned=%d files=%d bytes=%d elapsed=%s", scanned, q.count, q.bytes, time.Since(started).Round(time.Millisecond))
+	developmentLog("[pvfine:advanced] sqlite query finished: strings_scanned=%d files=%d bytes=%d elapsed=%s", scanned, q.count, q.bytes, time.Since(started).Round(time.Millisecond))
 	return q, nil
 }
 
@@ -704,7 +704,7 @@ func (d *advancedSQLite) page(q *advancedDiskQuery, after, limit int) (*Advanced
 		result.NextCursor = int(q.id*advancedCursorStride + uint64(last))
 	}
 	result.Scanned = last
-	log.Printf("[pvfine:advanced] sqlite page: hits=%d position=%d total=%d elapsed=%s", len(result.Hits), last, q.count, time.Since(started).Round(time.Millisecond))
+	developmentLog("[pvfine:advanced] sqlite page: hits=%d position=%d total=%d elapsed=%s", len(result.Hits), last, q.count, time.Since(started).Round(time.Millisecond))
 	return result, nil
 }
 

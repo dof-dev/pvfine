@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pvfine/internal/buildmode"
 )
 
 type diagnosticTestWriter struct {
@@ -40,6 +42,12 @@ func TestTerminalDiagnosticsBypassLogCapture(t *testing.T) {
 	terminalDebugLog("terminal-only-marker")
 	terminalDirectoryStage("equipment", "query", time.Now())
 	terminalSlowDirectoryNode("equipment/a.equ", "tags", 60*time.Millisecond)
+	if !buildmode.Development {
+		if output.Len() != 0 {
+			t.Fatalf("production emitted terminal diagnostics: %s", output.String())
+		}
+		return
+	}
 	for _, marker := range []string{"terminal-only-marker", "ListChildren.query", "ListChildren.slow-node tags"} {
 		if !strings.Contains(output.String(), marker) {
 			t.Fatalf("terminal missing %q: %s", marker, output.String())
@@ -53,6 +61,9 @@ func TestTerminalDiagnosticsBypassLogCapture(t *testing.T) {
 }
 
 func TestDiagnoseLockWaitDumpsStacksWhileBlockedOnce(t *testing.T) {
+	if !buildmode.Development {
+		t.Skip("stack diagnostics are development-only")
+	}
 	output := &diagnosticTestWriter{wrote: make(chan struct{}, 4)}
 	original := log.Writer()
 	log.SetOutput(CaptureLogs(output))

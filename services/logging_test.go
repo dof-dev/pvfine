@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pvfine/internal/buildmode"
 )
 
 func TestDebugTimingLogsUseDebugLevel(t *testing.T) {
@@ -25,6 +27,12 @@ func TestDebugTimingLogsUseDebugLevel(t *testing.T) {
 		if entry.ID > lastID {
 			entries = append(entries, entry)
 		}
+	}
+	if !buildmode.Development {
+		if len(entries) != 0 {
+			t.Fatalf("production emitted performance logs: %#v", entries)
+		}
+		return
 	}
 	if len(entries) != 3 {
 		t.Fatalf("expected start, lock wait and finish logs, got %d", len(entries))
@@ -185,6 +193,12 @@ func TestLogForwardingWaitsForEventInitialization(t *testing.T) {
 		t.Fatalf("live logs = %#v", forwarded)
 	}
 	history := buffer.snapshot()
+	if !buildmode.Development {
+		if len(history) != 1 || history[0] != forwarded[0] {
+			t.Fatalf("production history = %#v", history)
+		}
+		return
+	}
 	if len(history) != 2 || history[0].Message != "Build Info:" || history[1] != forwarded[0] {
 		t.Fatalf("startup history = %#v", history)
 	}
@@ -200,11 +214,71 @@ func TestLogForwardingConcurrentInitialization(t *testing.T) {
 	})
 	workers.Go(func() {
 		for range 100 {
-			buffer.record("INFO", "Go", "startup")
+			buffer.record("INFO", "application", "startup")
 		}
 	})
 	workers.Wait()
 	if got := len(buffer.snapshot()); got != 100 {
 		t.Fatalf("history entries = %d, want 100", got)
+	}
+}
+
+type logFormattingProbe struct{ formatted bool }
+
+func (p *logFormattingProbe) String() string {
+	p.formatted = true
+	return "formatting-probe"
+}
+
+func TestDevelopmentLogsRespectBuildModeBeforeFormatting(t *testing.T) {
+	var output bytes.Buffer
+	original := log.Writer()
+	log.SetOutput(CaptureLogs(&output))
+	t.Cleanup(func() { log.SetOutput(original) })
+	probe := &logFormattingProbe{}
+	developmentLog("[DEBUG] %s", probe)
+	debugLog("%s", probe)
+	developmentOrErrorLog(nil, "success %s", probe)
+	if probe.formatted != buildmode.Development {
+		t.Fatalf("formatted=%t development=%t", probe.formatted, buildmode.Development)
+	}
+	if !buildmode.Development && output.Len() != 0 {
+		t.Fatalf("production wrote development logs: %s", output.String())
+	}
+	developmentOrErrorLog(errors.New("failed"), "operation error=%v", errors.New("failed"))
+	if !strings.Contains(output.String(), "operation error=failed") {
+		t.Fatal("operation errors must remain visible")
+	}
+}
+
+func TestCaptureLogsProductionPolicyPreservesErrorsAndContext(t *testing.T) {
+	var output bytes.Buffer
+	writer := CaptureLogs(&output)
+	for _, message := range []string{
+		"[DEBUG] runtime details\n", "runtime startup\n", "level=WARN runtime warning\n", "[ERR] runtime error\n  exception context\n",
+	} {
+		if n, err := writer.Write([]byte(message)); err != nil || n != len(message) {
+			t.Fatalf("write = %d, %v", n, err)
+		}
+	}
+	text := output.String()
+	if strings.Contains(text, "runtime details") != buildmode.Development || strings.Contains(text, "runtime startup") != buildmode.Development {
+		t.Fatalf("runtime output policy mismatch: %s", text)
+	}
+	if !strings.Contains(text, "runtime warning") || !strings.Contains(text, "runtime error\n  exception context") {
+		t.Fatalf("warning/error context lost: %s", text)
+	}
+	var buffer logBuffer
+	buffer.record("DEBUG", "performance", "trace")
+	buffer.record("INFO", "Go", "runtime startup")
+	buffer.record("INFO", "archive:opened", "opened")
+	buffer.record("WARN", "Go", "warning")
+	buffer.record("ERROR", "Go", "error")
+	want := 3
+	if buildmode.Development {
+		want = 5
+	}
+	if entries := buffer.snapshot(); len(entries) != want {
+		t.Fatalf("retained %d entries, want %d", len(entries), want)
 	}
 }

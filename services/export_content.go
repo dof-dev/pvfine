@@ -115,7 +115,7 @@ func (s *ExportService) exportSourceLocked(r ExportRequest) (*exportSource, []ex
 			}
 			if r.Mode == "mod" && isExportMergeTable(a.Path(index)) {
 				source.skippedTables++
-				log.Printf("[pvfine:export] skip table without change baseline: %s", a.Path(index))
+				developmentLog("[pvfine:export] skip table without change baseline: %s", a.Path(index))
 				continue
 			}
 			content, err := source.read(a.Path(index))
@@ -139,7 +139,7 @@ func (s *ExportService) exportSourceLocked(r ExportRequest) (*exportSource, []ex
 		for _, selection := range selections {
 			if r.Mode == "mod" && isExportMergeTable(selection.path) {
 				source.skippedTables++
-				log.Printf("[pvfine:export] skip table without change baseline: %s", selection.path)
+				developmentLog("[pvfine:export] skip table without change baseline: %s", selection.path)
 				continue
 			}
 			content, err := source.read(selection.path)

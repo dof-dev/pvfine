@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"pvfine/internal/buildmode"
 )
 
 const coreLockDiagnosticDelay = time.Second
@@ -14,6 +16,9 @@ var terminalDiagnosticMu sync.Mutex
 
 // Bypass CaptureLogs so large diagnostic dumps never enter the UI log buffer.
 func terminalDebugLog(format string, args ...any) {
+	if !buildmode.Development {
+		return
+	}
 	output := log.Writer()
 	for {
 		capture, ok := output.(*logCaptureWriter)
@@ -32,6 +37,10 @@ func diagnoseCoreLock(operation, detail string, lock func()) {
 }
 
 func diagnoseLockWait(operation, detail string, delay time.Duration, lock func()) {
+	if !buildmode.Development {
+		lock()
+		return
+	}
 	started := time.Now()
 	var acquired atomic.Bool
 	timer := time.AfterFunc(delay, func() {
@@ -59,7 +68,9 @@ func diagnoseLockWait(operation, detail string, delay time.Duration, lock func()
 }
 
 func terminalDirectoryStage(path, stage string, started time.Time) {
-	terminalDebugLog("ListChildren.%s path=%s elapsed=%s", stage, path, time.Since(started))
+	if buildmode.Development {
+		terminalDebugLog("ListChildren.%s path=%s elapsed=%s", stage, path, time.Since(started))
+	}
 }
 
 func terminalSlowDirectoryNode(path, stage string, elapsed time.Duration) {

@@ -213,7 +213,7 @@ func backupSQLiteDatabase(ctx context.Context, source *sql.DB, target string) er
 			pageCount := backup.PageCount()
 			copiedPages := pageCount - backup.Remaining()
 			if copiedPages-lastLoggedPage >= 16384 {
-				log.Printf("[pvfine:index] sqlite phase=backup progress pages=%d/%d", copiedPages, pageCount)
+				developmentLog("[pvfine:index] sqlite phase=backup progress pages=%d/%d", copiedPages, pageCount)
 				lastLoggedPage = copiedPages
 			}
 			if !more {
@@ -258,7 +258,7 @@ func (i *sqliteArchiveIndex) prepareSemanticCandidate(ctx context.Context, c *co
 		return nil, "", errors.New("SQLite 索引连接已关闭")
 	}
 	backupStartedAt := time.Now()
-	log.Printf("[pvfine:index] sqlite phase=backup started")
+	developmentLog("[pvfine:index] sqlite phase=backup started")
 	if err := backupSQLiteDatabase(ctx, source, candidatePath); err != nil {
 		i.dbMu.RUnlock()
 		_ = os.Remove(candidatePath)
@@ -283,7 +283,7 @@ func (i *sqliteArchiveIndex) prepareSemanticCandidate(ctx context.Context, c *co
 	var journalMode, synchronous string
 	_ = candidateDB.QueryRow("PRAGMA journal_mode").Scan(&journalMode)
 	_ = candidateDB.QueryRow("PRAGMA synchronous").Scan(&synchronous)
-	log.Printf("[pvfine:index] sqlite candidate settings: journal=%s synchronous=%s", journalMode, synchronous)
+	developmentLog("[pvfine:index] sqlite candidate settings: journal=%s synchronous=%s", journalMode, synchronous)
 	c.mu.RLock()
 	stillCurrent := c.archive == a && c.indexGen == gen && c.diskIndex == i
 	c.mu.RUnlock()
@@ -292,7 +292,7 @@ func (i *sqliteArchiveIndex) prepareSemanticCandidate(ctx context.Context, c *co
 		_ = os.Remove(candidatePath)
 		return nil, "", context.Canceled
 	}
-	log.Printf("[pvfine:index] sqlite phase=backup finished elapsed=%s", time.Since(backupStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=backup finished elapsed=%s", time.Since(backupStartedAt).Round(time.Millisecond))
 	return candidateDB, candidatePath, nil
 }
 
@@ -366,7 +366,7 @@ func (i *sqliteArchiveIndex) publishSemanticCandidate(c *core, a *pvf.Archive, g
 		_ = os.Remove(oldPath)
 	}
 	i.db = newDB
-	log.Printf("[pvfine:index] sqlite phase=publish elapsed=%s", time.Since(startedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=publish elapsed=%s", time.Since(startedAt).Round(time.Millisecond))
 	return nil
 }
 
@@ -436,7 +436,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 					_ = db.Close()
 					return nil, false, fmt.Errorf("upgrade SQLite file path index: %w", err)
 				}
-				log.Printf("[pvfine:index] sqlite file index cache hit: files=%d", a.FileCount())
+				developmentLog("[pvfine:index] sqlite file index cache hit: files=%d", a.FileCount())
 				return &sqliteArchiveIndex{db: db, path: path, identity: identity, ready: sqliteSemanticIndexReady(db)}, true, nil
 			}
 			_ = db.Close()
@@ -462,7 +462,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 	}
 	idx := &sqliteArchiveIndex{db: db, path: path, identity: identity, tempDir: tempDir}
 	fileIndexStartedAt := time.Now()
-	log.Printf("[pvfine:index] sqlite file index rebuild started: files=%d", a.FileCount())
+	developmentLog("[pvfine:index] sqlite file index rebuild started: files=%d", a.FileCount())
 	if err := buildSQLiteFileIndexContext(ctx, db, a, identity); err != nil {
 		log.Printf("[pvfine:index] sqlite file index rebuild failed: elapsed=%s error=%v", time.Since(fileIndexStartedAt).Round(time.Millisecond), err)
 		idx.close()
@@ -474,7 +474,7 @@ func openSQLiteArchiveIndexContext(ctx context.Context, a *pvf.Archive) (*sqlite
 		_ = os.Remove(tmpPath)
 		return nil, false, err
 	}
-	log.Printf("[pvfine:index] sqlite file index rebuild finished: files=%d elapsed=%s", a.FileCount(), time.Since(fileIndexStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite file index rebuild finished: files=%d elapsed=%s", a.FileCount(), time.Since(fileIndexStartedAt).Round(time.Millisecond))
 	if err := db.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return nil, false, err
@@ -519,9 +519,9 @@ SELECT 1 FROM sqlite_master WHERE type='index' AND name='files_path')`).Scan(&ex
 		return nil
 	}
 	started := time.Now()
-	log.Printf("[pvfine:index] sqlite file path index upgrade started")
+	developmentLog("[pvfine:index] sqlite file path index upgrade started")
 	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS files_path ON files(path,file_index)`)
-	log.Printf("[pvfine:index] sqlite file path index upgrade finished: elapsed=%s error=%v", time.Since(started).Round(time.Millisecond), err)
+	developmentOrErrorLog(err, "[pvfine:index] sqlite file path index upgrade finished: elapsed=%s error=%v", time.Since(started).Round(time.Millisecond), err)
 	return err
 }
 
@@ -674,7 +674,7 @@ INSERT INTO meta(key,value) VALUES('schema','2'),('identity',?),('complete','0')
 			current = upper
 		}
 		if index > 0 && index%100000 == 0 {
-			log.Printf("[pvfine:index] sqlite file index progress: files=%d/%d elapsed=%s", index, a.FileCount(), time.Since(fileIndexProgressStartedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] sqlite file index progress: files=%d/%d elapsed=%s", index, a.FileCount(), time.Since(fileIndexProgressStartedAt).Round(time.Millisecond))
 		}
 	}
 	_ = dirStmt.Close()
@@ -686,13 +686,13 @@ CREATE INDEX dirs_parent_name ON dirs(parent,name);`); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
-	log.Printf("[pvfine:index] sqlite file index path indexes finished: elapsed=%s", time.Since(indexStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite file index path indexes finished: elapsed=%s", time.Since(indexStartedAt).Round(time.Millisecond))
 	directoryCountsStartedAt := time.Now()
 	if _, err := tx.ExecContext(ctx, `UPDATE dirs SET child_count=(SELECT COUNT(*) FROM files WHERE parent=dirs.path)+(SELECT COUNT(*) FROM dirs child WHERE child.parent=dirs.path)`); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
-	log.Printf("[pvfine:index] sqlite file index directory counts finished: elapsed=%s", time.Since(directoryCountsStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite file index directory counts finished: elapsed=%s", time.Since(directoryCountsStartedAt).Round(time.Millisecond))
 	if _, err := tx.ExecContext(ctx, `CREATE INDEX records_lower_path ON records(lower_path);
 CREATE INDEX records_lower_name ON records(lower_name);
 CREATE INDEX records_lower_id ON records(lower_id);
@@ -710,7 +710,7 @@ CREATE INDEX tags_file ON tags(file_index);`); err != nil {
 
 func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.Archive, specs []searchableListSpec, gen uint64) (int, int, error) {
 	startedAt := time.Now()
-	log.Printf("[pvfine:index] sqlite semantic rebuild begin: generation=%d files=%d specs=%d", gen, a.FileCount(), len(specs))
+	developmentLog("[pvfine:index] sqlite semantic rebuild begin: generation=%d files=%d specs=%d", gen, a.FileCount(), len(specs))
 	// Build into a complete candidate database so the live index remains
 	// readable and SQLite never has to make a large reader/writer transaction
 	// share the same file. The candidate is atomically published after commit.
@@ -718,7 +718,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 	candidateDB, candidatePath, candidateErr := i.prepareSemanticCandidate(ctx, c, a, gen)
 	if candidateErr != nil {
 		if errors.Is(candidateErr, context.Canceled) || ctx.Err() != nil {
-			log.Printf("[pvfine:index] sqlite semantic rebuild cancelled before candidate: elapsed=%s", time.Since(startedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] sqlite semantic rebuild cancelled before candidate: elapsed=%s", time.Since(startedAt).Round(time.Millisecond))
 			return 0, 0, context.Canceled
 		}
 		log.Printf("[pvfine:index] sqlite phase=backup failed: elapsed=%s error=%v", time.Since(startedAt).Round(time.Millisecond), candidateErr)
@@ -730,7 +730,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 	}
 	fastMode := candidateDB == nil
 	if candidateDB != nil {
-		log.Printf("[pvfine:index] sqlite phase=build-candidate mode=fast")
+		developmentLog("[pvfine:index] sqlite phase=build-candidate mode=fast")
 	}
 	defer func() {
 		if candidateDB != nil && !candidatePublished {
@@ -743,7 +743,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 				log.Printf("[pvfine:index] sqlite phase=restore-journal failed elapsed=%s error=%v", time.Since(restoreStartedAt).Round(time.Millisecond), err)
 				return
 			}
-			log.Printf("[pvfine:index] sqlite phase=restore-journal elapsed=%s total=%s", time.Since(restoreStartedAt).Round(time.Millisecond), time.Since(startedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] sqlite phase=restore-journal elapsed=%s total=%s", time.Since(restoreStartedAt).Round(time.Millisecond), time.Since(startedAt).Round(time.Millisecond))
 		}
 	}()
 	if candidateDB == nil {
@@ -751,7 +751,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 		// into a core. Preserve that path while still reporting lock failures.
 		pragmaStartedAt := time.Now()
 		if _, pragmaErr := workDB.Exec("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF"); pragmaErr == nil {
-			log.Printf("[pvfine:index] sqlite phase=disable-journal mode=fast elapsed=%s", time.Since(pragmaStartedAt).Round(time.Millisecond))
+			developmentLog("[pvfine:index] sqlite phase=disable-journal mode=fast elapsed=%s", time.Since(pragmaStartedAt).Round(time.Millisecond))
 		} else {
 			fastMode = false
 			log.Printf("[pvfine:index] sqlite phase=disable-journal mode=normal elapsed=%s error=%v", time.Since(pragmaStartedAt).Round(time.Millisecond), pragmaErr)
@@ -780,7 +780,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 	if _, err := tx.Exec(`DELETE FROM records; DELETE FROM tags; DELETE FROM visuals; UPDATE meta SET value='0' WHERE key='complete'`); err != nil {
 		return rollback(err)
 	}
-	log.Printf("[pvfine:index] sqlite phase=reset elapsed=%s", time.Since(resetStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=reset elapsed=%s", time.Since(resetStartedAt).Round(time.Millisecond))
 	recordStmt, err := tx.Prepare(`INSERT INTO records(file_index,name,lower_name,record_id,lower_id,path,lower_path,category,list_path,size,data_type) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return rollback(err)
@@ -822,7 +822,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 		listIndex, ok := a.FindList(spec.listPath)
 		if !ok {
 			c.mu.RUnlock()
-			log.Printf("[pvfine:index] sqlite spec %d/%d list=%s missing", specIndex+1, len(specs), spec.listPath)
+			developmentLog("[pvfine:index] sqlite spec %d/%d list=%s missing", specIndex+1, len(specs), spec.listPath)
 			continue
 		}
 		listPath := a.Path(listIndex)
@@ -920,9 +920,9 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 			}
 			count++
 		}
-		log.Printf("[pvfine:index] sqlite spec %d/%d list=%s pairs=%d records=%d skipped=%d elapsed=%s", specIndex+1, len(specs), spec.listPath, len(pairs), count-specCountBefore, skipped-specSkippedBefore, time.Since(specStartedAt).Round(time.Millisecond))
+		developmentLog("[pvfine:index] sqlite spec %d/%d list=%s pairs=%d records=%d skipped=%d elapsed=%s", specIndex+1, len(specs), spec.listPath, len(pairs), count-specCountBefore, skipped-specSkippedBefore, time.Since(specStartedAt).Round(time.Millisecond))
 	}
-	log.Printf("[pvfine:index] sqlite phase=load records=%d pairs=%d targets=%d metadata_reads=%d metadata_cache_hits=%d metadata_errors=%d elapsed=%s", count, pairsSeen, targetsFound, metadataReads, metadataCacheHits, metadataErrors, time.Since(loadStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=load records=%d pairs=%d targets=%d metadata_reads=%d metadata_cache_hits=%d metadata_errors=%d elapsed=%s", count, pairsSeen, targetsFound, metadataReads, metadataCacheHits, metadataErrors, time.Since(loadStartedAt).Round(time.Millisecond))
 	_ = visualStmt.Close()
 	_ = tagStmt.Close()
 	_ = recordStmt.Close()
@@ -930,7 +930,7 @@ func (i *sqliteArchiveIndex) buildSemantic(ctx context.Context, c *core, a *pvf.
 	if _, err := tx.Exec(`CREATE INDEX records_file ON records(file_index,id)`); err != nil {
 		return rollback(err)
 	}
-	log.Printf("[pvfine:index] sqlite phase=create-file-fallback-index elapsed=%s", time.Since(fileFallbackIndexStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=create-file-fallback-index elapsed=%s", time.Since(fileFallbackIndexStartedAt).Round(time.Millisecond))
 	fileRowsStartedAt := time.Now()
 	fileRows, err := tx.Exec(`INSERT INTO records(file_index,name,lower_name,record_id,lower_id,path,lower_path,category,list_path,size,data_type)
 SELECT f.file_index,f.name,f.lower_name,'','',f.path,f.lower_path,'file','',f.size,f.data_type
@@ -939,7 +939,7 @@ FROM files f WHERE NOT EXISTS (SELECT 1 FROM records r WHERE r.file_index=f.file
 		return rollback(err)
 	}
 	fileRowsAdded, _ := fileRows.RowsAffected()
-	log.Printf("[pvfine:index] sqlite phase=file-fallback rows=%d elapsed=%s", fileRowsAdded, time.Since(fileRowsStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=file-fallback rows=%d elapsed=%s", fileRowsAdded, time.Since(fileRowsStartedAt).Round(time.Millisecond))
 	if _, err := tx.Exec(`UPDATE meta SET value='1' WHERE key='complete'`); err != nil {
 		return rollback(err)
 	}
@@ -950,7 +950,7 @@ CREATE INDEX records_lower_id ON records(lower_id);
 CREATE INDEX tags_file ON tags(file_index);`); err != nil {
 		return rollback(err)
 	}
-	log.Printf("[pvfine:index] sqlite phase=create-indexes elapsed=%s", time.Since(indexStartedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite phase=create-indexes elapsed=%s", time.Since(indexStartedAt).Round(time.Millisecond))
 	commitStartedAt := time.Now()
 	if err := tx.Commit(); err != nil {
 		log.Printf("[pvfine:index] sqlite semantic rebuild commit failed: elapsed=%s total=%s error=%v", time.Since(commitStartedAt).Round(time.Millisecond), time.Since(startedAt).Round(time.Millisecond), err)
@@ -964,7 +964,7 @@ CREATE INDEX tags_file ON tags(file_index);`); err != nil {
 		candidatePublished = true
 	}
 	i.ready = true
-	log.Printf("[pvfine:index] sqlite semantic rebuild committed: records=%d file_fallback=%d tags=%d visuals=%d skipped=%d commit=%s total=%s", count, fileRowsAdded, count, len(visualsWritten), skipped, time.Since(commitStartedAt).Round(time.Millisecond), time.Since(startedAt).Round(time.Millisecond))
+	developmentLog("[pvfine:index] sqlite semantic rebuild committed: records=%d file_fallback=%d tags=%d visuals=%d skipped=%d commit=%s total=%s", count, fileRowsAdded, count, len(visualsWritten), skipped, time.Since(commitStartedAt).Round(time.Millisecond), time.Since(startedAt).Round(time.Millisecond))
 	return count, skipped, nil
 }
 

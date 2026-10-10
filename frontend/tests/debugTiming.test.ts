@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { startDebugTiming } from "../src/stores/debugTiming";
 import { useLogStore } from "../src/stores/logs";
@@ -8,6 +8,7 @@ describe("debug timing", () => {
     setActivePinia(createPinia());
     vi.restoreAllMocks();
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("records request start and elapsed time at DEBUG level", () => {
     vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(123.5);
@@ -20,5 +21,21 @@ describe("debug timing", () => {
     expect(logs.filtered).toHaveLength(0);
     logs.levels.push("DEBUG");
     expect(logs.filtered).toHaveLength(2);
+  });
+
+  it("生产构建不启动计时、不记录性能日志", () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("MODE", "production");
+    const clock = vi.spyOn(performance, "now");
+    startDebugTiming("editor.metadata-request", "file=42")();
+    expect(clock).not.toHaveBeenCalled();
+    expect(useLogStore().entries).toHaveLength(0);
+  });
+
+  it("build:dev 的 development mode 仍记录性能日志", () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("MODE", "development");
+    startDebugTiming("editor.metadata-request", "file=42")();
+    expect(useLogStore().entries.map((entry) => entry.level)).toEqual(["DEBUG", "DEBUG"]);
   });
 });

@@ -143,7 +143,7 @@ func (s *ArchiveService) IndexStatus() IndexStatus {
 // RebuildSearchIndex starts an asynchronous forced rebuild. An existing ready
 // snapshot remains available to Search while the replacement is prepared.
 func (s *ArchiveService) RebuildSearchIndex() (IndexStatus, error) {
-	log.Printf("[pvfine:index] forced rebuild requested")
+	developmentLog("[pvfine:index] forced rebuild requested")
 	s.c.mu.RLock()
 	if s.c.archive == nil {
 		s.c.mu.RUnlock()
@@ -240,7 +240,7 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 		archive := s.c.archive
 		s.c.mu.RUnlock()
 		descendantsStartedAt := time.Now()
-		log.Printf("[pvfine:index] descendants scan started: scope=%s", scopePath)
+		developmentLog("[pvfine:index] descendants scan started: scope=%s", scopePath)
 		result, err := index.descendants(scopePath)
 		if err != nil {
 			log.Printf("[pvfine:index] descendants scan failed: scope=%s elapsed=%s error=%v", scopePath, time.Since(descendantsStartedAt).Round(time.Millisecond), err)
@@ -267,7 +267,7 @@ func (s *ArchiveService) ListDescendantFiles(scopePath string) ([]*TreeNode, err
 			}
 			s.c.mu.RUnlock()
 		}
-		log.Printf("[pvfine:index] descendants scan finished: scope=%s rows=%d elapsed=%s", scopePath, len(result), time.Since(descendantsStartedAt).Round(time.Millisecond))
+		developmentLog("[pvfine:index] descendants scan finished: scope=%s rows=%d elapsed=%s", scopePath, len(result), time.Since(descendantsStartedAt).Round(time.Millisecond))
 		return result, nil
 	}
 	defer s.c.mu.RUnlock()
