@@ -88,6 +88,7 @@ func TestSkillReal90CN(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Release()
+	if a.ClientVersion() != "90CN" { t.Skip("使用 90CN 真实样例验证") }
 	index, ok := a.Find("skill/atgunner/c4.skl")
 	if !ok {
 		t.Skip("无示例技能")

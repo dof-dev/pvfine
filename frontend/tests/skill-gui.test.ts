@@ -8,6 +8,13 @@ const property: SkillProperty = { template: "时间<int>秒，伤害<int>\n减�
   { dynamic: true, index: 1, multiplier: .1 }, { dynamic: true, index: 1, multiplier: .01 },
 ] };
 describe("技能描述与数据编辑", () => {
+  it("引用模板标准化后渲染整型、小数、多行和可编辑绑定", () => {
+    // ReadSkill normalizes quorum / decimalN aliases to this shared contract.
+    const normalized: SkillProperty = { ...property, template: "时间<int>秒，伤害<int>\n减速<float1>%% / <float3>%%" };
+    const preview = skillPreview(normalized, mode, 2);
+    expect(preview.map((p) => p.text).join("")).toBe("时间10秒，伤害200\n减速45.6% / 4.560%");
+    expect(preview.filter((p) => p.token).map((p) => p.binding?.index)).toEqual([0, 0, 1, 1]);
+  });
   it("渲染多行、多个占位符、倍率、百分号和等级", () => {
     expect(skillPreview(property, mode, 1).map((p) => p.text).join("")).toBe("时间10秒，伤害100\n减速12.30% / 1.2%");
     expect(skillPreview(property, mode, 2).map((p) => p.text).join("")).toContain("伤害200\n减速45.60%");

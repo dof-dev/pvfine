@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { NButton, NEmpty, NInputNumber, NModal, NSelect, NSlider, NSpin, useMessage } from "naive-ui";
+import { NButton, NEmpty, NInputNumber, NModal, NRadio, NRadioGroup, NSlider, NSpin, useMessage } from "naive-ui";
 import { FileGUIService } from "../../../bindings/pvfine/services";
 import type { SkillDocument, SkillNumber } from "../../../bindings/pvfine/services/models";
 import type { GUIFile } from "../../gui/types";
@@ -104,7 +104,7 @@ async function save() {
 <template>
   <div class="skill-viewer">
     <header class="skill-header">
-      <div><h2>{{ document?.name || '技能参数' }}</h2><span class="hint">{{ dirty ? '当前技能有未保存的修改。' : '当前技能草稿已保存。' }} 保存技能后，可通过主工具栏保存 PVF。</span></div>
+      <div><h2>{{ document?.name || '技能参数' }}</h2></div>
       <div class="mode-tabs" role="group" aria-label="技能数值模式">
         <NButton v-for="m in document?.modes" :key="m.id" :type="mode?.id === m.id ? 'primary' : 'default'" :disabled="loading || edit.show" @click="selectedMode = m.id">{{ m.id === 'dungeon' ? '地下城' : '决斗场' }}</NButton>
         <NButton type="primary" :loading="editor.saving" :disabled="!file.editable || !dirty || edit.show || editor.saving || editor.guiApplying" @click="save">保存技能</NButton>
@@ -134,7 +134,6 @@ async function save() {
             <div class="level-control"><label>当前等级</label><NInputNumber v-model:value="level" :min="1" :max="maxLevel" :precision="0" :show-button="true" :update-value-on-input="false" @update:value="(v) => level = v ?? 1" /></div>
             <NSlider v-model:value="level" :min="1" :max="maxLevel" :step="1" :disabled="maxLevel === 1" />
             <div class="range-label"><span>1 级</span><span>{{ maxLevel }} 级</span></div>
-            <p class="hint">点击描述中的数值修改对应参数。表格与描述使用原始索引。</p>
             <div v-for="(parts, p) in preview" :key="p" class="skill-description"><template v-for="(part, i) in parts" :key="i"><button v-if="part.token && part.binding" class="description-value" :disabled="!canEdit" :title="`${part.binding.dynamic ? '动态' : '静态'}索引 ${part.binding.index}，显示倍率 ×${part.binding.multiplier}`" @click="openEdit(part.binding.dynamic, part.binding.index)">{{ part.text }}</button><span v-else>{{ part.text }}</span></template></div>
             <NEmpty v-if="!preview.length" description="未配置属性描述，可直接编辑数据表" size="small" />
           </aside>
@@ -144,9 +143,19 @@ async function save() {
     </NSpin>
     <NModal v-model:show="edit.show" preset="card" :title="`修改${edit.dynamic ? '动态' : '静态'}数据 · 索引 ${edit.column}`" style="width: 470px; max-width: 95vw" :mask-closable="false">
       <div class="edit-form">
-        <p class="hint">编辑的是原始数值，预览时再应用描述倍率。整数运算结果四舍五入。</p>
-        <label v-if="edit.dynamic">作用范围<NSelect v-model:value="scope" :options="scopes" /><span class="hint">当前等级：{{ edit.row }}；将修改 {{ editTokens.length }} 个数值</span></label>
-        <label>修改方式<NSelect v-model:value="edit.operation" :options="operations" /></label>
+        <div v-if="edit.dynamic" class="edit-field">
+          <span>作用范围</span>
+          <NRadioGroup v-model:value="scope" class="edit-options" aria-label="作用范围">
+            <NRadio v-for="option in scopes" :key="option.value" :value="option.value" :label="option.label" />
+          </NRadioGroup>
+          <span class="hint">当前等级：{{ edit.row }}；将修改 {{ editTokens.length }} 个数值</span>
+        </div>
+        <div class="edit-field">
+          <span>修改方式</span>
+          <NRadioGroup v-model:value="edit.operation" class="edit-options" aria-label="修改方式">
+            <NRadio v-for="option in operations" :key="option.value" :value="option.value" :label="option.label" />
+          </NRadioGroup>
+        </div>
         <label>数值<NInputNumber v-model:value="edit.operand" :show-button="false" /></label>
         <div class="change-preview"><div v-for="(change, i) in changes" :key="i">{{ change }}</div><span v-if="editTokens.length > 5">… 共 {{ editTokens.length }} 项</span></div>
         <div class="edit-actions"><NButton @click="edit.show = false">取消</NButton><NButton type="primary" :disabled="!canEdit || edit.operand === null" @click="apply">应用到草稿</NButton></div>
@@ -179,7 +188,8 @@ tr.current td { background: var(--pvf-primary-soft); }
 .range-label { display: flex; justify-content: space-between; } .skill-description { white-space: pre-wrap; line-height: 2.2; margin-top: 18px; user-select: text; }
 .description-value { border: none; border-bottom: 1px dashed var(--pvf-primary); border-radius: 3px; padding: 0 3px; color: var(--pvf-primary); background: var(--pvf-primary-soft); line-height: 1.6; }
 .issue, .error { padding: 10px; margin: 8px 0; background: var(--pvf-surface-warning); }
-.edit-form { display: flex; flex-direction: column; gap: 14px; } .edit-form p { margin: 0; } .edit-form label { display: grid; gap: 6px; }
+.edit-form { display: flex; flex-direction: column; gap: 14px; } .edit-form p { margin: 0; } .edit-form > label, .edit-field { display: grid; gap: 6px; }
+.edit-options { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .change-preview { font-variant-numeric: tabular-nums; background: var(--pvf-surface-inset); padding: 12px; line-height: 1.8; } .edit-actions { justify-content: flex-end; }
 @media (max-width: 850px) { .skill-workspace { grid-template-columns: 1fr; } .preview-region { grid-row: 1; position: static; } .skill-header { flex-wrap: wrap; } }
 </style>

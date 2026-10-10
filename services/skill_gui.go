@@ -11,7 +11,22 @@ import (
 	"pvfine/internal/pvf"
 )
 
-var skillFloatPlaceholder = regexp.MustCompile(`<float\d*>`)
+// Placeholder spellings describe the template itself, independently of the
+// archive container. Normalize aliases once so all GUI consumers share the
+// same integer / decimal formatting contract, including mixed templates.
+var skillNumericPlaceholder = regexp.MustCompile(`<(?:(int|quorum)|(float|decimal)(\d*))>`)
+
+func normalizeSkillTemplate(value string) string {
+	return skillNumericPlaceholder.ReplaceAllStringFunc(normalizeDisplayText(value), func(placeholder string) string {
+		parts := skillNumericPlaceholder.FindStringSubmatch(placeholder)
+		if parts[1] != "" {
+			return "<int>"
+		}
+		return "<float" + parts[3] + ">"
+	})
+}
+
+func isSkillTemplateToken(kind int32) bool { return kind == 6 || kind == 8 || kind == 10 }
 
 // SkillNumber retains exact UTF-16 source positions so GUI edits preserve all
 // unrelated tags, formatting, and numeric token types in the editor draft.
@@ -92,19 +107,29 @@ func (s *FileGUIService) ReadSkill(fileIndex int32, text string) (*SkillDocument
 	if len(text) > int(s.c.editableByteLimit()) {
 		return nil, fmt.Errorf("技能文本过大")
 	}
-	doc := parseSkill(text)
+	doc := parseSkillWithTemplates(text, func(value string) string { return resolvePreviewDescription(a, value) })
 	doc.Name = resolvePreviewText(a, doc.Name)
-	for mi := range doc.Modes {
-		for pi := range doc.Modes[mi].Properties {
-			p := &doc.Modes[mi].Properties[pi]
-			p.Template = resolvePreviewDescription(a, p.Template)
-		}
-	}
 	return doc, nil
 }
 
 func parseSkill(text string) *SkillDocument {
+	return parseSkillWithTemplates(text, nil)
+}
+
+func parseSkillWithTemplates(text string, resolve func(string) string) *SkillDocument {
 	view := pvf.ParseScriptView(text)
+	// Resolve references before counting placeholders and consuming bindings.
+	// Only the display template changes; numeric source offsets stay untouched.
+	for i := range view.Elements {
+		e := &view.Elements[i]
+		if e.Kind != pvf.ScriptElementToken || e.Section != "level property" || !isSkillTemplateToken(e.TokenType) {
+			continue
+		}
+		if resolve != nil {
+			e.Value = resolve(e.Value)
+		}
+		e.Value = normalizeSkillTemplate(e.Value)
+	}
 	doc := &SkillDocument{Modes: []SkillMode{}}
 	shared := []SkillProperty{}
 	for _, id := range []string{"dungeon", "pvp"} {
@@ -212,19 +237,13 @@ func parseSkill(text string) *SkillDocument {
 func parseSkillProperties(tokens []pvf.ScriptElement, issues *[]string) []SkillProperty {
 	result := []SkillProperty{}
 	for len(tokens) > 0 {
-		if len(tokens) < 3 || (tokens[2].TokenType != 6 && tokens[2].TokenType != 8) {
+		if len(tokens) < 3 || !isSkillTemplateToken(tokens[2].TokenType) {
 			*issues = append(*issues, "[level property] 描述模板结构异常")
 			break
 		}
 		p := SkillProperty{Template: tokens[2].Value, Bindings: []SkillPropertyBinding{}}
 		tokens = tokens[3:]
-		count := strings.Count(p.Template, "<int>")
-		// Match all supported floating point placeholders, including <float>.
-		for _, match := range skillFloatPlaceholder.FindAllString(p.Template, -1) {
-			if match != "" {
-				count++
-			}
-		}
+		count := len(skillNumericPlaceholder.FindAllString(p.Template, -1))
 		for i := 0; i < count; i++ {
 			if len(tokens) < 3 {
 				*issues = append(*issues, "[level property] 占位符与数据绑定数量不匹配")
@@ -244,9 +263,9 @@ func parseSkillProperties(tokens []pvf.ScriptElement, issues *[]string) []SkillP
 			tokens = tokens[3:]
 		}
 		result = append(result, p)
-		if len(tokens) > 0 && (len(tokens) < 3 || (tokens[2].TokenType != 6 && tokens[2].TokenType != 8)) {
+		if len(tokens) > 0 && (len(tokens) < 3 || !isSkillTemplateToken(tokens[2].TokenType)) {
 			*issues = append(*issues, "[level property] 存在额外的数据绑定，未用于描述预览")
-			for len(tokens) >= 3 && tokens[2].TokenType != 6 && tokens[2].TokenType != 8 {
+			for len(tokens) >= 3 && !isSkillTemplateToken(tokens[2].TokenType) {
 				tokens = tokens[3:]
 			}
 			if len(tokens) < 3 {

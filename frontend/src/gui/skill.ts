@@ -7,6 +7,8 @@ export interface SkillPreviewPart {
 }
 
 export function skillPreview(property: SkillProperty, mode: SkillMode, level: number): SkillPreviewPart[] {
+  // ReadSkill resolves and normalizes template aliases / escaped line breaks.
+  // Rendering therefore depends on template semantics, never PVF variants.
   const parts: SkillPreviewPart[] = [];
   const template = property.template.replaceAll("%%", "%");
   const placeholders = /<int>|<float(\d*)>/g;
@@ -79,4 +81,5 @@ export const skillJobNames: Record<string, string> = {
   priest: "圣职者（男）", atpriest: "圣职者（女）", thief: "暗夜使者", knight: "守护者", demoniclancer: "魔枪士",
   creator: "缔造者", darkknight: "黑暗武士", common: "通用",
   creatormage: "缔造者", demonicswordman: "黑暗武士", gunblader: "枪剑士",
+  archer: "弓箭手",
 };
