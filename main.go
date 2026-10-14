@@ -163,6 +163,7 @@ func main() {
 			application.NewService(settingsService),
 			application.NewService(fileSetService),
 			application.NewService(services.NewBookmarkService()),
+			application.NewService(services.NewCompareService(core)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

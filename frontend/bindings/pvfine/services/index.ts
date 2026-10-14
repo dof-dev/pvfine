@@ -7,6 +7,7 @@ import * as AutosaveService from "./autosaveservice.js";
 import * as BatchService from "./batchservice.js";
 import * as BookmarkService from "./bookmarkservice.js";
 import * as CacheService from "./cacheservice.js";
+import * as CompareService from "./compareservice.js";
 import * as DropService from "./dropservice.js";
 import * as EditorService from "./editorservice.js";
 import * as ExportService from "./exportservice.js";
@@ -28,6 +29,7 @@ export {
     BatchService,
     BookmarkService,
     CacheService,
+    CompareService,
     DropService,
     EditorService,
     ExportService,
@@ -68,6 +70,9 @@ export type {
     BookmarkGroup,
     CacheClearResult,
     CacheUsage,
+    CompareFileDiff,
+    CompareFileItem,
+    CompareSummary,
     DropRateApplyRequest,
     DropRateApplyResult,
     DropRateDocument,
@@ -98,6 +103,7 @@ export type {
     IndexHashTarget,
     IndexStatus,
     ListRegistrationTarget,
+    MergeResult,
     PlaceholderRef,
     PreviewIssue,
     RecoveryInfo,

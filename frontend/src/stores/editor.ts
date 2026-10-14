@@ -15,6 +15,9 @@ import { hasLongLine } from "../editorWrapping";
 export type EditorPaneId = string;
 export type SplitOrientation = "columns" | "rows";
 
+/** 归档差异对比专属特殊 Tab 索引常量 */
+export const COMPARE_TAB_INDEX = -999;
+
 export interface EditorTab {
   index: number;
   path: string;
@@ -782,6 +785,40 @@ export const useEditorStore = defineStore("editor", () => {
     return true;
   }
 
+  /** 打开或激活归档对比特殊 Tab */
+  function openCompareTab(requestedPaneId?: EditorPaneId): void {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    let tab = tabs.value.find((t) => t.index === COMPARE_TAB_INDEX);
+    if (!tab) {
+      tab = {
+        index: COMPARE_TAB_INDEX,
+        path: "__compare__",
+        title: "归档对比",
+        dataType: 0,
+        size: 0,
+        tags: [],
+        editable: false,
+        original: "",
+        text: "",
+        modified: false,
+        annotations: [],
+        annotationsHidden: false,
+        lineWrapping: false,
+        icon: null,
+        fieldImage: null,
+        loading: false,
+        loadError: null,
+      };
+      tabs.value.push(tab);
+    }
+    addTabToPane(targetPaneId, COMPARE_TAB_INDEX);
+    const pane = paneStates[targetPaneId];
+    if (pane) {
+      pane.activeKey = COMPARE_TAB_INDEX;
+    }
+    activePaneId.value = targetPaneId;
+  }
+
   /** 把单个标签的本地文本写入后端 overlay,成功后重置脏基线。 */
   async function saveTab(index: number): Promise<boolean> {
     const tab = getFileDraft(index);
@@ -1217,6 +1254,7 @@ export const useEditorStore = defineStore("editor", () => {
     saveFileTab,
     openUpgrade,
     openForge,
+    openCompareTab,
     saveActiveTab,
     saveAllDirty,
     save,

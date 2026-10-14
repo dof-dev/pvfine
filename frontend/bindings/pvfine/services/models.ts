@@ -259,6 +259,66 @@ export interface CacheUsage {
 }
 
 /**
+ * CompareFileDiff 单个文件的 Diff 结果
+ */
+export interface CompareFileDiff {
+    "path": string;
+    "operation": string;
+    "baseType": number;
+    "targetType": number;
+    "baseSize": number;
+    "targetSize": number;
+    "baseText": string;
+    "targetText": string;
+    "textAvailable": boolean;
+    "diff"?: (BatchDiffLine | null)[] | null;
+    "diffTruncated": boolean;
+}
+
+/**
+ * CompareFileItem 记录单个文件的对比状态
+ */
+export interface CompareFileItem {
+    "path": string;
+
+    /**
+     * "add", "delete", "modify", "same"
+     */
+    "operation": string;
+    "baseType": number;
+    "targetType": number;
+    "baseSize": number;
+    "targetSize": number;
+
+    /**
+     * 本地归档中的索引，不存在则为 -1
+     */
+    "fileIndex": number;
+    "tags"?: TreeTag[] | null;
+    "annotations"?: TreeAnnotation[] | null;
+    "icon"?: ImageReference | null;
+}
+
+/**
+ * CompareSummary 对比结果汇总
+ */
+export interface CompareSummary {
+    "basePath": string;
+    "targetPath": string;
+    "baseCount": number;
+    "targetCount": number;
+    "addCount": number;
+    "deleteCount": number;
+    "modifyCount": number;
+    "sameCount": number;
+
+    /**
+     * 默认仅包含发生差异的文件 (add, delete, modify)
+     */
+    "files": (CompareFileItem | null)[] | null;
+}
+
+/**
  * DropRateApplyRequest applies the complete editor snapshot atomically.
  */
 export interface DropRateApplyRequest {
@@ -596,6 +656,16 @@ export interface ListRegistrationTarget {
     "entryPath": string;
     "suggestedId": string;
     "hasIndexHash": boolean;
+}
+
+/**
+ * MergeResult 合并操作结果汇总
+ */
+export interface MergeResult {
+    "successCount": number;
+    "failedCount": number;
+    "mergedPaths": string[] | null;
+    "errors"?: string[] | null;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   Key24Regular,
   Settings24Regular,
   Toolbox24Regular,
+  ArrowSwap24Regular,
 } from "@vicons/fluent";
 import {
   NBadge,
@@ -38,6 +39,7 @@ import { useImportStore } from "../stores/import";
 import { useVersionStore } from "../stores/version";
 import { useScriptStore } from "../stores/script";
 import { useDropRateStore } from "../stores/dropRate";
+import { useCompareStore } from "../stores/compare";
 import IndexHashRegistrationModal from "./IndexHashRegistrationModal.vue";
 import { effectiveBinding, formatBinding, type ShortcutCommandId } from "../shortcuts";
 
@@ -51,6 +53,7 @@ const importer = useImportStore();
 const version = useVersionStore();
 const script = useScriptStore();
 const dropRate = useDropRateStore();
+const compare = useCompareStore();
 const message = useMessage();
 const dialog = useDialog();
 const hashRegistrationVisible = ref(false);
@@ -135,6 +138,12 @@ const toolOptions = computed(() => [
       { label: "增幅概率", key: "amplify-upgrade", disabled: !archive.open },
       { label: "锻造配置", key: "forge", disabled: !archive.open },
     ],
+  },
+  {
+    label: "PVF 归档对比",
+    key: "compare",
+    disabled: !archive.open,
+    icon: () => h(NIcon, null, { default: () => h(ArrowSwap24Regular) }),
   },
 ]);
 watch(
@@ -299,6 +308,19 @@ async function onToolSelect(key: string): Promise<void> {
     }
     return;
   }
+  if (key === "compare") {
+    handleOpenCompare();
+    return;
+  }
+}
+
+function handleOpenCompare(): void {
+  if (!archive.open) {
+    message.warning("请先在主界面打开一个 PVF 归档，再与外部 PVF 进行对比");
+    return;
+  }
+  compare.open();
+  editor.openCompareTab();
 }
 
 function isCancel(e: any): boolean {
@@ -483,22 +505,27 @@ function isCancel(e: any): boolean {
         </template>
         为指定 lst 补齐缺失的 indexhash
       </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton quaternary :disabled="!archive.open" @click="handleOpenCompare">
+            <template #icon><NIcon><ArrowSwap24Regular /></NIcon></template>
+            对比
+          </NButton>
+        </template>
+        对比两个 PVF 归档差异
+      </NTooltip>
     </div>
 
     <div class="tb-sep" />
 
     <div class="tb-group" role="group" aria-label="工具">
-      <NTooltip trigger="hover" :disabled="archive.open">
-        <template #trigger>
-          <NDropdown :options="toolOptions" @select="onToolSelect">
-            <NButton quaternary>
-              <template #icon><NIcon><Toolbox24Regular /></NIcon></template>
-              工具
-            </NButton>
-          </NDropdown>
-        </template>
-        需先打开 PVF 归档
-      </NTooltip>
+      <NDropdown :options="toolOptions" @select="onToolSelect">
+        <NButton quaternary>
+          <template #icon><NIcon><Toolbox24Regular /></NIcon></template>
+          工具
+        </NButton>
+      </NDropdown>
     </div>
 
     <div class="tb-spacer" />

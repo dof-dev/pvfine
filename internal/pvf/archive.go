@@ -678,3 +678,19 @@ func (a *Archive) Info() ArchiveInfoView {
 		WriteCapabilities: a.WriteCapabilities(),
 	}
 }
+
+// ResetCaches drops the decompressed chunk and string resolve caches to free memory.
+func (a *Archive) ResetCaches() {
+	if a == nil {
+		return
+	}
+	a.cacheMu.Lock()
+	a.chunkCache = make(map[int32][]byte)
+	a.chunkCacheMeta = make(map[int32]chunkCacheEntry)
+	a.chunkCacheBytes = 0
+	a.chunkCacheClock = 0
+	a.resolveCache = make(map[int32]string)
+	a.resolveCacheOrder = nil
+	a.resolveCacheBytes = 0
+	a.cacheMu.Unlock()
+}
