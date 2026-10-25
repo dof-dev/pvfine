@@ -480,6 +480,15 @@ async function openFileRegistration(): Promise<void> {
     if (!options || targets.length === 0) {
       throw new Error("没有找到可用的 lst");
     }
+    // APC 职业编号范围占满时，后端把 suggestedId 置空；此处弹出明确
+    // 提示并阻止继续，避免注册到错误范围（86A21-fix-aic-job-range）。
+    const aicTarget = targets.find((target) =>
+      target.listPath.toLowerCase().replaceAll("\\", "/").endsWith("aicharacter.lst"),
+    );
+    if (aicTarget && !aicTarget.suggestedId) {
+      message.error("无可用编号：该 APC 的职业编号范围已全部占用，无法注册到 aicharacter.lst");
+      return;
+    }
     fileRegistration.fileIndex = tab.index;
     fileRegistration.filePath = tab.path;
     fileRegistration.targets = targets;

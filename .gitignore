@@ -21,3 +21,7 @@ ImagePacks2
 # Local PVF export fixtures and unpacked game data
 /export/
 /testdata/
+
+temp/
+
+update-and-build.bat

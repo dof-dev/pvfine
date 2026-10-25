@@ -90,6 +90,8 @@ interface LayoutReplacement {
 export const useEditorStore = defineStore("editor", () => {
   const initialPaneId = "pane-1";
   const tabs = ref<EditorTab[]>([]);
+  /** 标签上限被触发的计数：openFile 遇到上限时递增，由 UI 负责给出提示。 */
+  const tabLimitHit = ref(0);
   // 通用 GUI 的文件草稿独立于可见标签，仍参与保存和归档关闭保护。
   const guiDrafts = ref<EditorTab[]>([]);
   const allFiles = computed(() => [...tabs.value, ...guiDrafts.value]);
@@ -262,7 +264,9 @@ export const useEditorStore = defineStore("editor", () => {
 
     // 先占用标签名额并显示加载态；重复打开复用同一请求。
     if (tabs.value.length >= 20) {
-      throw new Error("打开的标签过多,请先关闭一些(上限 20)");
+      // 优雅阻止：不抛异常破坏应用状态，仅递增计数交给 UI 提示。
+      tabLimitHit.value++;
+      return;
     }
     const draft = guiDrafts.value.find((file) => file.index === index);
     if (draft) {
@@ -1366,6 +1370,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   return {
     tabs,
+    tabLimitHit,
     getFileDraft,
     openGUIFile,
     itemCreationDrafts,

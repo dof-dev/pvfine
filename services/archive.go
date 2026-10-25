@@ -546,6 +546,111 @@ func (s *ArchiveService) CreateFile(path string, dataType int32) (*TreeNode, err
 	return node, nil
 }
 
+// CopyFile duplicates an existing file inside the same directory with an
+// auto-unique name (原名_copy.ext, then 原名_copy2.ext...), returning the
+// newly created node. Raw bytes are preserved so encodings like .str UTF-16
+// stay intact; the caller can open the returned file and edit it freely.
+func (s *ArchiveService) CopyFile(path string) (*TreeNode, error) {
+	path = strings.Trim(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"), "/")
+	if path == "" {
+		return nil, errors.New("文件名不能为空")
+	}
+	s.c.mu.Lock()
+	a := s.c.archive
+	if a == nil {
+		s.c.mu.Unlock()
+		return nil, ErrNoArchive
+	}
+	if err := s.c.ensureVersionReadyLocked(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	idx, ok := a.Find(path)
+	if !ok {
+		s.c.mu.Unlock()
+		return nil, fmt.Errorf("文件不存在: %s", path)
+	}
+	source := a.File(idx)
+	raw, err := a.RawBytes(idx)
+	if err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	newPath := uniqueCopyPath(a, path)
+	mutationCheckpoint := a.MutationCheckpoint()
+	var before pvfversion.ContentSnapshot
+	if s.c.versionRepo != nil {
+		before = make(pvfversion.ContentSnapshot)
+	}
+	if s.c.diskIndex != nil && s.c.diskIndex.entries != nil {
+		a = a.CloneForBatch()
+		mutationCheckpoint = a.MutationCheckpoint()
+	}
+	newIdx := a.AddFile(newPath, raw, source.DataType)
+	if err := s.c.rebuildArchiveIndexesLocked(a); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+	if s.c.versionRepo != nil {
+		after, snapshotErr := pvfversion.ContentSnapshotFromArchive(a, []string{newPath})
+		if snapshotErr != nil {
+			s.c.mu.Unlock()
+			return nil, snapshotErr
+		}
+		if recordErr := s.c.recordVersionMutationLocked("复制文件", before, after); recordErr != nil {
+			s.c.mu.Unlock()
+			return nil, recordErr
+		}
+	}
+	mutationSummary := a.MutationsSince(mutationCheckpoint)
+	a.ClearMutations()
+	node := &TreeNode{
+		Name:        a.File(newIdx).Name,
+		Path:        a.Path(newIdx),
+		Size:        source.DataSize,
+		DataType:    source.DataType,
+		FileIndex:   newIdx,
+		ChangeKind:  ChangeKindAdded,
+		Annotations: cloneTreeAnnotations(s.c.pathAnnotations[a.Path(newIdx)]),
+		Icon:        cloneImageReference(s.c.visualsByFile[newIdx].icon),
+		FieldImage:  cloneImageReference(s.c.visualsByFile[newIdx].fieldImage),
+	}
+	info := a.Info()
+	versioned := s.c.versionRepo != nil
+	s.c.mu.Unlock()
+
+	if err := s.c.scheduleArchiveMutations(a, mutationSummary); err != nil {
+		return nil, err
+	}
+	emitEvent("archive:changed", info)
+	if versioned {
+		emitVersionState(s.c, "file-created")
+	}
+	return node, nil
+}
+
+// uniqueCopyPath returns an unused sibling path like "dir/name_copy.ext",
+// "dir/name_copy2.ext" and so on.
+func uniqueCopyPath(a *pvf.Archive, path string) string {
+	base := path
+	ext := ""
+	if dot := strings.LastIndexByte(base, '.'); dot > strings.LastIndexByte(base, '/') {
+		ext = base[dot:]
+		base = base[:dot]
+	}
+	for i := 1; ; i++ {
+		candidate := ""
+		if i == 1 {
+			candidate = base + "_copy" + ext
+		} else {
+			candidate = fmt.Sprintf("%s_copy%d%s", base, i, ext)
+		}
+		if _, ok := a.Find(candidate); !ok {
+			return candidate
+		}
+	}
+}
+
 // DeleteFiles removes one or more file entries from the current archive.
 func (s *ArchiveService) DeleteFiles(fileIndexes []int32) ([]string, error) {
 	return s.deleteFiles(fileIndexes, false)

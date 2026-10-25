@@ -123,6 +123,12 @@ export interface AppSettings {
      */
     "shortcutOverrides": { [_ in string]?: string } | null;
     "maxEditableSizeMB": number;
+
+    /**
+     * ScriptTagTooltipEnabled controls the [section] hover annotation fed by
+     * the read-only dcn86.xml translation file. It is on by default.
+     */
+    "scriptTagTooltipEnabled": boolean;
 }
 
 export interface ArchiveDiffDraft {
@@ -1025,6 +1031,16 @@ export interface ScriptSession {
     "name": string;
     "source": string;
     "savedSource": string;
+}
+
+/**
+ * ScriptTagTranslation is one section -> comment mapping loaded from the
+ * read-only DCN86 script tag translation file. Only the section and comment
+ * fields are kept; every other attribute is intentionally ignored.
+ */
+export interface ScriptTagTranslation {
+    "section": string;
+    "comment": string;
 }
 
 /**

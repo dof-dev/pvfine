@@ -27337,7 +27337,7 @@
         "role": "other-attribute",
         "group": "other",
         "order": 40,
-        "format": "percent",
+        "format": "percent-flip",
         "label": "命中率"
       }
     },
@@ -27663,6 +27663,281 @@
         "group": "explain",
         "order": 5,
         "format": "text"
+      }
+    },
+    {
+      "id": "equ.all-elemental-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "all elemental attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "所有属性强化",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 41,
+        "format": "signed-number",
+        "label": "所有属性强化"
+      }
+    },
+    {
+      "id": "equ.fire-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "fire attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "火属性强化",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 42,
+        "format": "signed-number",
+        "label": "火属性强化"
+      }
+    },
+    {
+      "id": "equ.water-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "water attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "冰属性强化",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 43,
+        "format": "signed-number",
+        "label": "冰属性强化"
+      }
+    },
+    {
+      "id": "equ.light-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "light attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "光属性强化",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 44,
+        "format": "signed-number",
+        "label": "光属性强化"
+      }
+    },
+    {
+      "id": "equ.dark-attack",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "dark attack",
+        "index": 0
+      },
+      "annotation": {
+        "title": "暗属性强化",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 45,
+        "format": "signed-number",
+        "label": "暗属性强化"
+      }
+    },
+    {
+      "id": "equ.move-speed",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "move speed",
+        "index": 0
+      },
+      "annotation": {
+        "title": "移动速度",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 46,
+        "format": "percent",
+        "label": "移动速度"
+      }
+    },
+    {
+      "id": "equ.stuck-resistance",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "stuck resistance",
+        "index": 0
+      },
+      "annotation": {
+        "title": "回避率",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 47,
+        "format": "percent",
+        "label": "回避率"
+      }
+    },
+    {
+      "id": "equ.hp-max",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "hp max",
+        "index": 0
+      },
+      "annotation": {
+        "title": "最大生命值",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 48,
+        "format": "signed-number",
+        "label": "最大生命值"
+      }
+    },
+    {
+      "id": "equ.mp-max",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "mp max",
+        "index": 0
+      },
+      "annotation": {
+        "title": "最大魔法值",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 49,
+        "format": "signed-number",
+        "label": "最大魔法值"
+      }
+    },
+    {
+      "id": "equ.inventory-limit",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "inventory limit",
+        "index": 0
+      },
+      "annotation": {
+        "title": "负重上限",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 50,
+        "format": "weight",
+        "label": "负重上限"
+      }
+    },
+    {
+      "id": "equ.room-list-move-speed-rate",
+      "match": {
+        "extensions": [
+          ".equ"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "room list move speed rate",
+        "index": 0
+      },
+      "annotation": {
+        "title": "城镇移动速度",
+        "type": "text"
+      },
+      "preview": {
+        "provider": "equ",
+        "role": "other-attribute",
+        "group": "other",
+        "order": 50,
+        "format": "rate-percent",
+        "label": "城镇移动速度"
       }
     }
   ]

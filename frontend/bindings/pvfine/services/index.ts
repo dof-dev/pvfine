@@ -20,6 +20,7 @@ import * as PreviewService from "./previewservice.js";
 import * as RenderingService from "./renderingservice.js";
 import * as RuleService from "./ruleservice.js";
 import * as ScriptService from "./scriptservice.js";
+import * as ScriptTagTranslationService from "./scripttagtranslationservice.js";
 import * as ScriptWindowService from "./scriptwindowservice.js";
 import * as SettingsService from "./settingsservice.js";
 import * as SkillService from "./skillservice.js";
@@ -45,6 +46,7 @@ export {
     RenderingService,
     RuleService,
     ScriptService,
+    ScriptTagTranslationService,
     ScriptWindowService,
     SettingsService,
     SkillService,
@@ -148,6 +150,7 @@ export type {
     ScriptRunRequest,
     ScriptRunResult,
     ScriptSession,
+    ScriptTagTranslation,
     SearchHit,
     SearchResult,
     ShopCategory,

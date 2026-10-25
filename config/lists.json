@@ -23,6 +23,13 @@
       "recordTokens": 2,
       "nameSection": "name"
     },
+    "aicharacter": {
+      "listPath": "aicharacter/aicharacter.lst",
+      "idToken": 0,
+      "pathToken": 1,
+      "recordTokens": 2,
+      "nameSection": "name"
+    },
     "职业": {
       "listPath": "character/character.lst",
       "idToken": 0,

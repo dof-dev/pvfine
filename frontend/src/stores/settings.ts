@@ -31,6 +31,7 @@ const defaultSettings: AppSettings = {
   autosaveIntervalSeconds: defaultAutosaveIntervalSeconds,
   shortcutOverrides: {},
   maxEditableSizeMB: defaultMaxEditableSizeMB,
+  scriptTagTooltipEnabled: true,
 };
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -50,6 +51,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const shortcutOverrides = ref<ShortcutOverrides>({});
   const maxEditableSizeMB = ref(defaultMaxEditableSizeMB);
   const cacheLimitGiB = ref(10);
+  const scriptTagTooltipEnabled = ref(true);
 
   /** 当前设置的全量快照,避免每次保存都手写所有字段。 */
   function currentSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -66,6 +68,7 @@ export const useSettingsStore = defineStore("settings", () => {
       shortcutOverrides: shortcutOverrides.value,
       maxEditableSizeMB: maxEditableSizeMB.value,
       cacheLimitGiB: cacheLimitGiB.value,
+      scriptTagTooltipEnabled: scriptTagTooltipEnabled.value,
       ...overrides,
     };
   }
@@ -86,6 +89,7 @@ export const useSettingsStore = defineStore("settings", () => {
       shortcutOverrides.value = normalizeShortcutOverrides(settings.shortcutOverrides);
       maxEditableSizeMB.value = normalizeMaxEditableSizeMB(settings.maxEditableSizeMB);
       cacheLimitGiB.value = settings.cacheLimitGiB ?? 10;
+      scriptTagTooltipEnabled.value = normalizeScriptTagTooltipEnabled(settings.scriptTagTooltipEnabled);
     } catch (error) {
       console.error("load settings failed", error);
       annotationTagPlacement.value = "after-target";
@@ -144,6 +148,10 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveSettings(currentSettings({ maxEditableSizeMB: value }));
   }
 
+  async function saveScriptTagTooltipEnabled(value: boolean) {
+    await saveSettings(currentSettings({ scriptTagTooltipEnabled: value }));
+  }
+
   async function updateShortcutOverrides(overrides: ShortcutOverrides) {
     saving.value = true;
     try {
@@ -181,6 +189,7 @@ export const useSettingsStore = defineStore("settings", () => {
     const previousShortcutOverrides = shortcutOverrides.value;
     const previousCacheLimitGiB = cacheLimitGiB.value;
     const previousMaxEditableSizeMB = maxEditableSizeMB.value;
+    const previousScriptTagTooltipEnabled = scriptTagTooltipEnabled.value;
     annotationTagPlacement.value = normalizePlacement(next.annotationTagPlacement);
     explorerOpenMode.value = normalizeExplorerOpenMode(next.explorerOpenMode);
     vimMode.value = normalizeVimMode(next.vimMode);
@@ -193,6 +202,7 @@ export const useSettingsStore = defineStore("settings", () => {
     shortcutOverrides.value = normalizeShortcutOverrides(next.shortcutOverrides);
     maxEditableSizeMB.value = normalizeMaxEditableSizeMB(next.maxEditableSizeMB);
     cacheLimitGiB.value = next.cacheLimitGiB;
+    scriptTagTooltipEnabled.value = normalizeScriptTagTooltipEnabled(next.scriptTagTooltipEnabled);
     saving.value = true;
     try {
       await SettingsService.SaveSettings({
@@ -212,6 +222,7 @@ export const useSettingsStore = defineStore("settings", () => {
       shortcutOverrides.value = previousShortcutOverrides;
       maxEditableSizeMB.value = previousMaxEditableSizeMB;
       cacheLimitGiB.value = previousCacheLimitGiB;
+      scriptTagTooltipEnabled.value = previousScriptTagTooltipEnabled;
       throw error;
     } finally {
       saving.value = false;
@@ -247,6 +258,8 @@ export const useSettingsStore = defineStore("settings", () => {
     saveMaxEditableSizeMB,
     cacheLimitGiB,
     saveCacheLimitGiB,
+    scriptTagTooltipEnabled,
+    saveScriptTagTooltipEnabled,
     load,
     savePlacement,
     saveExplorerOpenMode,
@@ -317,4 +330,8 @@ function normalizeMaxEditableSizeMB(value: number | null | undefined): number {
     return defaultMaxEditableSizeMB;
   }
   return Number(value);
+}
+
+function normalizeScriptTagTooltipEnabled(value: boolean | null | undefined): boolean {
+  return value !== false;
 }

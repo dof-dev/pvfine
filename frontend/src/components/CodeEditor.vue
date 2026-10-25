@@ -59,7 +59,9 @@ import { startDebugTiming } from "../stores/debugTiming";
 import { hasLongLine } from "../editorWrapping";
 import type { EditorAnnotation } from "../../bindings/pvfine/services/models";
 import type { AnnotationTagPlacement } from "../stores/settings";
+import { useSettingsStore } from "../stores/settings";
 import { useImageStore } from "../stores/images";
+import { useScriptTagTranslationsStore } from "../stores/scriptTagTranslations";
 import { scriptCompletionSource as declarationCompletionSource } from "../scriptLanguageService";
 import type { ResolvedThemeId } from "../theme";
 
@@ -109,6 +111,8 @@ const editorThemeComp = new Compartment();
 const wrappingComp = new Compartment();
 let wrapping = props.lineWrapping ?? !hasLongLine(props.doc);
 const images = useImageStore();
+const settings = useSettingsStore();
+const scriptTagTranslations = useScriptTagTranslationsStore();
 
 interface AnnotationDisplay {
   annotations: RangeSet<AnnotationRange>;
@@ -379,6 +383,125 @@ function cancelTooltipHide(): void {
   clearTooltipHideTimer();
 }
 
+type SectionTooltipPlacement = "bottom-start" | "top-start";
+
+const sectionTooltip = ref<{
+  visible: boolean;
+  left: number;
+  top: number;
+  placement: SectionTooltipPlacement;
+  content: string;
+}>({
+  visible: false,
+  left: 0,
+  top: 0,
+  placement: "bottom-start",
+  content: "",
+});
+let lastSectionHover = "";
+let sectionTooltipHideTimer: number | undefined;
+
+function clearSectionTooltipHideTimer(): void {
+  if (sectionTooltipHideTimer === undefined) return;
+  window.clearTimeout(sectionTooltipHideTimer);
+  sectionTooltipHideTimer = undefined;
+}
+
+/** 命中 PVF 行首 [section] 标签（要求鼠标位于标签 token 字符范围内，不整行触发）。 */
+function sectionTagAt(currentView: EditorView, position: number): { name: string; from: number; to: number } | null {
+  const line = currentView.state.doc.lineAt(position);
+  const text = line.text;
+  // 识别行首标签 token；允许标签右侧带参数，但触发范围只覆盖标签字符本身。
+  const m = /^\s*\[([^\]]+)\]/.exec(text);
+  if (!m) return null;
+  const tagStart = text.indexOf("[");
+  const tagEnd = text.indexOf("]", tagStart);
+  if (tagStart < 0 || tagEnd < 0) return null;
+  const from = line.from + tagStart;
+  const to = line.from + tagEnd + 1;
+  // 触发范围覆盖标签 token 本身，并含其右侧自带的 tag 标注/参数相邻区域。
+  let hitTo = to;
+  const rest = /^\s*\[[^\]]+\]\s*(\S+)/.exec(text);
+  if (rest && rest[1]) {
+    hitTo = line.from + text.indexOf(rest[1]) + rest[1].length;
+  }
+  if (position < from || position > hitTo) return null;
+  return { name: m[1], from, to: hitTo };
+}
+
+function showSectionTooltipAt(name: string, comment: string, event: MouseEvent): void {
+  clearSectionTooltipHideTimer();
+  // 同一标签持续悬停时保持已固定的位置，绝不随鼠标移动而移动。
+  if (sectionTooltip.value.visible && sectionTooltip.value.content === comment) {
+    return;
+  }
+  const width = 560;
+  const left = Math.min(Math.max(8, event.clientX + 14), Math.max(8, window.innerWidth - width - 8));
+  const placement: SectionTooltipPlacement = event.clientY + 540 < window.innerHeight
+    ? "bottom-start"
+    : "top-start";
+  const top = placement === "bottom-start" ? event.clientY + 14 : event.clientY - 8;
+  sectionTooltip.value = { visible: true, left, top, placement, content: comment };
+}
+
+function hideSectionTooltipSoon(): void {
+  clearSectionTooltipHideTimer();
+  sectionTooltipHideTimer = window.setTimeout(() => {
+    sectionTooltipHideTimer = undefined;
+    sectionTooltip.value.visible = false;
+  }, 160);
+}
+
+function handleSectionHover(event: MouseEvent, currentView: EditorView): void {
+  const isPvfLang = props.language === "pvf";
+  if (!isPvfLang || !settings.scriptTagTooltipEnabled) {
+    if (sectionTooltip.value.visible) hideSectionTooltipSoon();
+    lastSectionHover = "";
+    return;
+  }
+  const position = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (position === null) {
+    if (sectionTooltip.value.visible) hideSectionTooltipSoon();
+    return;
+  }
+  const hit = sectionTagAt(currentView, position);
+  if (!hit) {
+    if (sectionTooltip.value.visible) hideSectionTooltipSoon();
+    lastSectionHover = "";
+    return;
+  }
+  lastSectionHover = hit.name;
+  const comment = scriptTagTranslations.commentFor(hit.name);
+  if (comment !== undefined) {
+    showSectionTooltipAt(hit.name, comment, event);
+    return;
+  }
+  if (!scriptTagTranslations.loaded) {
+    void scriptTagTranslations.ensureLoaded().then(() => {
+      if (lastSectionHover === hit.name && settings.scriptTagTooltipEnabled) {
+        const c = scriptTagTranslations.commentFor(hit.name);
+        if (c !== undefined) showSectionTooltipAt(hit.name, c, event);
+      }
+    });
+  } else {
+    if (sectionTooltip.value.visible) hideSectionTooltipSoon();
+  }
+}
+
+/** 将注释按 ``` 代码块分段，代码段保留格式、文本段保留换行。 */
+function splitCommentSegments(comment: string): { code: boolean; text: string }[] {
+  const segments: { code: boolean; text: string }[] = [];
+  const parts = comment.split("```");
+  parts.forEach((part, index) => {
+    if (index % 2 === 0) {
+      if (part.trim() !== "") segments.push({ code: false, text: part });
+    } else {
+      segments.push({ code: true, text: part });
+    }
+  });
+  return segments;
+}
+
 function hiddenAnnotationTarget(event: Event, currentView: EditorView): HTMLElement | null {
   if (!(event.target instanceof HTMLElement)) return null;
   const target = event.target.closest<HTMLElement>(".cm-annotation-hover");
@@ -584,7 +707,12 @@ function makeExtensions(themeId: ResolvedThemeId) {
         if (annotation) showAnnotationTooltip(annotation, target);
         return false;
       },
+      mousemove(event, currentView) {
+        handleSectionHover(event, currentView);
+        return false;
+      },
       mouseout(event, currentView) {
+        if (sectionTooltip.value.visible) hideSectionTooltipSoon();
         const target = hiddenAnnotationTarget(event, currentView);
         if (target && !(event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
           scheduleHideTooltip();
@@ -872,6 +1000,34 @@ watch(
       <div class="annotation-tooltip-text">{{ annotationTooltip.content }}</div>
     </div>
   </NTooltip>
+  <NTooltip
+    :show="sectionTooltip.visible"
+    trigger="manual"
+    :x="sectionTooltip.left"
+    :y="sectionTooltip.top"
+    :placement="sectionTooltip.placement"
+    to="body"
+    :raw="true"
+    :show-arrow="false"
+    :delay="0"
+    :duration="0"
+    :keep-alive-on-hover="true"
+    :z-index="2001"
+    content-class="section-tooltip-content"
+  >
+    <div
+      class="section-tooltip-inner"
+      role="tooltip"
+      @mouseenter="clearSectionTooltipHideTimer"
+      @mouseleave="hideSectionTooltipSoon"
+    >
+      <div
+        v-for="(seg, i) in splitCommentSegments(sectionTooltip.content)"
+        :key="i"
+        :class="seg.code ? 'section-tooltip-code' : 'section-tooltip-text'"
+      >{{ seg.text }}</div>
+    </div>
+  </NTooltip>
 </template>
 
 <style scoped>
@@ -1023,5 +1179,40 @@ watch(
 .annotation-tooltip-loading {
   margin-bottom: 7px;
   color: var(--pvf-text-muted);
+}
+:global(.section-tooltip-content) {
+  max-width: 560px;
+  padding: 10px 12px;
+  color: var(--pvf-text-primary);
+  pointer-events: auto;
+  user-select: text;
+  background: var(--pvf-surface-elevated);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px var(--pvf-effect-tooltip-shadow);
+}
+.section-tooltip-inner {
+  max-width: 536px;
+  max-height: 520px;
+  overflow-y: auto;
+  cursor: text;
+  user-select: text;
+}
+.section-tooltip-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.section-tooltip-code {
+  margin: 6px 0;
+  padding: 7px 9px;
+  overflow-x: auto;
+  color: var(--pvf-text-code);
+  font-family: var(--pvf-font-mono, "Consolas", "Courier New", monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background: var(--pvf-surface-base);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 4px;
 }
 </style>

@@ -55,6 +55,11 @@ func (s *ArchiveService) ListRegistrationOptions(fileIndex int32) (*FileRegistra
 	if a == nil {
 		return nil, ErrNoArchive
 	}
+	// 动态补充"顶级文件夹对应同名 lst"规则：归档里存在的 <top>/<top>.lst
+	// 或 list/<top>.lst 也是该顶层文件夹下文件的合法注册目标，即使 lists.json
+	// 没有手写关系（例如 aicharacter/aicharacter.lst）。合并前先去重，手写
+	// relation 优先。
+	specs = append(specs, s.topLevelListSpecsLocked(a)...)
 	if err := validateFileIndexes(a, []int32{fileIndex}); err != nil {
 		return nil, err
 	}
@@ -94,6 +99,21 @@ func (s *ArchiveService) ListRegistrationOptions(fileIndex int32) (*FileRegistra
 		suggestedID, err := nextListID(pairs, a.ContentRules().RequiresIndexHash)
 		if err != nil {
 			continue
+		}
+		// APC 职业编号分段：.aic 注册到 aicharacter.lst 时，按文件
+		// [minimum info] 第二项职业编号 n 分配 [1+5000n, 5000+5000n]
+		// 段内最小未占用编号；段内占满则置空 suggestedId，前端据此
+		// 弹出"无可用编号"提示（86A21-fix-aic-job-range）。
+		if isAICListRegistration(listPath, filePath) {
+			if text, textErr := a.Text(fileIndex); textErr == nil {
+				if jobNo, ok := aicJobNoFromText(text); ok {
+					if rangeID, ok := aicJobRangeID(pairs, jobNo); ok {
+						suggestedID = rangeID
+					} else {
+						suggestedID = ""
+					}
+				}
+			}
 		}
 		hasIndexHash := false
 		if companion, ok := pvf.IndexHashCompanionPath(listPath); ok {
@@ -170,6 +190,29 @@ func (s *ArchiveService) RegisterFileToList(fileIndex int32, listPath, id string
 		if found && targetIndex == fileIndex {
 			s.c.mu.Unlock()
 			return nil, fmt.Errorf("当前文件已经注册到 %s", actualListPath)
+		}
+	}
+
+	// APC 职业编号范围校验（86A21-fix-aic-job-range）：.aic 注册到
+	// aicharacter.lst 时，id 必须落在 [minimum info] 职业编号对应的
+	// 5000 段内；段内全部占用时明确拒绝并提示"无可用编号"，不得把
+	// 文件注册到错误范围，也不得抛出未处理异常。
+	if isAICListRegistration(actualListPath, a.Path(fileIndex)) {
+		if text, textErr := a.Text(fileIndex); textErr == nil {
+			if jobNo, ok := aicJobNoFromText(text); ok {
+				if rangeID, ok := aicJobRangeID(pairs, jobNo); !ok {
+					s.c.mu.Unlock()
+					return nil, fmt.Errorf("无可用编号：职业 %d 编号范围已全部占用，无法注册到 %s", jobNo, actualListPath)
+				} else if !strings.EqualFold(id, rangeID) {
+					lo := int64(1) + int64(aicJobIDRangeSize)*int64(jobNo)
+					hi := lo + aicJobIDRangeSize - 1
+					parsed, parseErr := strconv.ParseInt(id, 10, 64)
+					if parseErr != nil || parsed < lo || parsed > hi {
+						s.c.mu.Unlock()
+						return nil, fmt.Errorf("id %s 不在职业 %d 编号范围 [%d-%d] 内，无法注册到 %s", id, jobNo, lo, hi, actualListPath)
+					}
+				}
+			}
 		}
 	}
 
@@ -460,6 +503,78 @@ func nextListID(pairs []pvf.ListPair, requiresIndexHash bool) (string, error) {
 	}
 }
 
+// aicJobIDRangeSize is the id range width owned by each APC job.
+// Job n owns ids [1+5000*n, 5000+5000*n] (job 0 = 鬼剑士 = 1..5000).
+const aicJobIDRangeSize = 5000
+
+// isAICListRegistration reports whether the target list is aicharacter.lst
+// and the file being registered is an .aic script (APC AI script).
+func isAICListRegistration(listPath, filePath string) bool {
+	return strings.EqualFold(path.Base(listPath), "aicharacter.lst") &&
+		strings.EqualFold(path.Ext(filePath), ".aic")
+}
+
+// aicJobNoFromText parses the job index from the [minimum info] section of
+// an .aic script. The first data line under the section looks like:
+//
+//	`名字`	0	2	0	1	40	...
+//
+// The first tab field is the display name, the second is the job number
+// (0=鬼剑士). ok=false means the section or the job field is unavailable.
+func aicJobNoFromText(text string) (int, bool) {
+	section := false
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "[minimum info]") {
+			section = true
+			continue
+		}
+		if section && strings.HasPrefix(lower, "[/") {
+			break
+		}
+		if !section {
+			continue
+		}
+		if trimmed == "" || strings.HasPrefix(trimmed, "[") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 {
+			return 0, false
+		}
+		job, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return 0, false
+		}
+		return job, true
+	}
+	return 0, false
+}
+
+// aicJobRangeID returns the smallest unused id inside the job range
+// [1+5000*n, 5000+5000*n]. ok=false means the whole range is occupied.
+func aicJobRangeID(pairs []pvf.ListPair, jobNo int) (string, bool) {
+	if jobNo < 0 {
+		return "", false
+	}
+	lo := int64(1) + int64(aicJobIDRangeSize)*int64(jobNo)
+	hi := lo + aicJobIDRangeSize - 1
+	used := make(map[int64]struct{}, len(pairs))
+	for _, pair := range pairs {
+		id := strings.TrimSpace(pair.ID)
+		if parsed, err := strconv.ParseInt(id, 10, 64); err == nil {
+			used[parsed] = struct{}{}
+		}
+	}
+	for candidate := lo; candidate <= hi; candidate++ {
+		if _, exists := used[candidate]; !exists {
+			return strconv.FormatInt(candidate, 10), true
+		}
+	}
+	return "", false
+}
+
 func listTargetScore(listPath, filePath string) int {
 	listPath = strings.ToLower(strings.Trim(strings.ReplaceAll(listPath, "\\", "/"), "/"))
 	filePath = strings.ToLower(strings.Trim(strings.ReplaceAll(filePath, "\\", "/"), "/"))
@@ -471,6 +586,35 @@ func listTargetScore(listPath, filePath string) int {
 		return 1
 	}
 	return 0
+}
+
+// topLevelListSpecsLocked discovers every archive list that lives beside the
+// files it indexes (`<top>/<top>.lst`, or `list/<top>.lst` on 110US layouts)
+// and turns it into a registration target for the same-named top-level folder.
+// This implements the "文件所属顶级文件夹对应同名 lst" rule for folders without
+// a hand-written relation (e.g. aicharacter/aicharacter.lst).
+func (s *ArchiveService) topLevelListSpecsLocked(a *pvf.Archive) []searchableListSpec {
+	specs := make([]searchableListSpec, 0, 8)
+	for i := int32(0); i < a.FileCount(); i++ {
+		p := strings.Trim(strings.ReplaceAll(a.Path(i), "\\", "/"), "/")
+		if !strings.HasSuffix(strings.ToLower(p), ".lst") {
+			continue
+		}
+		base := path.Base(p)
+		dir := path.Dir(p)
+		stem := strings.TrimSuffix(strings.ToLower(base), ".lst")
+		if stem == "" {
+			continue
+		}
+		if !strings.EqualFold(dir, stem) && !strings.EqualFold(dir, "list") {
+			continue
+		}
+		specs = append(specs, searchableListSpec{
+			listPath: p,
+			category: "relation:" + stem,
+		})
+	}
+	return specs
 }
 
 func refreshRegistrationEditorTextLocked(c *core, a *pvf.Archive, listIndex, hashIndex int32) {

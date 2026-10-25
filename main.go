@@ -174,6 +174,7 @@ func main() {
 			application.NewService(services.NewArchiveDiffService(core)),
 			application.NewService(mcpService),
 			application.NewService(services.NewSkillService()),
+			application.NewService(services.NewScriptTagTranslationService()),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

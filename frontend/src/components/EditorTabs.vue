@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   NButton,
   NIcon,
@@ -36,6 +36,16 @@ const version = useVersionStore();
 const script = useScriptStore();
 const settings = useSettingsStore();
 const message = useMessage();
+
+// 标签达到上限时优雅提示，不再向上抛异常破坏应用状态。
+watch(
+  () => editor.tabLimitHit,
+  () => {
+    if (editor.tabLimitHit) {
+      message.warning("打开的标签过多，请先关闭一些（上限 20）");
+    }
+  }
+);
 
 const openingRecent = ref("");
 const isDragging = ref(false);
