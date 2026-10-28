@@ -23,7 +23,7 @@
     "@lezer/highlight": "^1.2.3",
     "@replit/codemirror-vim": "^6.4.0",
     "@vicons/fluent": "^0.13.0",
-    "@wailsio/runtime": "3.0.0-beta.34",
+    "@wailsio/runtime": "3.0.0",
     "codemirror": "^6.0.2",
     "naive-ui": "^2.45.3",
     "pinia": "^4.0.3",
