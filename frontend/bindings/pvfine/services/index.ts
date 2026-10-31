@@ -14,12 +14,15 @@ import * as ExportService from "./exportservice.js";
 import * as FileGUIService from "./fileguiservice.js";
 import * as FileSetService from "./filesetservice.js";
 import * as ImageService from "./imageservice.js";
+import * as MCPService from "./mcpservice.js";
+import * as ModImportService from "./modimportservice.js";
 import * as PreviewService from "./previewservice.js";
 import * as RenderingService from "./renderingservice.js";
 import * as RuleService from "./ruleservice.js";
 import * as ScriptService from "./scriptservice.js";
 import * as ScriptWindowService from "./scriptwindowservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as SkillService from "./skillservice.js";
 import * as UpdateService from "./updateservice.js";
 import * as VersionService from "./versionservice.js";
 export {
@@ -36,12 +39,15 @@ export {
     FileGUIService,
     FileSetService,
     ImageService,
+    MCPService,
+    ModImportService,
     PreviewService,
     RenderingService,
     RuleService,
     ScriptService,
     ScriptWindowService,
     SettingsService,
+    SkillService,
     UpdateService,
     VersionService
 };
@@ -74,6 +80,7 @@ export type {
     BookmarkDocument,
     BookmarkEntry,
     BookmarkGroup,
+    BuiltinSkill,
     CacheClearResult,
     CacheUsage,
     DropRateApplyRequest,
@@ -82,6 +89,7 @@ export type {
     DropRateGroup,
     DropRateSection,
     EditorAnnotation,
+    EffectParticle,
     EquipmentPreviewAttribute,
     EquipmentPreviewDocument,
     EquipmentSetAbility,
@@ -103,10 +111,24 @@ export type {
     ImportPreview,
     ImportPreviewEntry,
     ImportResult,
+    IndependentDropDocument,
+    IndependentDropItem,
+    IndependentDropList,
+    IndependentDropRow,
     IndexHashRegistrationResult,
     IndexHashTarget,
     IndexStatus,
+    ItemAppearance,
+    ItemCreateRequest,
+    ItemCreateResult,
+    ItemCreationCheck,
+    ItemEffectLayer,
+    ItemEffectPreview,
     ListRegistrationTarget,
+    MCPStatus,
+    ModImportFile,
+    ModImportPair,
+    ModImportPreview,
     PlaceholderRef,
     PreviewIssue,
     RecoveryInfo,
@@ -142,10 +164,16 @@ export type {
     ShopTab,
     SkillDocument,
     SkillEntry,
+    SkillInstallResult,
     SkillMode,
     SkillNumber,
     SkillProperty,
     SkillPropertyBinding,
+    SkillTreeBranch,
+    SkillTreeDocument,
+    SkillTreeNode,
+    SkillTreeRegistration,
+    SkillTreeSkill,
     StoredFileSet,
     StoredFileSetEntry,
     StructuredOperation,

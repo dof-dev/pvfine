@@ -53,18 +53,19 @@ func (b *gojaBindings) editUpgrade(file *FileHandle, call goja.FunctionCall) (go
 	if err != nil {
 		return nil, err
 	}
-	width, rateColumn, countColumn := 17, 6, 10
-	if typed {
-		width, rateColumn, countColumn = 24, 8, 15
-		if equipment == "armor" {
-			rateColumn = 9
-		}
-	} else if equipment == "armor" {
+	layout, err := pvf.DetectUpgradeTableLayout(tokens, typed)
+	if err != nil {
+		return nil, err
+	}
+	if equipment == "armor" && !layout.HasT2 {
 		return nil, fmt.Errorf("旧版表格没有独立防具数据")
 	}
-	if len(tokens) == 0 || len(tokens)%width != 0 {
-		return nil, fmt.Errorf("表格每级需要 %d 项", width)
+	rateColumn := layout.RateColumn
+	if equipment == "armor" {
+		rateColumn = layout.ColumnsT2[0]
 	}
+	countColumn := layout.CountColumn
+	width := layout.Width
 	for _, token := range tokens {
 		if token.TokenType != 0 && token.TokenType != 2 {
 			return nil, fmt.Errorf("表格包含非数值数据")

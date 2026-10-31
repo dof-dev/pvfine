@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,25 @@ import (
 
 	"pvfine/internal/pvf"
 )
+
+func TestTWArchiveDiffRealArchive(t *testing.T) {
+	path := os.Getenv("PVF_TW_TESTFILE")
+	if path == "" {
+		t.Skip("PVF_TW_TESTFILE not set")
+	}
+	a, err := pvf.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Release()
+	changes, err := archiveDiffCompare(context.Background(), a, a, func(int) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Fatalf("identical TW archive produced %d differences", len(changes))
+	}
+}
 
 func TestTWArchiveService(t *testing.T) {
 	src := os.Getenv("PVF_TW_TESTFILE")

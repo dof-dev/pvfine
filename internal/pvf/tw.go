@@ -278,6 +278,10 @@ func (a *Archive) twChunk(ci int32) ([]byte, error) {
 		switch typ {
 		case 2:
 			typ = 0
+		case 3:
+			// Preserve this uncommon native value as an opaque numeric token.
+			// Do not reinterpret it as a string index or lose its type on writeback.
+			typ = 1
 		case 4:
 			typ = 2
 		case 5:
@@ -503,6 +507,8 @@ func (a *Archive) encodeTWScript(raw []byte, index func(int32) (uint32, error)) 
 		switch typ {
 		case 0:
 			typ = 2
+		case 1:
+			typ = 3
 		case 2:
 			typ = 4
 		case 3:

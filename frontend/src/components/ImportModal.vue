@@ -3,6 +3,8 @@ import { computed, h, ref, watch, type VNodeChild } from "vue";
 import {
   NAlert,
   NButton,
+  NFormItem,
+  NSelect,
   NModal,
   NRadioButton,
   NRadioGroup,
@@ -14,8 +16,9 @@ import {
   useMessage,
 } from "naive-ui";
 import { DocumentAdd24Regular, DocumentEdit24Regular } from "@vicons/fluent";
-import { ArchiveService } from "../../bindings/pvfine/services";
-import type { ImportPreviewEntry } from "../../bindings/pvfine/services/models";
+import { ArchiveService, ModImportService } from "../../bindings/pvfine/services";
+import type { Descriptor } from "../../bindings/pvfine/internal/mod/models";
+import type { ImportPreviewEntry, ModImportPreview } from "../../bindings/pvfine/services/models";
 import { useArchiveStore } from "../stores/archive";
 import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
@@ -26,6 +29,56 @@ const archive = useArchiveStore();
 const editor = useEditorStore();
 const explorer = useExplorerStore();
 const message = useMessage();
+const importKind = ref<"files" | "mod">("files");
+const modPreview = ref<ModImportPreview | null>(null);
+const modFormats = ref<Descriptor[]>([]);
+const modFormat = ref("");
+const loadingModFormats = ref(false);
+const modFormatOptions = computed(() => modFormats.value.map((format) => ({ label: format.name, value: format.id })));
+const modExpandedKeys = ref<Array<string | number>>([]);
+const hasPreview = computed(() => !!importer.preview || !!modPreview.value);
+const operationLabel: Record<string, string> = { replace: "整文件替换", "merge-list": "按编号合并", "merge-strings": "按文字键合并" };
+const modTree = computed<TreeOption[]>(() => (modPreview.value?.files ?? []).map((file) => ({
+  key: file.path,
+  label: `${file.path} · ${operationLabel[file.operation] ?? file.operation} · ${file.overwrite ? "已有文件" : "新增文件"}`,
+  children: file.pairs?.length ? file.pairs.map((pair) => ({
+    key: `${file.path}:${pair.key}`,
+    label: `${pair.overwrite ? "覆盖" : "新增"} ${pair.key} → ${pair.value === "" ? "（空值）" : pair.value}`,
+    prefix: () => h("span", { style: { color: pair.overwrite ? "var(--pvf-warning)" : "var(--pvf-success)" } }, pair.overwrite ? "↻" : "+"),
+    // Values may be long; expose the full before/after content on hover.
+    suffix: () => h("span", { title: pair.overwrite ? `原值：${pair.previous}\n新值：${pair.value}` : `新值：${pair.value}` }, "ⓘ"),
+  })) : undefined,
+})));
+
+async function releaseModPreview(): Promise<void> {
+  const id = modPreview.value?.id;
+  modPreview.value = null;
+  if (id) await ModImportService.Release(id);
+}
+
+watch(() => importer.visible, async (visible, _previous, onCleanup) => {
+  let current = true;
+  onCleanup(() => { current = false; });
+  if (!visible) {
+    loadingModFormats.value = false;
+    void releaseModPreview();
+    return;
+  }
+  importKind.value = "files";
+  modFormat.value = "";
+  modFormats.value = [];
+  loadingModFormats.value = true;
+  try {
+    const formats = await ModImportService.Formats();
+    if (!current) return;
+    modFormats.value = (formats ?? []).filter((format) => format.canRead);
+    modFormat.value = modFormats.value[0]?.id ?? "";
+  } catch (error: any) {
+    if (current) importer.error = String(error?.message ?? error);
+  } finally {
+    if (current) loadingModFormats.value = false;
+  }
+});
 
 const previewEntries = computed<ImportPreviewEntry[]>(() =>
   (importer.preview?.entries ?? []).filter(
@@ -127,7 +180,8 @@ function renderTreeLabel({ option }: { option: TreeOption }): VNodeChild {
   const status = entry.overwrite ? "覆盖" : "新增";
   const icon = entry.overwrite ? DocumentEdit24Regular : DocumentAdd24Regular;
   const color = entry.overwrite ? "var(--pvf-warning)" : "var(--pvf-success)";
-  const title = `${status}\n来源：${entry.sourcePath}\n目标：${entry.targetPath}\n类型：${dataTypeLabel(entry.dataType)}\n大小：${sizeLabel(entry.size)}`;
+  const encodingLabel = entry.sourceEncoding && entry.sourceEncoding !== "UTF-8" ? `${entry.sourceEncoding} → UTF-8` : "";
+  const title = `${encodingLabel ? `自动识别：${encodingLabel}\n` : ""}${status}\n来源：${entry.sourcePath}\n目标：${entry.targetPath}\n类型：${dataTypeLabel(entry.dataType)}\n大小：${sizeLabel(entry.size)}`;
   return h("span", {
     class: ["import-tree-file", entry.overwrite ? "import-tree-file--overwrite" : "import-tree-file--new"],
     title,
@@ -165,6 +219,7 @@ function renderTreeLabel({ option }: { option: TreeOption }): VNodeChild {
       lineHeight: "20px",
       whiteSpace: "nowrap",
     } }, node.label ?? ""),
+    encodingLabel ? h(NTag, { size: "small", type: "info", bordered: false }, { default: () => encodingLabel }) : null,
   ]);
 }
 
@@ -177,9 +232,15 @@ function closeAfterCancel(): void {
 
 async function chooseAndPreview(): Promise<void> {
   if (importer.running || !archive.open) return;
+  if (importKind.value === "mod" && (loadingModFormats.value || !modFormat.value)) return;
   importer.running = true;
   importer.error = "";
   try {
+    if (importKind.value === "mod") {
+      modPreview.value = await ModImportService.PrepareDialog(modFormat.value);
+      modExpandedKeys.value = [];
+      return;
+    }
     const paths = (await ArchiveService.SelectImportFilesDialog()) ?? [];
     if (paths.length === 0) {
       closeAfterCancel();
@@ -208,6 +269,7 @@ async function chooseAndPreview(): Promise<void> {
 
 function backToOptions(): void {
   if (importer.running) return;
+  void releaseModPreview();
   importer.sourcePaths = [];
   importer.preview = null;
   importer.error = "";
@@ -215,15 +277,14 @@ function backToOptions(): void {
 
 async function confirmImport(): Promise<void> {
   const preview = importer.preview;
-  if (importer.running || !preview || importer.sourcePaths.length === 0 || !archive.open) return;
+  if (importer.running || !hasPreview.value || !archive.open) return;
+  if (importKind.value === "files" && (!preview || importer.sourcePaths.length === 0)) return;
   importer.running = true;
   importer.error = "";
   try {
-    const result = await ArchiveService.ImportFiles(
-      importer.sourcePaths,
-      importer.targetDir,
-      importer.mode
-    );
+    const result = importKind.value === "mod" && modPreview.value
+      ? await ModImportService.Execute(modPreview.value.id)
+      : await ArchiveService.ImportFiles(importer.sourcePaths, importer.targetDir, importer.mode);
     if (!result) throw new Error("后端未返回导入结果");
 
     await editor.refreshAfterArchiveChange(result.changedPaths ?? []);
@@ -233,7 +294,7 @@ async function confirmImport(): Promise<void> {
       parts.push(`覆盖 ${result.overwrittenCount.toLocaleString()} 个文件`);
     }
     closeAfterCancel();
-    message.success(parts.join("，"));
+    message.success(importKind.value === "mod" ? `Mod 已导入内存：${parts.join("，")}，请保存 PVF` : parts.join("，"));
   } catch (error: any) {
     const text = String(error?.message ?? error);
     if (text.toLowerCase().includes("cancel")) {
@@ -241,6 +302,7 @@ async function confirmImport(): Promise<void> {
     } else {
       importer.error = text;
       message.error(`导入失败: ${text}`);
+      if (importKind.value === "mod") await releaseModPreview();
     }
   } finally {
     importer.running = false;
@@ -257,7 +319,8 @@ function close(): void {
   <NModal
     :show="importer.visible"
     preset="card"
-    title="导入文件"
+    title="导入"
+    :closable="!importer.running"
     :mask-closable="!importer.running"
     :close-on-esc="!importer.running"
     :style="{ width: 'min(760px, calc(100vw - 40px))' }"
@@ -268,26 +331,58 @@ function close(): void {
         <div class="import-target">
           <NText depth="3">目标目录</NText>
           <NTag size="small" :bordered="false">
-            {{ importer.targetDir ? `${importer.targetDir}/` : "归档根目录/" }}
+            {{ importKind === "mod" || !importer.targetDir ? "归档根目录/" : `${importer.targetDir}/` }}
           </NTag>
         </div>
 
-        <template v-if="!importer.preview">
+        <template v-if="!hasPreview">
           <div class="import-field">
-            <NText depth="3">读取方式</NText>
-            <NRadioGroup v-model:value="importer.mode" size="small">
-              <NRadioButton value="text">文本导入（默认）</NRadioButton>
-              <NRadioButton value="raw">原始字节</NRadioButton>
+            <NText depth="3">导入内容</NText>
+            <NRadioGroup v-model:value="importKind" :disabled="importer.running" size="small">
+              <NRadioButton value="files">文件（默认）</NRadioButton>
+              <NRadioButton value="mod">Mod</NRadioButton>
             </NRadioGroup>
           </div>
+          <template v-if="importKind === 'files'">
+            <div class="import-field">
+              <NText depth="3">读取方式</NText>
+              <NRadioGroup v-model:value="importer.mode" :disabled="importer.running" size="small">
+                <NRadioButton value="text">文本导入（默认）</NRadioButton>
+                <NRadioButton value="raw">原始字节</NRadioButton>
+              </NRadioGroup>
+            </div>
 
-          <NText depth="3" class="import-hint">
-            可在系统文件选择器中多选文件或目录；目录会递归导入并保留目录名。<br />
-            预览确认后才会修改内存归档；冲突文件将覆盖内存内容。
-          </NText>
+            <NText depth="3" class="import-hint">
+              可在系统文件选择器中多选文件或目录；目录会递归导入并保留目录名。<br />
+              预览确认后才会修改内存归档；冲突文件将覆盖内存内容。<br />
+              <template v-if="importer.mode === 'text'">自动识别文本编码，非 UTF-8 文件将转为 UTF-8 导入，源文件保持不变。</template>
+            </NText>
+          </template>
+          <template v-else>
+            <NFormItem label="导入格式" :show-feedback="false">
+              <NSelect v-model:value="modFormat" :options="modFormatOptions" :loading="loadingModFormats"
+                :disabled="importer.running || loadingModFormats || !modFormatOptions.length"
+                :placeholder="loadingModFormats ? '正在加载格式' : '暂无可导入的格式'" />
+            </NFormItem>
+            <NText depth="3" class="import-hint">
+              按所选格式读取 mod 目录，按包内路径导入归档根目录。<br />
+              确认后写入当前内存，再手动保存 PVF。
+            </NText>
+          </template>
         </template>
 
-        <template v-else>
+        <template v-else-if="modPreview">
+          <div class="import-summary">
+            <NText strong>{{ modPreview.name }} {{ modPreview.version }}</NText>
+            <NTag :bordered="false">{{ modPreview.format }}</NTag>
+            <NTag type="success" :bordered="false">新增 {{ modPreview.importedCount }} 个文件</NTag>
+            <NTag type="warning" :bordered="false">更新 {{ modPreview.overwrittenCount }} 个文件</NTag>
+          </div>
+          <NAlert type="warning" :show-icon="false">整文件替换会覆盖当前内存内容；合并表同键覆盖，保留无关条目。展开文件可查看合并条目，悬停 ⓘ 查看原值和新值。</NAlert>
+          <NTree v-model:expanded-keys="modExpandedKeys" :data="modTree" block-line virtual-scroll :animated="false" class="import-preview-tree" />
+        </template>
+
+        <template v-else-if="importer.preview">
           <div class="import-preview-heading">
             <NText>请确认以下导入内容</NText>
             <NTag size="small" :bordered="false">{{ modeLabel(importer.preview.mode) }}</NTag>
@@ -303,6 +398,9 @@ function close(): void {
               覆盖 {{ importer.preview.overwrittenCount.toLocaleString() }}
             </NTag>
           </div>
+          <NAlert v-if="importer.preview.convertedCount" type="info" :show-icon="false">
+            自动识别到 {{ importer.preview.convertedCount.toLocaleString() }} 个非 UTF-8 文件，将转为 UTF-8 导入，源文件保持不变。文件旁显示识别编码；自动识别可能存在偏差，请确认后导入。
+          </NAlert>
           <NTree
             block-line
             :data="treeData"
@@ -326,10 +424,11 @@ function close(): void {
 
     <template #footer>
       <div class="import-modal-footer">
-        <template v-if="!importer.preview">
+        <template v-if="!hasPreview">
           <NButton quaternary :disabled="importer.running" @click="close">取消</NButton>
-          <NButton type="primary" :loading="importer.running" @click="chooseAndPreview">
-            选择文件并预览
+          <NButton type="primary" :loading="importer.running"
+            :disabled="!archive.open || (importKind === 'mod' && (loadingModFormats || !modFormat))" @click="chooseAndPreview">
+            {{ importKind === "mod" ? "选择目录并预览" : "选择文件并预览" }}
           </NButton>
         </template>
         <template v-else>

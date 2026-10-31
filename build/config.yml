@@ -11,7 +11,7 @@ info:
   description: "PVF 归档编辑器" # The application description
   copyright: "© 2026, dof-dev" # Copyright text
   comments: "pvfine PVF 归档编辑器" # Comments
-  version: "0.15.0" # The application version
+  version: "0.17.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
   #                               # If not set and Assets.car exists, defaults to "appicon"
@@ -44,6 +44,7 @@ dev_mode:
       type: background
     - cmd: wails3 task run
       type: primary
+      exit_policy: shutdown
 
 # File Associations
 # More information at: https://v3.wails.io/noit/done/yet

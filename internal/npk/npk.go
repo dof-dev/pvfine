@@ -616,7 +616,7 @@ func decodeImage(r io.ReaderAt, imgOffset, imgSize int64, file *IMGFile, index i
 		if err != nil {
 			return nil, err
 		}
-		decoded, err := decodePixels(raw, sprite.Format, sprite.Width, sprite.Height, nil)
+		decoded, err := decodeSpriteTexture(raw, sprite)
 		if err != nil {
 			return nil, err
 		}

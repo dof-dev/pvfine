@@ -96,6 +96,10 @@ func parseUpgrade(text, tableType string) (*UpgradeDocument, error) {
 	if err != nil {
 		return nil, err
 	}
+	layout, err := pvf.DetectUpgradeTableLayout(tokens, typed)
+	if err != nil {
+		return nil, err
+	}
 	values := []SkillNumber{}
 	for _, e := range tokens {
 		n, err := strconv.ParseFloat(e.Value, 64)
@@ -104,15 +108,8 @@ func parseUpgrade(text, tableType string) (*UpgradeDocument, error) {
 		}
 		values = append(values, SkillNumber{Value: n, Start: e.Start, End: e.End, TokenType: e.TokenType})
 	}
-	width := 17
-	columns := []int{6, 7, 8, 9, 10}
-	if typed {
-		width = 24
-		columns = []int{8, 10, 11, 14, 15}
-	}
-	if len(values) == 0 || len(values)%width != 0 {
-		return nil, fmt.Errorf("[table] 每级需要 %d 个数值，当前共 %d 项", width, len(values))
-	}
+	width := layout.Width
+	columns := layout.Columns
 	doc := &UpgradeDocument{Rows: []UpgradeRow{}}
 	doc.SafeRows, err = parseSafeUpgrade(text)
 	if err != nil {
@@ -130,8 +127,8 @@ func parseUpgrade(text, tableType string) (*UpgradeDocument, error) {
 			fields = append(fields, values[offset+column])
 		}
 		row := UpgradeRow{Level: level + 1, Fields: fields, FieldsT2: []SkillNumber{}}
-		if typed {
-			for _, column := range []int{9, 12, 13} {
+		if layout.HasT2 {
+			for _, column := range layout.ColumnsT2 {
 				row.FieldsT2 = append(row.FieldsT2, values[offset+column])
 			}
 		}
@@ -141,10 +138,10 @@ func parseUpgrade(text, tableType string) (*UpgradeDocument, error) {
 				return nil, fmt.Errorf("第 %d 级：可编辑字段必须是非负 32 位整数", level+1)
 			}
 		}
-		if fields[0].Value > 100000 || fields[1].Value < 1 || fields[1].Value > 3 || (!typed && fields[2].Value > 31) {
+		if fields[0].Value > 100000 || fields[1].Value < 1 || fields[1].Value > 3 || (!layout.HasT2 && fields[2].Value > 31) {
 			return nil, fmt.Errorf("第 %d 级：失败概率、失败操作或降级参数超出范围", level+1)
 		}
-		if typed && (row.FieldsT2[0].Value > 100000 || row.FieldsT2[1].Value < 1 || row.FieldsT2[1].Value > 3) {
+		if layout.HasT2 && (row.FieldsT2[0].Value > 100000 || row.FieldsT2[1].Value < 1 || row.FieldsT2[1].Value > 3) {
 			return nil, fmt.Errorf("第 %d 级：防具失败概率或失败操作超出范围", level+1)
 		}
 		doc.Rows = append(doc.Rows, row)

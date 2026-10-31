@@ -26,6 +26,7 @@ import CloseGuard from "./components/CloseGuard.vue";
 import EditorCloseGuard from "./components/EditorCloseGuard.vue";
 import RecoveryPrompt from "./components/RecoveryPrompt.vue";
 import ArchiveSaveFeedback from "./components/ArchiveSaveFeedback.vue";
+import UpdatePrompt from "./components/UpdatePrompt.vue";
 import { useArchiveStore } from "./stores/archive";
 import { useAutosaveStore } from "./stores/autosave";
 import { useEditorStore } from "./stores/editor";
@@ -232,6 +233,7 @@ function executeShortcut(command: ShortcutCommandId): void {
         <CloseGuard />
         <EditorCloseGuard />
         <RecoveryPrompt />
+        <UpdatePrompt />
         <div class="app-root" data-file-drop-target :class="{ 'app-root--mac': isMac }">
           <ToolBar />
           <AdvancedSearchModal />

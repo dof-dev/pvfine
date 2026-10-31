@@ -3,6 +3,7 @@ import { computed, h, ref, watch } from "vue";
 import {
   ArrowSync24Regular,
   ArrowUpRight24Regular,
+  Bot24Regular,
   Bug24Regular,
   CheckmarkCircle24Regular,
   Code24Regular,
@@ -14,11 +15,12 @@ import {
   FolderOpen24Regular,
   Globe24Regular,
   Image24Regular,
-  Keyboard24Regular,
   Info24Regular,
+  Keyboard24Regular,
   PaintBrush24Regular,
   Settings24Regular,
   ShieldCheckmark24Regular,
+  Storage24Regular,
   Tag24Regular,
   WeatherMoon24Regular,
   WeatherSunny24Regular,
@@ -63,8 +65,83 @@ import { useEditorStore } from "../stores/editor";
 import { useExplorerStore } from "../stores/explorer";
 import { useImageStore } from "../stores/images";
 import ShortcutSettings from "./ShortcutSettings.vue";
+import MCPSettings from "./MCPSettings.vue";
 
 type TabKey = SettingsTab;
+
+interface TabDefinition {
+  id: TabKey;
+  label: string;
+  category: "basic" | "extension" | "system";
+  title: string;
+  subtitle: string;
+  icon: any;
+}
+
+const tabCategories = [
+  { id: "basic", label: "基础设置" },
+  { id: "extension", label: "资源与服务" },
+  { id: "system", label: "系统与维护" },
+] as const;
+
+const tabs: TabDefinition[] = [
+  {
+    id: "general",
+    label: "常规与外观",
+    category: "basic",
+    title: "常规与外观偏好",
+    subtitle: "选择界面主题色彩、节点打开触发习惯与定时容灾备份策略",
+    icon: PaintBrush24Regular,
+  },
+  {
+    id: "editor",
+    label: "代码编辑器",
+    category: "basic",
+    title: "代码编辑器配置",
+    subtitle: "设置 PVF 规则标注排版形式、Vim 模态编辑与超大脚本文件安全阈值",
+    icon: Code24Regular,
+  },
+  {
+    id: "shortcuts",
+    label: "快捷键设置",
+    category: "basic",
+    title: "应用与编辑器快捷键",
+    subtitle: "自定义全局菜单、标签页控制与脚本编辑器的快捷键键位映射",
+    icon: Keyboard24Regular,
+  },
+  {
+    id: "npk",
+    label: "NPK 资源库",
+    category: "extension",
+    title: "NPK 游戏图像资源库",
+    subtitle: "挂载 DNF 客户端资源包以实时解析装备、技能与消耗品图标",
+    icon: Image24Regular,
+  },
+  {
+    id: "mcp",
+    label: "MCP 智能服务",
+    category: "extension",
+    title: "Model Context Protocol 服务",
+    subtitle: "开启外部 AI 编程助理连接，提供归档读写、语义搜索与技能扩展",
+    icon: Bot24Regular,
+  },
+  {
+    id: "system",
+    label: "系统与存储",
+    category: "system",
+    title: "系统维护与缓存管理",
+    subtitle: "热重载本地规则文件，查看磁盘索引与备份占用并设置空间预算",
+    icon: Wrench24Regular,
+  },
+  {
+    id: "about",
+    label: "关于 pvfine",
+    category: "system",
+    title: "关于 pvfine",
+    subtitle: "软件版本、技术构架、开源许可、官方文档与代码仓库",
+    icon: Info24Regular,
+  },
+];
 
 const settings = useSettingsStore();
 const autosave = useAutosaveStore();
@@ -80,6 +157,9 @@ const activeTab = computed<TabKey>({
     settings.activeTab = val;
   },
 });
+
+const currentTab = computed(() => tabs.find((t) => t.id === activeTab.value));
+
 const checkingUpdates = ref(false);
 const reloadingAnnotations = ref(false);
 const reloadingRendering = ref(false);
@@ -98,41 +178,42 @@ const autosaveIntervalMinutes = computed(() =>
     Math.round(settings.autosaveIntervalSeconds / 60)
   )
 );
+
 const autosavePathLabel = computed(
   () => settings.autosavePath || autosave.status?.path || autosave.status?.defaultPath || ""
 );
+
 const autosaveStatusLabel = computed(() => {
   if (autosave.running) return "正在写入备份缓存…";
   if (autosave.lastError) return `上次缓存失败：${autosave.lastError}`;
   const status = autosave.status;
   if (!status?.exists) return "尚未生成备份缓存";
   const time = status.cachedAt ? new Date(status.cachedAt * 1000).toLocaleString() : "未知时间";
-  return `上次缓存：${time} · ${formatBytes(status.sizeBytes)}`;
+  return `上次备份：${time} · ${formatBytes(status.sizeBytes)}`;
 });
 
-const cacheUsageSummary = computed(() => {
-  if (cacheUsageLoading.value) return "正在统计缓存占用…";
+// 存储缓存比例计算
+const cachePercentages = computed(() => {
   const usage = cacheUsage.value;
-  if (!usage) return "尚未统计";
-  const limit = usage.limitBytes > 0 ? formatBytes(usage.limitBytes) : "不限制";
-  const parts = [`共 ${formatBytes(usage.totalBytes)} / ${limit}，${usage.files} 个文件`,
-    `索引及其他缓存 ${formatBytes(usage.indexBytes)}`, `恢复备份 ${formatBytes(usage.backupBytes)}`,
-    `可自动清理 ${formatBytes(usage.reclaimableBytes)}`];
-  if (usage.overBudget) parts.push("已超出软上限；受保护内容或临时文件可能使占用无法降至预算内");
-  if (usage.inUseBytes > 0) {
-    parts.push(`其中 ${formatBytes(usage.inUseBytes)} 正在被当前归档使用`);
+  if (!usage || usage.totalBytes <= 0) {
+    return { index: 0, backup: 0, inUse: 0, other: 0 };
   }
-  return parts.join("；");
+  const total = usage.totalBytes;
+  const index = Math.round((usage.indexBytes / total) * 100);
+  const backup = Math.round((usage.backupBytes / total) * 100);
+  const inUse = Math.round((usage.inUseBytes / total) * 100);
+  const other = Math.max(0, 100 - index - backup - inUse);
+  return { index, backup, inUse, other };
 });
 
-// 版本号由 Go 侧在构建时注入,可能带或不带 "v" 前缀;dev 构建显示为 "dev"。
+// 版本号由 Go 侧在构建时注入
 const versionLabel = computed(() => {
   const raw = appVersion.value.trim().replace(/^v/i, "");
   if (!raw) return "";
   return raw === "dev" ? raw : `v${raw}`;
 });
 
-// 打开设置界面时统计一次缓存占用,避免常驻轮询。
+// 打开设置界面时统计一次缓存占用，避免常驻轮询
 watch(
   () => settings.visible,
   (visible) => {
@@ -142,15 +223,6 @@ watch(
     void refreshAppVersion();
   }
 );
-
-const tabs = [
-  { id: "general" as const, label: "常规与外观", icon: PaintBrush24Regular },
-  { id: "editor" as const, label: "代码编辑器", icon: Code24Regular },
-  { id: "npk" as const, label: "NPK 资源库", icon: Image24Regular },
-  { id: "shortcuts" as const, label: "快捷键", icon: Keyboard24Regular },
-  { id: "system" as const, label: "系统维护", icon: Wrench24Regular },
-  { id: "about" as const, label: "关于", icon: Info24Regular },
-];
 
 watch(activeTab, (tab) => {
   if (tab === "about") {
@@ -225,8 +297,7 @@ async function onAutosaveIntervalChange(value: number | null) {
   const minutes = Number(value ?? 0);
   if (!Number.isFinite(minutes) || minutes <= 0) return;
   const clamped = Math.min(
-    maxEditableSizeMB,
-  maxAutosaveIntervalMinutes,
+    maxAutosaveIntervalMinutes,
     Math.max(minAutosaveIntervalMinutes, Math.round(minutes))
   );
   try {
@@ -257,7 +328,7 @@ async function onResetAutosavePath(): Promise<void> {
   }
 }
 
-/** 手动恢复:启动提示被关掉后仍能再次恢复,恢复本身由后端校验当前工作区。 */
+/** 手动恢复：启动提示被关掉后仍能再次恢复，恢复本身由后端校验当前工作区。 */
 async function onRestoreAutosave(): Promise<void> {
   const instance = dialog.warning({
     title: "恢复备份缓存",
@@ -308,14 +379,13 @@ async function onDiscardAutosave(): Promise<void> {
   }
 }
 
-/** 读取应用版本号;进程存活期间不会变化,拿到后不再重复请求。 */
 async function refreshAppVersion(): Promise<void> {
   if (appVersionLoading.value || appVersion.value) return;
   appVersionLoading.value = true;
   try {
     appVersion.value = await UpdateService.Version();
   } catch {
-    // 读取失败时留空,下次打开设置再试。
+    // 读取失败时留空
   } finally {
     appVersionLoading.value = false;
   }
@@ -349,7 +419,6 @@ async function onCacheLimitChange(value: number | null): Promise<void> {
   }
 }
 
-/** 统计应用缓存占用(搜索索引、归档索引、高级搜索索引、图标索引与定时缓存)。 */
 async function refreshCacheUsage(): Promise<void> {
   if (cacheUsageLoading.value) return;
   cacheUsageLoading.value = true;
@@ -409,7 +478,6 @@ async function onClearCache(): Promise<void> {
         const result = await CacheService.Clear();
         cacheUsage.value = result.usage;
         message.success(`已清理 ${formatBytes(result.freedBytes)}`);
-        // 定时缓存可能被清理,同步刷新设置页里的缓存状态。
         void autosave.refreshStatus();
         instance.destroy();
       } catch (error: any) {
@@ -518,7 +586,7 @@ function formatBytes(bytes: number): string {
     :mask-closable="!settings.saving"
     :close-on-esc="!settings.saving"
     class="settings-modal"
-    :style="{ width: 'min(760px, calc(100vw - 32px))' }"
+    :style="{ width: 'min(860px, calc(100vw - 32px))' }"
   >
     <template #header>
       <div class="settings-modal-header">
@@ -530,989 +598,1140 @@ function formatBytes(bytes: number): string {
     </template>
 
     <NSpin :show="!settings.loaded || settings.saving">
-      <div class="settings-container">
-        <!-- 顶部导航分段栏 -->
-        <nav class="settings-nav" aria-label="设置分类">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            type="button"
-            class="settings-nav-item"
-            :class="{ 'settings-nav-item--active': activeTab === tab.id }"
-            @click="activeTab = tab.id"
+      <!-- 左右双栏结构 -->
+      <div class="settings-layout">
+        <!-- 左侧分类侧边栏 -->
+        <aside class="settings-sidebar" aria-label="设置分类">
+          <div
+            v-for="cat in tabCategories"
+            :key="cat.id"
+            class="sidebar-category"
           >
-            <NIcon :size="16" class="settings-nav-icon">
-              <component :is="tab.icon" />
-            </NIcon>
-            <span class="settings-nav-label">{{ tab.label }}</span>
-            <span
-              v-if="tab.id === 'npk' && images.status.directory"
-              class="settings-nav-dot"
-              :class="`settings-nav-dot--${images.status.state}`"
-            />
-          </button>
-        </nav>
-
-        <!-- Tab 1: 常规与外观 -->
-        <div v-show="activeTab === 'general'" class="settings-tab-panel">
-          <!-- 主题选择 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">外观主题</div>
-              <div class="group-subtitle">选择界面的色彩风格，支持深色、浅色或跟随操作系统自动切换</div>
-            </div>
-
-            <div class="theme-grid">
-              <!-- 深色 -->
+            <div class="sidebar-category-title">{{ cat.label }}</div>
+            <div class="sidebar-nav-group">
               <button
+                v-for="tab in tabs.filter((t) => t.category === cat.id)"
+                :key="tab.id"
                 type="button"
-                class="theme-card"
-                :class="{ 'theme-card--active': settings.themeMode === 'dark' }"
-                @click="onThemeModeChange('dark')"
+                class="sidebar-nav-item"
+                :class="{ 'sidebar-nav-item--active': activeTab === tab.id }"
+                @click="activeTab = tab.id"
               >
-                <div class="theme-preview theme-preview--dark">
-                  <div class="preview-titlebar">
-                    <span class="preview-dot dot-red" />
-                    <span class="preview-dot dot-yellow" />
-                    <span class="preview-dot dot-green" />
-                  </div>
-                  <div class="preview-body">
-                    <div class="preview-line line-short accent-blue" />
-                    <div class="preview-line line-long accent-muted" />
-                    <div class="preview-line line-med accent-green" />
-                  </div>
-                </div>
-                <div class="theme-card-footer">
-                  <div class="theme-card-title">
-                    <NIcon :size="16"><WeatherMoon24Regular /></NIcon>
-                    <span>深色模式</span>
-                  </div>
-                  <NIcon
-                    v-if="settings.themeMode === 'dark'"
-                    :size="18"
-                    class="theme-check-icon"
-                  >
-                    <CheckmarkCircle24Regular />
-                  </NIcon>
-                </div>
+                <NIcon :size="17" class="sidebar-nav-icon">
+                  <component :is="tab.icon" />
+                </NIcon>
+                <span class="sidebar-nav-label">{{ tab.label }}</span>
+                <span
+                  v-if="tab.id === 'npk' && images.status.directory"
+                  class="settings-nav-dot"
+                  :class="`settings-nav-dot--${images.status.state}`"
+                  :title="
+                    images.status.state === 'ready'
+                      ? '索引就绪'
+                      : images.status.state === 'building'
+                      ? '扫描中'
+                      : '索引异常'
+                  "
+                />
               </button>
-
-              <!-- 浅色 -->
-              <button
-                type="button"
-                class="theme-card"
-                :class="{ 'theme-card--active': settings.themeMode === 'light' }"
-                @click="onThemeModeChange('light')"
-              >
-                <div class="theme-preview theme-preview--light">
-                  <div class="preview-titlebar">
-                    <span class="preview-dot dot-red" />
-                    <span class="preview-dot dot-yellow" />
-                    <span class="preview-dot dot-green" />
-                  </div>
-                  <div class="preview-body">
-                    <div class="preview-line line-short accent-blue" />
-                    <div class="preview-line line-long accent-muted" />
-                    <div class="preview-line line-med accent-green" />
-                  </div>
-                </div>
-                <div class="theme-card-footer">
-                  <div class="theme-card-title">
-                    <NIcon :size="16"><WeatherSunny24Regular /></NIcon>
-                    <span>浅色模式</span>
-                  </div>
-                  <NIcon
-                    v-if="settings.themeMode === 'light'"
-                    :size="18"
-                    class="theme-check-icon"
-                  >
-                    <CheckmarkCircle24Regular />
-                  </NIcon>
-                </div>
-              </button>
-
-              <!-- 跟随系统 -->
-              <button
-                type="button"
-                class="theme-card"
-                :class="{ 'theme-card--active': settings.themeMode === 'system' }"
-                @click="onThemeModeChange('system')"
-              >
-                <div class="theme-preview theme-preview--system">
-                  <div class="preview-titlebar">
-                    <span class="preview-dot dot-red" />
-                    <span class="preview-dot dot-yellow" />
-                    <span class="preview-dot dot-green" />
-                  </div>
-                  <div class="preview-body preview-body--split">
-                    <div class="split-half split-half--light">
-                      <div class="preview-line line-short accent-blue" />
-                      <div class="preview-line line-long accent-muted" />
-                    </div>
-                    <div class="split-half split-half--dark">
-                      <div class="preview-line line-short accent-blue" />
-                      <div class="preview-line line-long accent-muted" />
-                    </div>
-                  </div>
-                </div>
-                <div class="theme-card-footer">
-                  <div class="theme-card-title">
-                    <NIcon :size="16"><Desktop24Regular /></NIcon>
-                    <span>跟随系统</span>
-                  </div>
-                  <NIcon
-                    v-if="settings.themeMode === 'system'"
-                    :size="18"
-                    class="theme-check-icon"
-                  >
-                    <CheckmarkCircle24Regular />
-                  </NIcon>
-                </div>
-              </button>
-            </div>
-          </section>
-
-          <!-- 交互与文件 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">交互与文件</div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><CursorHover24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">节点打开触发方式</div>
-                  <div class="setting-item-desc">设置资源管理器目录树中的文件使用单击还是双击进行打开</div>
-                </div>
-                <div class="setting-item-control">
-                  <NRadioGroup
-                    :value="settings.explorerOpenMode"
-                    size="small"
-                    @update:value="onExplorerOpenModeChange"
-                  >
-                    <NRadioButton value="single-click">单击打开</NRadioButton>
-                    <NRadioButton value="double-click">双击打开</NRadioButton>
-                  </NRadioGroup>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">覆盖保存前自动备份</div>
-                  <div class="setting-item-desc">保存并覆盖原 PVF 归档前，自动在同目录下生成同名的 <code>.bak</code> 备份文件</div>
-                </div>
-                <div class="setting-item-control">
-                  <NSwitch
-                    :value="settings.backupSourceOnSave"
-                    @update:value="onBackupSourceOnSaveChange"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- 定时缓存 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">定时缓存</div>
-              <div class="group-subtitle">
-                按固定间隔把当前工作区（含未保存修改）另存到一份缓存 PVF，用于崩溃或进程被强制结束后的恢复
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">启用定时缓存</div>
-                  <div class="setting-item-desc">
-                    缓存不会改变工作区的“未保存”状态，也不会写入原文件；手动保存成功或退出时放弃修改后自动删除
-                  </div>
-                </div>
-                <div class="setting-item-control">
-                  <NSwitch
-                    :value="settings.autosaveEnabled"
-                    @update:value="onAutosaveEnabledChange"
-                  />
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">缓存文件</div>
-                  <div class="setting-item-desc setting-item-desc--path">
-                    {{ autosavePathLabel || "系统缓存目录" }}
-                  </div>
-                  <div v-if="settings.autosavePath && autosave.status?.defaultPath" class="setting-item-desc">
-                    留空即使用系统缓存目录：{{ autosave.status.defaultPath }}
-                  </div>
-                </div>
-                <div class="setting-item-control setting-item-control--actions">
-                  <NButton size="small" :loading="selectingAutosavePath" @click="onSelectAutosavePath">
-                    更改…
-                  </NButton>
-                  <NButton
-                    v-if="settings.autosavePath"
-                    size="small"
-                    quaternary
-                    @click="onResetAutosavePath"
-                  >
-                    用默认
-                  </NButton>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><ArrowSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">缓存间隔</div>
-                  <div class="setting-item-desc">仅在工作区存在未保存修改时写入，间隔越短写入越频繁</div>
-                </div>
-                <div class="setting-item-control">
-                  <NInputNumber
-                    :value="autosaveIntervalMinutes"
-                    size="small"
-                    :min="minAutosaveIntervalMinutes"
-                    :max="maxAutosaveIntervalMinutes"
-                    :step="1"
-                    style="width: 130px"
-                    @update:value="onAutosaveIntervalChange"
-                  >
-                    <template #suffix>分钟</template>
-                  </NInputNumber>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Info24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">缓存状态</div>
-                  <div class="setting-item-desc">{{ autosaveStatusLabel }}</div>
-                </div>
-                <div class="setting-item-control setting-item-control--actions">
-                  <NButton
-                    size="small"
-                    :disabled="!autosave.status?.exists"
-                    @click="onRestoreAutosave"
-                  >
-                    恢复备份
-                  </NButton>
-                  <NButton
-                    size="small"
-                    :disabled="!autosave.status?.exists"
-                    @click="onDiscardAutosave"
-                  >
-                    删除备份
-                  </NButton>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <!-- Tab 2: 代码编辑器 -->
-        <div v-show="activeTab === 'editor'" class="settings-tab-panel">
-          <!-- 标注规则渲染 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">规则标注排版</div>
-              <div class="group-subtitle">调整 PVF 规则标注在代码编辑器中的显示位置与渲染行为</div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Tag24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">Tag 标注显示位置</div>
-                  <div class="setting-item-desc">选择规则名称、关联说明与代码 Tag 的停靠排版方式</div>
-                </div>
-                <div class="setting-item-control">
-                  <NRadioGroup
-                    :value="settings.annotationTagPlacement"
-                    size="small"
-                    @update:value="onPlacementChange"
-                  >
-                    <NRadioButton value="after-target">紧随内容</NRadioButton>
-                    <NRadioButton value="line-end">行末对齐</NRadioButton>
-                    <NRadioButton value="hidden">隐藏标注</NRadioButton>
-                  </NRadioGroup>
-                </div>
-              </div>
-
-              <!-- 标注效果实时预览 -->
-              <div class="preview-annotation-box">
-                <div class="preview-annotation-title">实时排版预览：</div>
-                <div class="preview-code-block">
-                  <div
-                    v-if="settings.annotationTagPlacement === 'after-target'"
-                    class="preview-code-row"
-                  >
-                    <span class="code-token code-key">[name]</span>
-                    <span class="code-token code-string">`魔剑-阿波菲斯`</span>
-                    <span class="preview-tag preview-tag--blue">巨剑</span>
-                  </div>
-                  <div
-                    v-else-if="settings.annotationTagPlacement === 'line-end'"
-                    class="preview-code-row preview-code-row--line-end"
-                  >
-                    <span class="code-token code-key">[name]</span>
-                    <span class="code-token code-string">`魔剑-阿波菲斯`</span>
-                    <span class="preview-tag preview-tag--blue preview-tag--end">巨剑</span>
-                  </div>
-                  <div v-else class="preview-code-row">
-                    <span class="code-token code-key">[name]</span>
-                    <span class="code-token code-string">`魔剑-阿波菲斯`</span>
-                    <span class="preview-code-muted">（Tag 标注已隐藏）</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- 编辑模式 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">编辑模式</div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Code24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label-row">
-                    <span class="setting-item-label">Vim 键位模式</span>
-                    <NTag size="small" round :bordered="false" type="info">Modal</NTag>
-                  </div>
-                  <div class="setting-item-desc">启用后支持 Vim 普通、插入与可视模态，提供熟悉高效的代码导航与操作指令</div>
-                </div>
-                <div class="setting-item-control">
-                  <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Code24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">大文件编辑阈值</div>
-                  <div class="setting-item-desc">超过此大小的脚本或文本仅显示只读提示，默认 8 MB（1 MB = 1024² 字节）。修改后关闭并重新打开文件生效；调高阈值会增加内存占用和加载时间。</div>
-                </div>
-                <div class="setting-item-control">
-                  <NInputNumber
-                    :value="settings.maxEditableSizeMB"
-                    :min="1"
-                    :max="maxEditableSizeMB"
-                    :precision="0"
-                    :disabled="settings.saving"
-                    size="small"
-                    style="width: 140px"
-                    aria-label="大文件编辑阈值（MB）"
-                    @update:value="onMaxEditableSizeMBChange"
-                  >
-                    <template #suffix>MB</template>
-                  </NInputNumber>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <!-- Tab 3: NPK 资源库 -->
-        <div v-show="activeTab === 'npk'" class="settings-tab-panel">
-          <!-- NPK 概览说明 -->
-          <div class="hero-card">
-            <div class="hero-card-icon">
-              <NIcon :size="28"><Image24Regular /></NIcon>
-            </div>
-            <div class="hero-card-body">
-              <div class="hero-card-header">
-                <span class="hero-card-title">NPK 游戏图像资源库</span>
-                <NTag
-                  v-if="images.status.state === 'ready'"
-                  type="success"
-                  size="small"
-                  round
-                  :bordered="false"
-                >
-                  <template #icon><NIcon><CheckmarkCircle24Regular /></NIcon></template>
-                  索引就绪
-                </NTag>
-                <NTag
-                  v-else-if="images.status.state === 'building'"
-                  type="info"
-                  size="small"
-                  round
-                  :bordered="false"
-                >
-                  <template #icon><NIcon class="spinning"><ArrowSync24Regular /></NIcon></template>
-                  扫描中
-                </NTag>
-                <NTag
-                  v-else-if="images.status.state === 'error'"
-                  type="error"
-                  size="small"
-                  round
-                  :bordered="false"
-                >
-                  <template #icon><NIcon><DismissCircle24Regular /></NIcon></template>
-                  索引异常
-                </NTag>
-                <NTag v-else size="small" round :bordered="false">未配置目录</NTag>
-              </div>
-              <div class="hero-card-desc">
-                配置 DNF 客户端的 ImagePacks2 目录后，pvfine 可实时解析武器、装备、消耗品和技能的原版图标，并在脚本代码中提供直观的悬浮图像预览。
-              </div>
             </div>
           </div>
+        </aside>
 
-          <!-- 目录选择卡片 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">NPK 目录路径</div>
-            </div>
+        <!-- 右侧主内容区域 -->
+        <main class="settings-main">
+          <!-- 页面标头 -->
+          <header class="settings-content-header">
+            <h2 class="settings-page-title">{{ currentTab?.title }}</h2>
+            <p class="settings-page-subtitle">{{ currentTab?.subtitle }}</p>
+          </header>
 
-            <div class="settings-card">
-              <div class="npk-path-row">
-                <div class="npk-path-icon">
-                  <NIcon :size="20"><FolderOpen24Regular /></NIcon>
+          <!-- 独立滚动内容体 -->
+          <div class="settings-scroll-area">
+            <!-- Tab 1: 常规与外观 -->
+            <div v-show="activeTab === 'general'" class="settings-tab-panel">
+              <!-- 外观主题 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">外观主题</div>
+                  <div class="group-subtitle">
+                    选择界面的色彩风格，支持深色、浅色或跟随操作系统自动切换
+                  </div>
                 </div>
-                <div class="npk-path-text-wrapper" :title="settings.npkDirectory || ''">
-                  <span v-if="settings.npkDirectory" class="npk-path-text">
-                    {{ settings.npkDirectory }}
-                  </span>
-                  <span v-else class="npk-path-placeholder">
-                    尚未选择目录，请点击右侧按钮选择客户端 ImagePacks2 文件夹
-                  </span>
+
+                <div class="theme-grid">
+                  <!-- 深色 -->
+                  <button
+                    type="button"
+                    class="theme-card"
+                    :class="{ 'theme-card--active': settings.themeMode === 'dark' }"
+                    @click="onThemeModeChange('dark')"
+                  >
+                    <div class="theme-preview theme-preview--dark">
+                      <div class="preview-titlebar">
+                        <span class="preview-dot dot-red" />
+                        <span class="preview-dot dot-yellow" />
+                        <span class="preview-dot dot-green" />
+                      </div>
+                      <div class="preview-body">
+                        <div class="preview-line line-short accent-blue" />
+                        <div class="preview-line line-long accent-muted" />
+                        <div class="preview-line line-med accent-green" />
+                      </div>
+                    </div>
+                    <div class="theme-card-footer">
+                      <div class="theme-card-title">
+                        <NIcon :size="16"><WeatherMoon24Regular /></NIcon>
+                        <span>深色模式</span>
+                      </div>
+                      <NIcon
+                        v-if="settings.themeMode === 'dark'"
+                        :size="18"
+                        class="theme-check-icon"
+                      >
+                        <CheckmarkCircle24Regular />
+                      </NIcon>
+                    </div>
+                  </button>
+
+                  <!-- 浅色 -->
+                  <button
+                    type="button"
+                    class="theme-card"
+                    :class="{ 'theme-card--active': settings.themeMode === 'light' }"
+                    @click="onThemeModeChange('light')"
+                  >
+                    <div class="theme-preview theme-preview--light">
+                      <div class="preview-titlebar">
+                        <span class="preview-dot dot-red" />
+                        <span class="preview-dot dot-yellow" />
+                        <span class="preview-dot dot-green" />
+                      </div>
+                      <div class="preview-body">
+                        <div class="preview-line line-short accent-blue" />
+                        <div class="preview-line line-long accent-muted" />
+                        <div class="preview-line line-med accent-green" />
+                      </div>
+                    </div>
+                    <div class="theme-card-footer">
+                      <div class="theme-card-title">
+                        <NIcon :size="16"><WeatherSunny24Regular /></NIcon>
+                        <span>浅色模式</span>
+                      </div>
+                      <NIcon
+                        v-if="settings.themeMode === 'light'"
+                        :size="18"
+                        class="theme-check-icon"
+                      >
+                        <CheckmarkCircle24Regular />
+                      </NIcon>
+                    </div>
+                  </button>
+
+                  <!-- 跟随系统 -->
+                  <button
+                    type="button"
+                    class="theme-card"
+                    :class="{ 'theme-card--active': settings.themeMode === 'system' }"
+                    @click="onThemeModeChange('system')"
+                  >
+                    <div class="theme-preview theme-preview--system">
+                      <div class="preview-titlebar">
+                        <span class="preview-dot dot-red" />
+                        <span class="preview-dot dot-yellow" />
+                        <span class="preview-dot dot-green" />
+                      </div>
+                      <div class="preview-body preview-body--split">
+                        <div class="split-half split-half--light">
+                          <div class="preview-line line-short accent-blue" />
+                          <div class="preview-line line-long accent-muted" />
+                        </div>
+                        <div class="split-half split-half--dark">
+                          <div class="preview-line line-short accent-blue" />
+                          <div class="preview-line line-long accent-muted" />
+                        </div>
+                      </div>
+                    </div>
+                    <div class="theme-card-footer">
+                      <div class="theme-card-title">
+                        <NIcon :size="16"><Desktop24Regular /></NIcon>
+                        <span>跟随系统</span>
+                      </div>
+                      <NIcon
+                        v-if="settings.themeMode === 'system'"
+                        :size="18"
+                        class="theme-check-icon"
+                      >
+                        <CheckmarkCircle24Regular />
+                      </NIcon>
+                    </div>
+                  </button>
                 </div>
-                <div class="npk-path-actions">
-                  <NTooltip v-if="settings.npkDirectory" trigger="hover">
-                    <template #trigger>
+              </section>
+
+              <!-- 交互与文件 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">交互与操作</div>
+                  <div class="group-subtitle">设置文件树与工作区操作行为</div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><CursorHover24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">节点打开触发方式</div>
+                      <div class="setting-item-desc">
+                        设置资源管理器目录树中的文件使用单击还是双击进行打开
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NRadioGroup
+                        :value="settings.explorerOpenMode"
+                        size="small"
+                        @update:value="onExplorerOpenModeChange"
+                      >
+                        <NRadioButton value="single-click">单击打开</NRadioButton>
+                        <NRadioButton value="double-click">双击打开</NRadioButton>
+                      </NRadioGroup>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">覆盖保存前自动备份</div>
+                      <div class="setting-item-desc">
+                        保存并覆盖原 PVF 归档前，自动在同目录下生成同名的 <code>.bak</code> 备份文件
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NSwitch
+                        :value="settings.backupSourceOnSave"
+                        @update:value="onBackupSourceOnSaveChange"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 定时缓存与容灾恢复 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">定时缓存与容灾恢复</div>
+                  <div class="group-subtitle">
+                    按固定间隔将当前工作区改动保存到独立缓存，用于异常断电或退出后的快速恢复
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">启用定时自动缓存</div>
+                      <div class="setting-item-desc">
+                        缓存仅包含未保存改动，不会直接写入原文件；手动保存成功或放弃修改后自动移除
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NSwitch
+                        :value="settings.autosaveEnabled"
+                        @update:value="onAutosaveEnabledChange"
+                      />
+                    </div>
+                  </div>
+
+                  <template v-if="settings.autosaveEnabled">
+                    <div class="setting-card-divider" />
+
+                    <div class="setting-item">
+                      <div class="setting-item-icon">
+                        <NIcon :size="18"><FolderOpen24Regular /></NIcon>
+                      </div>
+                      <div class="setting-item-content">
+                        <div class="setting-item-label">缓存文件存储位置</div>
+                        <div class="setting-item-desc setting-item-desc--path">
+                          {{ autosavePathLabel || "系统缓存目录" }}
+                        </div>
+                        <div
+                          v-if="settings.autosavePath && autosave.status?.defaultPath"
+                          class="setting-item-desc"
+                        >
+                          默认系统目录：{{ autosave.status.defaultPath }}
+                        </div>
+                      </div>
+                      <div class="setting-item-control setting-item-control--actions">
+                        <NButton
+                          size="small"
+                          secondary
+                          :loading="selectingAutosavePath"
+                          @click="onSelectAutosavePath"
+                        >
+                          更改位置…
+                        </NButton>
+                        <NButton
+                          v-if="settings.autosavePath"
+                          size="small"
+                          quaternary
+                          @click="onResetAutosavePath"
+                        >
+                          用默认
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <div class="setting-card-divider" />
+
+                    <div class="setting-item">
+                      <div class="setting-item-icon">
+                        <NIcon :size="18"><ArrowSync24Regular /></NIcon>
+                      </div>
+                      <div class="setting-item-content">
+                        <div class="setting-item-label">自动缓存时间间隔</div>
+                        <div class="setting-item-desc">
+                          仅在工作区存在未保存修改时写入，写入间隔越短越稳妥
+                        </div>
+                      </div>
+                      <div class="setting-item-control">
+                        <NInputNumber
+                          :value="autosaveIntervalMinutes"
+                          size="small"
+                          :min="minAutosaveIntervalMinutes"
+                          :max="maxAutosaveIntervalMinutes"
+                          :step="1"
+                          style="width: 130px"
+                          @update:value="onAutosaveIntervalChange"
+                        >
+                          <template #suffix>分钟</template>
+                        </NInputNumber>
+                      </div>
+                    </div>
+                  </template>
+
+                  <div class="setting-card-divider" />
+
+                  <!-- 备份状态行 -->
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Info24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">备份缓存状态</div>
+                      <div class="setting-item-desc">{{ autosaveStatusLabel }}</div>
+                    </div>
+                    <div class="setting-item-control setting-item-control--actions">
                       <NButton
+                        size="small"
+                        secondary
+                        :disabled="!autosave.status?.exists"
+                        @click="onRestoreAutosave"
+                      >
+                        恢复备份
+                      </NButton>
+                      <NButton
+                        size="small"
                         quaternary
-                        size="small"
-                        aria-label="复制路径"
-                        @click="copyNPKDirectory"
+                        :disabled="!autosave.status?.exists"
+                        @click="onDiscardAutosave"
                       >
-                        <template #icon><NIcon><Copy24Regular /></NIcon></template>
+                        删除备份
                       </NButton>
-                    </template>
-                    复制目录路径
-                  </NTooltip>
-                  <NButton
-                    secondary
-                    size="small"
-                    :loading="selectingNPK"
-                    @click="onSelectNPKDirectory"
-                  >
-                    <template #icon><NIcon><FolderOpen24Regular /></NIcon></template>
-                    {{ settings.npkDirectory ? "更改目录" : "选择目录" }}
-                  </NButton>
-                </div>
-              </div>
-
-              <!-- 正在扫描时：进度条 -->
-              <div v-if="images.status.state === 'building'" class="npk-progress-card">
-                <div class="npk-progress-header">
-                  <span class="npk-progress-title">
-                    {{ images.status.total > 0 ? `正在扫描 NPK 资源 (${images.status.done}/${images.status.total})` : "正在准备扫描资源包..." }}
-                  </span>
-                  <span class="npk-progress-percent">{{ npkProgressPercent }}%</span>
-                </div>
-                <div class="npk-progress-track">
-                  <div
-                    class="npk-progress-bar"
-                    :style="{ width: `${npkProgressPercent}%` }"
-                  />
-                </div>
-              </div>
-
-              <!-- 就绪时：数据指标网格 -->
-              <div v-else-if="images.status.state === 'ready'" class="npk-metrics-grid">
-                <div class="metric-item">
-                  <div class="metric-value">{{ images.status.npkFiles.toLocaleString() }}</div>
-                  <div class="metric-label">NPK 资源包</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value">{{ images.status.imgFiles.toLocaleString() }}</div>
-                  <div class="metric-label">IMG 镜像文件</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value">{{ images.status.imageCount.toLocaleString() }}</div>
-                  <div class="metric-label">有效图标资产</div>
-                </div>
-              </div>
-
-              <div
-                v-if="images.status.state === 'ready' && (images.status.skipped > 0 || images.status.duplicates > 0)"
-                class="npk-notes-row"
-              >
-                <NIcon :size="14" class="notes-icon"><Info24Regular /></NIcon>
-                <span>
-                  {{
-                    [
-                      images.status.skipped > 0 ? `跳过 ${images.status.skipped} 项非标准文件` : "",
-                      images.status.duplicates > 0 ? `去重 ${images.status.duplicates} 项重复资源` : "",
-                    ].filter(Boolean).join("，")
-                  }}
-                </span>
-              </div>
-
-              <!-- 异常告警 -->
-              <div v-else-if="images.status.state === 'error'" class="npk-error-box">
-                <NAlert type="error" :bordered="false" title="图标索引建立失败">
-                  {{ images.status.error || "扫描过程中发生未知错误，请检查目录权限或文件是否被占用" }}
-                </NAlert>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <!-- 重建按钮 -->
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><ArrowSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">重建全量图标索引</div>
-                  <div class="setting-item-desc">当客户端更新补丁、新增 NPK 或图标出现缺失时，可点击重建全量映射</div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    :loading="rebuildingNPK"
-                    :disabled="!images.status.directory || images.status.state === 'building'"
-                    @click="onRebuildNPKIndex"
-                  >
-                    <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
-                    重建索引
-                  </NButton>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <!-- Tab 4: 系统维护 -->
-        <div v-show="activeTab === 'system'" class="settings-tab-panel">
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">维护与热重载</div>
-              <div class="group-subtitle">快速维护本地标注与脚本渲染规则，并检测应用程序更新</div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">标注规则热重载</div>
-                  <div class="setting-item-desc">从磁盘重新加载标注规则定义与关联数据类型。编辑了本地规则文件后无需重启应用，点击即可即时同步刷新。</div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    :loading="reloadingAnnotations"
-                    aria-label="重载标注规则"
-                    @click="onReloadAnnotations"
-                  >
-                    <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
-                    立即重载
-                  </NButton>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><DocumentSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">渲染规则热重载</div>
-                  <div class="setting-item-desc">从磁盘重新加载脚本展示格式，并刷新当前编辑器中的未修改文件。</div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    :loading="reloadingRendering"
-                    aria-label="重载渲染规则"
-                    @click="onReloadRendering"
-                  >
-                    <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
-                    立即重载
-                  </NButton>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><ArrowSync24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">检查版本更新</div>
-                  <div class="setting-item-desc">连接 GitHub Release 发布频道检测 pvfine 是否有可用的新版本与性能优化</div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    :loading="checkingUpdates"
-                    aria-label="检查更新"
-                    @click="onCheckUpdates"
-                  >
-                    <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
-                    检查更新
-                  </NButton>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- 存储与缓存 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">存储与缓存</div>
-              <div class="group-subtitle">
-                统计搜索索引、归档索引与应用备份等缓存文件的磁盘占用，可一键清理
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><FolderOpen24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">缓存占用</div>
-                  <div class="setting-item-desc">{{ cacheUsageSummary }}</div>
-                  <div v-if="cacheUsage?.path" class="setting-item-desc setting-item-desc--path">
-                    {{ cacheUsage.path }}
+                    </div>
                   </div>
                 </div>
-                <div class="setting-item-control setting-item-control--actions">
-                  <NButton
-                    size="small"
-                    secondary
-                    :loading="cacheUsageLoading"
-                    aria-label="重新统计缓存占用"
-                    @click="refreshCacheUsage"
-                  >
-                    重新统计
-                  </NButton>
-                  <NButton
-                    size="small"
-                    :disabled="!cacheUsage || cacheUsage.totalBytes === 0"
-                    :loading="clearingCache"
-                    aria-label="清理缓存"
-                    @click="onClearCache"
-                  >
-                    清理缓存
-                  </NButton>
-                </div>
-              </div>
-              <div class="setting-item">
-                <div class="setting-item-icon"><NIcon :size="18"><FolderOpen24Regular /></NIcon></div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">缓存空间上限</div>
-                  <div class="setting-item-desc">默认 10 GiB，0 表示不限制。超限后按最近使用时间清理至上限的 80%。</div>
-                  <div class="setting-item-desc">自动清理保留正在使用的索引与恢复备份，因此实际占用可能暂时超过上限。</div>
-                </div>
-                <div class="setting-item-control">
-                  <NInputNumber
-                    :value="settings.cacheLimitGiB"
-                    :update-value-on-input="false"
-                    :min="0"
-                    :max="10240"
-                    :precision="0"
-                    :disabled="settings.saving"
-                    size="small"
-                    style="width: 150px"
-                    aria-label="缓存空间上限 GiB"
-                    @update:value="onCacheLimitChange"
-                  >
-                    <template #suffix>GiB</template>
-                  </NInputNumber>
-                </div>
-              </div>
+              </section>
             </div>
-          </section>
 
-        </div>
+            <!-- Tab 2: 代码编辑器 -->
+            <div v-show="activeTab === 'editor'" class="settings-tab-panel">
+              <!-- 标注规则渲染 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">规则标注排版</div>
+                  <div class="group-subtitle">
+                    调整 PVF 规则标注在代码编辑器中的显示位置与渲染行为
+                  </div>
+                </div>
 
-        <div v-show="activeTab === 'shortcuts'" class="settings-tab-panel">
-          <ShortcutSettings />
-        </div>
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Tag24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">Tag 标注显示位置</div>
+                      <div class="setting-item-desc">
+                        选择规则名称、关联说明与代码 Tag 的停靠排版方式
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NRadioGroup
+                        :value="settings.annotationTagPlacement"
+                        size="small"
+                        @update:value="onPlacementChange"
+                      >
+                        <NRadioButton value="after-target">紧随内容</NRadioButton>
+                        <NRadioButton value="line-end">行末对齐</NRadioButton>
+                        <NRadioButton value="hidden">隐藏标注</NRadioButton>
+                      </NRadioGroup>
+                    </div>
+                  </div>
 
-        <!-- Tab 6: 关于 -->
-        <div v-show="activeTab === 'about'" class="settings-tab-panel about-panel">
-          <!-- 软件信息标头 -->
-          <div class="about-hero-card">
-            <div class="about-hero-icon-wrap">
-              <img src="/appicon.png" alt="pvfine logo" class="about-hero-icon" />
+                  <!-- 标注效果实时预览 -->
+                  <div class="preview-annotation-box">
+                    <div class="preview-annotation-title">实时排版效果预览：</div>
+                    <div class="preview-code-block">
+                      <div
+                        v-if="settings.annotationTagPlacement === 'after-target'"
+                        class="preview-code-row"
+                      >
+                        <span class="code-token code-key">[name]</span>
+                        <span class="code-token code-string">`魔剑-阿波菲斯`</span>
+                        <span class="preview-tag preview-tag--blue">巨剑</span>
+                      </div>
+                      <div
+                        v-else-if="settings.annotationTagPlacement === 'line-end'"
+                        class="preview-code-row preview-code-row--line-end"
+                      >
+                        <span class="code-token code-key">[name]</span>
+                        <span class="code-token code-string">`魔剑-阿波菲斯`</span>
+                        <span class="preview-tag preview-tag--blue preview-tag--end">巨剑</span>
+                      </div>
+                      <div v-else class="preview-code-row">
+                        <span class="code-token code-key">[name]</span>
+                        <span class="code-token code-string">`魔剑-阿波菲斯`</span>
+                        <span class="preview-code-muted">（Tag 标注已隐藏）</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 编辑模式与保护 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">编辑模式与安全保护</div>
+                  <div class="group-subtitle">配置模态键位导航与超大脚本保护机制</div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Code24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label-row">
+                        <span class="setting-item-label">Vim 键位模式</span>
+                        <NTag size="small" round :bordered="false" type="info">Modal</NTag>
+                      </div>
+                      <div class="setting-item-desc">
+                        启用后支持 Vim 普通、插入与可视模态，提供熟悉高效的代码导航与操作指令
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">大文件编辑保护阈值</div>
+                      <div class="setting-item-desc">
+                        超过此大小的文件将以只读保护模式打开，防止界面卡顿。默认 8 MB，重新打开文件生效。
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NInputNumber
+                        :value="settings.maxEditableSizeMB"
+                        :min="1"
+                        :max="maxEditableSizeMB"
+                        :precision="0"
+                        :disabled="settings.saving"
+                        size="small"
+                        style="width: 140px"
+                        aria-label="大文件编辑阈值（MB）"
+                        @update:value="onMaxEditableSizeMBChange"
+                      >
+                        <template #suffix>MB</template>
+                      </NInputNumber>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-            <div class="about-hero-content">
-              <div class="about-hero-header">
-                <span class="about-hero-title">pvfine</span>
-                <NTag
-                  v-if="versionLabel"
-                  size="small"
-                  round
-                  :bordered="false"
-                  type="primary"
-                  class="about-version-tag"
-                >
-                  {{ versionLabel }}
-                </NTag>
-                <NTag
-                  v-else-if="appVersionLoading"
-                  size="small"
-                  round
-                  :bordered="false"
-                  type="default"
-                  class="about-version-tag"
-                >
-                  读取版本中…
-                </NTag>
-                <NButton
-                  size="tiny"
-                  secondary
-                  round
-                  :loading="checkingUpdates"
-                  class="about-update-btn"
-                  aria-label="检查更新"
-                  @click="onCheckUpdates"
-                >
-                  <template #icon><NIcon :size="13"><ArrowSync24Regular /></NIcon></template>
-                  检查更新
-                </NButton>
+
+            <!-- Tab 3: 快捷键设置 -->
+            <div v-show="activeTab === 'shortcuts'" class="settings-tab-panel">
+              <ShortcutSettings />
+            </div>
+
+            <!-- Tab 4: NPK 资源库 -->
+            <div v-show="activeTab === 'npk'" class="settings-tab-panel">
+              <!-- NPK 概览说明 -->
+              <div class="hero-card">
+                <div class="hero-card-icon">
+                  <NIcon :size="28"><Image24Regular /></NIcon>
+                </div>
+                <div class="hero-card-body">
+                  <div class="hero-card-header">
+                    <span class="hero-card-title">NPK 游戏图像资源库</span>
+                    <NTag
+                      v-if="images.status.state === 'ready'"
+                      type="success"
+                      size="small"
+                      round
+                      :bordered="false"
+                    >
+                      <template #icon><NIcon><CheckmarkCircle24Regular /></NIcon></template>
+                      索引就绪
+                    </NTag>
+                    <NTag
+                      v-else-if="images.status.state === 'building'"
+                      type="info"
+                      size="small"
+                      round
+                      :bordered="false"
+                    >
+                      <template #icon><NIcon class="spinning"><ArrowSync24Regular /></NIcon></template>
+                      扫描中
+                    </NTag>
+                    <NTag
+                      v-else-if="images.status.state === 'error'"
+                      type="error"
+                      size="small"
+                      round
+                      :bordered="false"
+                    >
+                      <template #icon><NIcon><DismissCircle24Regular /></NIcon></template>
+                      索引异常
+                    </NTag>
+                    <NTag v-else size="small" round :bordered="false">未配置目录</NTag>
+                  </div>
+                  <div class="hero-card-desc">
+                    配置 DNF 客户端的 ImagePacks2 目录后，pvfine 可实时解析武器、装备、消耗品和技能的原版图标，并在代码中提供悬浮预览。
+                  </div>
+                </div>
               </div>
-              <div class="about-hero-desc">
-                基于 Wails 3、Go 与 Vue 3 构建的高性能、现代化的 DNF PVF 脚本交互式编辑工具。
+
+              <!-- 目录选择卡片 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">NPK 目录路径</div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="npk-path-row">
+                    <div class="npk-path-icon">
+                      <NIcon :size="20"><FolderOpen24Regular /></NIcon>
+                    </div>
+                    <div class="npk-path-text-wrapper" :title="settings.npkDirectory || ''">
+                      <span v-if="settings.npkDirectory" class="npk-path-text">
+                        {{ settings.npkDirectory }}
+                      </span>
+                      <span v-else class="npk-path-placeholder">
+                        尚未选择目录，请点击右侧按钮选择客户端 ImagePacks2 文件夹
+                      </span>
+                    </div>
+                    <div class="npk-path-actions">
+                      <NTooltip v-if="settings.npkDirectory" trigger="hover">
+                        <template #trigger>
+                          <NButton
+                            quaternary
+                            size="small"
+                            aria-label="复制路径"
+                            @click="copyNPKDirectory"
+                          >
+                            <template #icon><NIcon><Copy24Regular /></NIcon></template>
+                          </NButton>
+                        </template>
+                        复制目录路径
+                      </NTooltip>
+                      <NButton
+                        secondary
+                        size="small"
+                        :loading="selectingNPK"
+                        @click="onSelectNPKDirectory"
+                      >
+                        <template #icon><NIcon><FolderOpen24Regular /></NIcon></template>
+                        {{ settings.npkDirectory ? "更改目录" : "选择目录" }}
+                      </NButton>
+                    </div>
+                  </div>
+
+                  <!-- 正在扫描时：进度条 -->
+                  <div v-if="images.status.state === 'building'" class="npk-progress-card">
+                    <div class="npk-progress-header">
+                      <span class="npk-progress-title">
+                        {{
+                          images.status.total > 0
+                            ? `正在扫描 NPK 资源 (${images.status.done}/${images.status.total})`
+                            : "正在准备扫描资源包..."
+                        }}
+                      </span>
+                      <span class="npk-progress-percent">{{ npkProgressPercent }}%</span>
+                    </div>
+                    <div class="npk-progress-track">
+                      <div
+                        class="npk-progress-bar"
+                        :style="{ width: `${npkProgressPercent}%` }"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 就绪时：数据指标网格 -->
+                  <div v-else-if="images.status.state === 'ready'" class="npk-metrics-grid">
+                    <div class="metric-item">
+                      <div class="metric-value">{{ images.status.npkFiles.toLocaleString() }}</div>
+                      <div class="metric-label">NPK 资源包</div>
+                    </div>
+                    <div class="metric-item">
+                      <div class="metric-value">{{ images.status.imgFiles.toLocaleString() }}</div>
+                      <div class="metric-label">IMG 镜像文件</div>
+                    </div>
+                    <div class="metric-item">
+                      <div class="metric-value">{{ images.status.imageCount.toLocaleString() }}</div>
+                      <div class="metric-label">有效图标资产</div>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="
+                      images.status.state === 'ready' &&
+                      (images.status.skipped > 0 || images.status.duplicates > 0)
+                    "
+                    class="npk-notes-row"
+                  >
+                    <NIcon :size="14" class="notes-icon"><Info24Regular /></NIcon>
+                    <span>
+                      {{
+                        [
+                          images.status.skipped > 0 ? `跳过 ${images.status.skipped} 项非标准文件` : "",
+                          images.status.duplicates > 0 ? `去重 ${images.status.duplicates} 项重复资源` : "",
+                        ]
+                          .filter(Boolean)
+                          .join("，")
+                      }}
+                    </span>
+                  </div>
+
+                  <!-- 异常告警 -->
+                  <div v-else-if="images.status.state === 'error'" class="npk-error-box">
+                    <NAlert type="error" :bordered="false" title="图标索引建立失败">
+                      {{
+                        images.status.error ||
+                        "扫描过程中发生未知错误，请检查目录权限或文件是否被占用"
+                      }}
+                    </NAlert>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <!-- 重建按钮 -->
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><ArrowSync24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">重建全量图标索引</div>
+                      <div class="setting-item-desc">
+                        当客户端更新补丁、新增 NPK 或图标出现缺失时，可点击重新建立映射
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        :loading="rebuildingNPK"
+                        :disabled="!images.status.directory || images.status.state === 'building'"
+                        @click="onRebuildNPKIndex"
+                      >
+                        <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
+                        重建索引
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <!-- Tab 5: MCP 智能服务 -->
+            <div v-if="activeTab === 'mcp'" class="settings-tab-panel">
+              <MCPSettings />
+            </div>
+
+            <!-- Tab 6: 系统与存储 -->
+            <div v-show="activeTab === 'system'" class="settings-tab-panel">
+              <!-- 规则热重载 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">规则热重载与更新</div>
+                  <div class="group-subtitle">
+                    无需重启应用，即时从磁盘重载标注规则与脚本渲染格式
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">标注规则热重载</div>
+                      <div class="setting-item-desc">
+                        从磁盘重新载入 annotations.json 规则及数据类型映射，即刻生效
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        :loading="reloadingAnnotations"
+                        aria-label="重载标注规则"
+                        @click="onReloadAnnotations"
+                      >
+                        <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+                        立即重载
+                      </NButton>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><DocumentSync24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">渲染规则热重载</div>
+                      <div class="setting-item-desc">
+                        从磁盘重新载入 rendering.json 脚本格式定义并刷新当前编辑器视图
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        :loading="reloadingRendering"
+                        aria-label="重载渲染规则"
+                        @click="onReloadRendering"
+                      >
+                        <template #icon><NIcon><DocumentSync24Regular /></NIcon></template>
+                        立即重载
+                      </NButton>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><ArrowSync24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">检查版本更新</div>
+                      <div class="setting-item-desc">
+                        连接 GitHub Release 频道检查新版本，确认后才会下载更新
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        :loading="checkingUpdates"
+                        aria-label="检查更新"
+                        @click="onCheckUpdates"
+                      >
+                        <template #icon><NIcon><ArrowSync24Regular /></NIcon></template>
+                        检查更新
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 存储与缓存 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">磁盘存储与缓存</div>
+                  <div class="group-subtitle">
+                    监控搜索索引、归档展开与定时备份占用，支持设置预算与自动清理
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <!-- 存储占用可视化仪表盘 -->
+                  <div class="storage-dashboard">
+                    <div class="storage-dashboard-header">
+                      <div class="storage-title-group">
+                        <NIcon :size="18" class="storage-icon"><Storage24Regular /></NIcon>
+                        <span class="storage-total-text">
+                          已使用 {{ formatBytes(cacheUsage?.totalBytes ?? 0) }}
+                          <span v-if="cacheUsage && cacheUsage.limitBytes > 0" class="storage-limit-text">
+                            / 预算 {{ formatBytes(cacheUsage.limitBytes) }}
+                          </span>
+                        </span>
+                        <span v-if="cacheUsage?.files" class="storage-file-count">
+                          （{{ cacheUsage.files }} 个文件）
+                        </span>
+                      </div>
+                      <div class="storage-actions">
+                        <NButton
+                          size="tiny"
+                          secondary
+                          :loading="cacheUsageLoading"
+                          aria-label="重新统计缓存"
+                          @click="refreshCacheUsage"
+                        >
+                          重新统计
+                        </NButton>
+                        <NButton
+                          size="tiny"
+                          secondary
+                          :disabled="!cacheUsage || cacheUsage.totalBytes === 0"
+                          :loading="clearingCache"
+                          aria-label="清理缓存"
+                          @click="onClearCache"
+                        >
+                          清理缓存
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <!-- 多色彩色占用进度条 -->
+                    <div class="storage-meter-track">
+                      <div
+                        class="storage-segment storage-segment--index"
+                        :style="{ width: `${cachePercentages.index}%` }"
+                        :title="`索引及其他缓存: ${formatBytes(cacheUsage?.indexBytes ?? 0)}`"
+                      />
+                      <div
+                        class="storage-segment storage-segment--backup"
+                        :style="{ width: `${cachePercentages.backup}%` }"
+                        :title="`恢复备份: ${formatBytes(cacheUsage?.backupBytes ?? 0)}`"
+                      />
+                      <div
+                        v-if="cachePercentages.inUse > 0"
+                        class="storage-segment storage-segment--in-use"
+                        :style="{ width: `${cachePercentages.inUse}%` }"
+                        :title="`当前归档使用: ${formatBytes(cacheUsage?.inUseBytes ?? 0)}`"
+                      />
+                    </div>
+
+                    <!-- 图例与详细指标 -->
+                    <div class="storage-legend">
+                      <div class="legend-item">
+                        <span class="legend-dot dot-index" />
+                        <span class="legend-label">索引缓存</span>
+                        <span class="legend-value">{{ formatBytes(cacheUsage?.indexBytes ?? 0) }}</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-dot dot-backup" />
+                        <span class="legend-label">恢复备份</span>
+                        <span class="legend-value">{{ formatBytes(cacheUsage?.backupBytes ?? 0) }}</span>
+                      </div>
+                      <div v-if="cacheUsage && cacheUsage.inUseBytes > 0" class="legend-item">
+                        <span class="legend-dot dot-in-use" />
+                        <span class="legend-label">当前正在使用</span>
+                        <span class="legend-value">{{ formatBytes(cacheUsage.inUseBytes) }}</span>
+                      </div>
+                      <div class="legend-item">
+                        <span class="legend-dot dot-reclaim" />
+                        <span class="legend-label">可自动回收</span>
+                        <span class="legend-value">{{ formatBytes(cacheUsage?.reclaimableBytes ?? 0) }}</span>
+                      </div>
+                    </div>
+
+                    <div v-if="cacheUsage?.overBudget" class="storage-warning-badge">
+                      <NIcon :size="14"><Info24Regular /></NIcon>
+                      <span>已超出软预算上限，受保护内容或临时文件将在关闭归档后自动回收</span>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><HardDrive24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">缓存空间软上限</div>
+                      <div class="setting-item-desc">
+                        默认 10 GiB（0 为不限）。超出后按最近访问时间自动清理至预算的 80%。
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NInputNumber
+                        :value="settings.cacheLimitGiB"
+                        :update-value-on-input="false"
+                        :min="0"
+                        :max="10240"
+                        :precision="0"
+                        :disabled="settings.saving"
+                        size="small"
+                        style="width: 140px"
+                        aria-label="缓存空间上限 GiB"
+                        @update:value="onCacheLimitChange"
+                      >
+                        <template #suffix>GiB</template>
+                      </NInputNumber>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <!-- Tab 7: 关于 -->
+            <div v-show="activeTab === 'about'" class="settings-tab-panel about-panel">
+              <!-- 软件信息标头 -->
+              <div class="about-hero-card">
+                <div class="about-hero-icon-wrap">
+                  <img src="/appicon.png" alt="pvfine logo" class="about-hero-icon" />
+                </div>
+                <div class="about-hero-content">
+                  <div class="about-hero-header">
+                    <span class="about-hero-title">pvfine</span>
+                    <NTag
+                      v-if="versionLabel"
+                      size="small"
+                      round
+                      :bordered="false"
+                      type="primary"
+                      class="about-version-tag"
+                    >
+                      {{ versionLabel }}
+                    </NTag>
+                    <NTag
+                      v-else-if="appVersionLoading"
+                      size="small"
+                      round
+                      :bordered="false"
+                      type="default"
+                      class="about-version-tag"
+                    >
+                      读取版本中…
+                    </NTag>
+                    <NButton
+                      size="tiny"
+                      secondary
+                      round
+                      :loading="checkingUpdates"
+                      class="about-update-btn"
+                      aria-label="检查更新"
+                      @click="onCheckUpdates"
+                    >
+                      <template #icon><NIcon :size="13"><ArrowSync24Regular /></NIcon></template>
+                      检查更新
+                    </NButton>
+                  </div>
+                  <div class="about-hero-desc">
+                    基于 Wails 3、Go 与 Vue 3 构建的高性能、现代化的 DNF PVF 脚本交互式编辑工具。
+                  </div>
+                  <div class="about-badges">
+                    <span class="about-pill">Go 1.24</span>
+                    <span class="about-pill">Vue 3</span>
+                    <span class="about-pill">Wails 3</span>
+                    <span class="about-pill">CodeMirror 6</span>
+                    <span class="about-pill">Naive UI</span>
+                  </div>
+                </div>
               </div>
-              <div class="about-badges">
-                <span class="about-pill">Go 1.24</span>
-                <span class="about-pill">Vue 3</span>
-                <span class="about-pill">Wails 3</span>
-                <span class="about-pill">CodeMirror 6</span>
-                <span class="about-pill">Naive UI</span>
-              </div>
+
+              <!-- 官方链接与社区 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">官方资源与开源社区</div>
+                  <div class="group-subtitle">获取官方文档、最新发布与社区动态，或前往 GitHub 参与开源共建</div>
+                </div>
+
+                <div class="settings-card">
+                  <!-- 官方网站 -->
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Globe24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label-row">
+                        <span class="setting-item-label">官方网站</span>
+                        <NTag size="tiny" :bordered="false" type="info">Official</NTag>
+                      </div>
+                      <div class="setting-item-desc">
+                        <a
+                          href="https://pvfineapp.com/"
+                          class="about-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          @click.prevent="openExternalUrl('https://pvfineapp.com/')"
+                        >
+                          https://pvfineapp.com/
+                        </a>
+                      </div>
+                    </div>
+                    <div class="setting-item-control setting-item-control--actions">
+                      <NTooltip trigger="hover">
+                        <template #trigger>
+                          <NButton
+                            size="small"
+                            secondary
+                            circle
+                            aria-label="复制官网链接"
+                            @click="copyText('https://pvfineapp.com/', '官网链接')"
+                          >
+                            <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
+                          </NButton>
+                        </template>
+                        复制链接
+                      </NTooltip>
+                      <NButton
+                        size="small"
+                        secondary
+                        type="primary"
+                        aria-label="访问官网"
+                        @click="openExternalUrl('https://pvfineapp.com/')"
+                      >
+                        <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                        访问
+                      </NButton>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <!-- GitHub 仓库 -->
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path
+                          d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label-row">
+                        <span class="setting-item-label">GitHub 仓库</span>
+                        <NTag size="tiny" :bordered="false" type="default">Open Source</NTag>
+                      </div>
+                      <div class="setting-item-desc">
+                        <a
+                          href="https://github.com/dof-dev/pvfine"
+                          class="about-link"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          @click.prevent="openExternalUrl('https://github.com/dof-dev/pvfine')"
+                        >
+                          https://github.com/dof-dev/pvfine
+                        </a>
+                      </div>
+                    </div>
+                    <div class="setting-item-control setting-item-control--actions">
+                      <NTooltip trigger="hover">
+                        <template #trigger>
+                          <NButton
+                            size="small"
+                            secondary
+                            circle
+                            aria-label="复制 GitHub 链接"
+                            @click="copyText('https://github.com/dof-dev/pvfine', 'GitHub 仓库链接')"
+                          >
+                            <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
+                          </NButton>
+                        </template>
+                        复制链接
+                      </NTooltip>
+                      <NButton
+                        size="small"
+                        secondary
+                        aria-label="访问 GitHub 仓库"
+                        @click="openExternalUrl('https://github.com/dof-dev/pvfine')"
+                      >
+                        <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                        访问
+                      </NButton>
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <!-- 反馈与建议 -->
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Bug24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label">问题反馈与功能建议</div>
+                      <div class="setting-item-desc">
+                        使用中发现问题或有新设想？欢迎在 GitHub Issues 提交反馈
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        aria-label="提交反馈"
+                        @click="openExternalUrl('https://github.com/dof-dev/pvfine/issues')"
+                      >
+                        <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                        提交反馈
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 开源许可 -->
+              <section class="settings-group">
+                <div class="group-header">
+                  <div class="group-title">开源许可与声明</div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label-row">
+                        <span class="setting-item-label">GNU General Public License v3.0</span>
+                        <NTag size="tiny" :bordered="false" type="success">GPL-3.0</NTag>
+                      </div>
+                      <div class="setting-item-desc">
+                        pvfine 为自由开源软件，遵循 GNU 通用公共许可证第三版，保障自由使用与修改权利。
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NButton
+                        size="small"
+                        secondary
+                        aria-label="查看开源协议"
+                        @click="openExternalUrl('https://github.com/dof-dev/pvfine/blob/main/LICENSE')"
+                      >
+                        <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
+                        查看协议
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 底部版权说明 -->
+              <footer class="about-footer">
+                <p class="about-footer-text">© 2026 pvfine team · Made for DNF Modding Community</p>
+              </footer>
             </div>
           </div>
-
-          <!-- 官方链接与社区 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">官方资源与代码仓库</div>
-              <div class="group-subtitle">获取官方文档、最新发布与社区动态，或前往 GitHub 参与开源共建</div>
-            </div>
-
-            <div class="settings-card">
-              <!-- 官方网站 -->
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Globe24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label-row">
-                    <span class="setting-item-label">官方网站</span>
-                    <NTag size="tiny" :bordered="false" type="info">Official</NTag>
-                  </div>
-                  <div class="setting-item-desc">
-                    <a
-                      href="https://pvfineapp.com/"
-                      class="about-link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      @click.prevent="openExternalUrl('https://pvfineapp.com/')"
-                    >
-                      https://pvfineapp.com/
-                    </a>
-                  </div>
-                </div>
-                <div class="setting-item-control setting-item-control--actions">
-                  <NTooltip trigger="hover">
-                    <template #trigger>
-                      <NButton
-                        size="small"
-                        secondary
-                        circle
-                        aria-label="复制官网链接"
-                        @click="copyText('https://pvfineapp.com/', '官网链接')"
-                      >
-                        <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
-                      </NButton>
-                    </template>
-                    复制链接
-                  </NTooltip>
-                  <NButton
-                    size="small"
-                    secondary
-                    type="primary"
-                    aria-label="访问官网"
-                    @click="openExternalUrl('https://pvfineapp.com/')"
-                  >
-                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
-                    访问
-                  </NButton>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <!-- GitHub 仓库 -->
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                    <path
-                      d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
-                    />
-                  </svg>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label-row">
-                    <span class="setting-item-label">GitHub 仓库</span>
-                    <NTag size="tiny" :bordered="false" type="default">Open Source</NTag>
-                  </div>
-                  <div class="setting-item-desc">
-                    <a
-                      href="https://github.com/dof-dev/pvfine"
-                      class="about-link"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      @click.prevent="openExternalUrl('https://github.com/dof-dev/pvfine')"
-                    >
-                      https://github.com/dof-dev/pvfine
-                    </a>
-                  </div>
-                </div>
-                <div class="setting-item-control setting-item-control--actions">
-                  <NTooltip trigger="hover">
-                    <template #trigger>
-                      <NButton
-                        size="small"
-                        secondary
-                        circle
-                        aria-label="复制 GitHub 链接"
-                        @click="copyText('https://github.com/dof-dev/pvfine', 'GitHub 仓库链接')"
-                      >
-                        <template #icon><NIcon :size="14"><Copy24Regular /></NIcon></template>
-                      </NButton>
-                    </template>
-                    复制链接
-                  </NTooltip>
-                  <NButton
-                    size="small"
-                    secondary
-                    aria-label="访问 GitHub 仓库"
-                    @click="openExternalUrl('https://github.com/dof-dev/pvfine')"
-                  >
-                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
-                    访问
-                  </NButton>
-                </div>
-              </div>
-
-              <div class="setting-card-divider" />
-
-              <!-- 反馈与建议 -->
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><Bug24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label">问题反馈与建议</div>
-                  <div class="setting-item-desc">使用中发现 Bug 或有新功能设想？欢迎在 GitHub Issues 提交反馈</div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    aria-label="提交反馈"
-                    @click="openExternalUrl('https://github.com/dof-dev/pvfine/issues')"
-                  >
-                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
-                    提交反馈
-                  </NButton>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- 开源许可 -->
-          <section class="settings-group">
-            <div class="group-header">
-              <div class="group-title">开源许可与声明</div>
-            </div>
-
-            <div class="settings-card">
-              <div class="setting-item">
-                <div class="setting-item-icon">
-                  <NIcon :size="18"><ShieldCheckmark24Regular /></NIcon>
-                </div>
-                <div class="setting-item-content">
-                  <div class="setting-item-label-row">
-                    <span class="setting-item-label">GNU General Public License v3.0</span>
-                    <NTag size="tiny" :bordered="false" type="success">GPL-3.0</NTag>
-                  </div>
-                  <div class="setting-item-desc">
-                    pvfine 为自由开源软件，遵循 GNU 通用公共许可证第三版，保障用户的自由使用与修改权利。
-                  </div>
-                </div>
-                <div class="setting-item-control">
-                  <NButton
-                    size="small"
-                    secondary
-                    aria-label="查看开源协议"
-                    @click="openExternalUrl('https://github.com/dof-dev/pvfine/blob/main/LICENSE')"
-                  >
-                    <template #icon><NIcon :size="14"><ArrowUpRight24Regular /></NIcon></template>
-                    查看协议
-                  </NButton>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- 底部版权说明 -->
-          <footer class="about-footer">
-            <p class="about-footer-text">© 2026 pvfine team · Made for DNF Modding Community</p>
-          </footer>
-        </div>
+        </main>
       </div>
     </NSpin>
   </NModal>
@@ -1532,60 +1751,107 @@ function formatBytes(bytes: number): string {
   color: var(--pvf-primary);
 }
 
-.settings-container {
-  min-height: 440px;
+/* 消除 Naive UI card content 内部默认 padding，使侧栏紧贴左边 */
+.settings-modal :deep(.n-card__content) {
+  padding: 0 !important;
 }
 
-/* 顶部导航分段栏 */
-.settings-nav {
+/* 双栏主布局 */
+.settings-layout {
   display: flex;
-  gap: 4px;
-  padding: 3px;
-  margin-bottom: 20px;
-  background: var(--pvf-surface-subtle);
-  border: 1px solid var(--pvf-border-subtle);
-  border-radius: 9px;
+  height: clamp(520px, 70vh, 660px);
+  min-height: 520px;
+  overflow: hidden;
 }
-.settings-nav-item {
+
+/* 左侧分类侧栏 */
+.settings-sidebar {
+  flex: 0 0 196px;
+  width: 196px;
+  background: var(--pvf-surface-panel);
+  border-right: 1px solid var(--pvf-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 10px;
+  overflow-y: auto;
+  user-select: none;
+}
+
+.sidebar-category {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-category-title {
+  padding: 0 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pvf-text-faint);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav-item {
   position: relative;
-  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 8px 12px;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
   background: transparent;
   border: none;
   border-radius: 7px;
   color: var(--pvf-text-secondary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.16s ease;
-  user-select: none;
+  transition: all 0.15s ease;
+  text-align: left;
 }
-.settings-nav-item:hover {
+
+.sidebar-nav-item:hover {
   color: var(--pvf-text-primary);
   background: var(--pvf-surface-hover);
 }
-.settings-nav-item:focus-visible {
+
+.sidebar-nav-item:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--pvf-effect-focus-ring);
 }
-.settings-nav-item--active {
-  color: var(--pvf-text-primary);
-  background: var(--pvf-surface-card);
+
+.sidebar-nav-item--active {
+  color: var(--pvf-primary);
+  background: var(--pvf-primary-soft);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--pvf-border-faint);
 }
-.settings-nav-icon {
+
+.sidebar-nav-icon {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
+
+.sidebar-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-nav-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  flex-shrink: 0;
   transition: background-color 0.2s ease;
 }
 .settings-nav-dot--ready {
@@ -1608,6 +1874,43 @@ function formatBytes(bytes: number): string {
     opacity: 0.4;
     transform: scale(1.3);
   }
+}
+
+/* 右侧主区域 */
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pvf-surface-card);
+}
+
+.settings-content-header {
+  padding: 16px 24px 14px;
+  border-bottom: 1px solid var(--pvf-border-faint);
+  flex-shrink: 0;
+}
+
+.settings-page-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pvf-text-primary);
+  letter-spacing: -0.2px;
+}
+
+.settings-page-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--pvf-text-faint);
+  line-height: 1.4;
+}
+
+.settings-scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 28px;
 }
 
 /* 分组通用样式 */
@@ -1886,7 +2189,7 @@ function formatBytes(bytes: number): string {
   display: flex;
   gap: 16px;
   padding: 16px;
-  background: var(--pvf-surface-elevated);
+  background: var(--pvf-surface-card);
   border: 1px solid var(--pvf-border-subtle);
   border-radius: 10px;
 }
@@ -2031,17 +2334,116 @@ function formatBytes(bytes: number): string {
 .notes-icon {
   color: var(--pvf-info);
 }
-
 .npk-error-box {
   padding: 12px 16px;
   border-top: 1px solid var(--pvf-border-faint);
+}
+
+/* 存储可视化仪表盘 */
+.storage-dashboard {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.storage-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.storage-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storage-icon {
+  color: var(--pvf-primary);
+}
+.storage-total-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pvf-text-primary);
+}
+.storage-limit-text {
+  font-weight: 400;
+  color: var(--pvf-text-faint);
+  font-size: 12px;
+}
+.storage-file-count {
+  font-size: 12px;
+  color: var(--pvf-text-faint);
+}
+.storage-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.storage-meter-track {
+  height: 8px;
+  background: var(--pvf-surface-inset);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+}
+.storage-segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.storage-segment--index {
+  background: #4f8cff;
+}
+.storage-segment--backup {
+  background: #63e2b7;
+}
+.storage-segment--in-use {
+  background: #f2c97d;
+}
+
+.storage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11.5px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot-index { background: #4f8cff; }
+.dot-backup { background: #63e2b7; }
+.dot-in-use { background: #f2c97d; }
+.dot-reclaim { background: rgba(128, 128, 128, 0.4); }
+
+.legend-label {
+  color: var(--pvf-text-secondary);
+}
+.legend-value {
+  color: var(--pvf-text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.storage-warning-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--pvf-surface-warning);
+  color: var(--pvf-warning);
+  border-radius: 6px;
+  font-size: 11.5px;
 }
 
 /* 关于面板 */
 .about-panel {
   gap: 16px;
 }
-
 .about-hero-card {
   display: flex;
   align-items: flex-start;
@@ -2051,7 +2453,6 @@ function formatBytes(bytes: number): string {
   border: 1px solid var(--pvf-border-subtle);
   border-radius: 12px;
 }
-
 .about-hero-icon-wrap {
   flex: 0 0 56px;
   width: 56px;
@@ -2065,13 +2466,11 @@ function formatBytes(bytes: number): string {
   justify-content: center;
   background: var(--pvf-surface-subtle);
 }
-
 .about-hero-icon {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-
 .about-hero-content {
   flex: 1;
   min-width: 0;
@@ -2079,43 +2478,36 @@ function formatBytes(bytes: number): string {
   flex-direction: column;
   gap: 6px;
 }
-
 .about-hero-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
-
 .about-hero-title {
   font-size: 18px;
   font-weight: 700;
   color: var(--pvf-text-primary);
   letter-spacing: -0.3px;
 }
-
 .about-version-tag {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 600;
 }
-
 .about-update-btn {
   margin-left: 2px;
 }
-
 .about-hero-desc {
   color: var(--pvf-text-secondary);
   font-size: 12.5px;
   line-height: 1.5;
 }
-
 .about-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
 }
-
 .about-pill {
   display: inline-flex;
   padding: 2px 8px;
@@ -2126,7 +2518,6 @@ function formatBytes(bytes: number): string {
   color: var(--pvf-text-muted);
   font-weight: 500;
 }
-
 .about-link {
   color: var(--pvf-primary);
   text-decoration: none;
@@ -2134,17 +2525,14 @@ function formatBytes(bytes: number): string {
   font-size: 12px;
   transition: opacity 0.15s ease;
 }
-
 .about-link:hover {
   text-decoration: underline;
   opacity: 0.85;
 }
-
 .about-footer {
   padding: 6px 0 12px;
   text-align: center;
 }
-
 .about-footer-text {
   color: var(--pvf-text-faint);
   font-size: 11px;
@@ -2164,15 +2552,25 @@ function formatBytes(bytes: number): string {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 720px) {
+  .settings-layout {
+    flex-direction: column;
+    height: auto;
+  }
+  .settings-sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    border-right: none;
+    border-bottom: 1px solid var(--pvf-border-subtle);
+    padding: 10px;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .sidebar-category {
+    display: none;
+  }
   .theme-grid {
     grid-template-columns: 1fr;
-  }
-  .settings-nav {
-    flex-wrap: wrap;
-  }
-  .settings-nav-item {
-    flex: 1 1 45%;
   }
   .npk-metrics-grid {
     grid-template-columns: 1fr;

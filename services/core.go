@@ -76,6 +76,18 @@ type pathEntry struct {
 // core owns the loaded archive plus derived indexes. Guarded by mu; all
 // services take it per call.
 type core struct {
+	annotationSnapshot              *ruleconfig.Snapshot
+	annotationDocumentation         *annotationCatalog
+	annotationDocumentationEngine   *annotationrules.Engine
+	annotationDocumentationSnapshot *ruleconfig.Snapshot
+	mcpSaveSequence                 uint64
+
+	mcpWorkspaceID string
+	mcpEpoch       uint64
+	mcpSourceHash  string
+	mcpScriptPlan  string
+	mcpImportPlan  string
+
 	archiveDiff         *ArchiveDiffService
 	ruleMu              sync.Mutex
 	ruleStore           *ruleconfig.Store
@@ -690,6 +702,13 @@ func (c *core) bindRenderingEngineLocked(a *pvf.Archive) {
 }
 
 func (c *core) closeArchive() {
+	c.mu.Lock()
+	c.mcpWorkspaceID = ""
+	c.mcpEpoch++
+	c.mcpSourceHash = ""
+	c.mcpScriptPlan = ""
+	c.mcpImportPlan = ""
+	c.mu.Unlock()
 	defer requestCacheMaintenance()
 	waitFor := c.archiveTasks.beginClose()
 	c.mu.RLock()

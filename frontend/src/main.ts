@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import ScriptWindow from "./ScriptWindow.vue";
 import "./style.css";
+import { installMCPBridge } from "./mcpBridge";
 import { applyTheme, getTheme } from "./theme";
 import { installLogging } from "./logging";
 import { installActiveUndoBridge } from "./activeUndoBridge";
@@ -22,3 +23,5 @@ const app = createApp(root);
 app.use(createPinia());
 installLogging(app);
 app.mount("#app");
+
+installMCPBridge(view === "script");

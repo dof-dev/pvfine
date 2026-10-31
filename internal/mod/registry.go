@@ -47,6 +47,7 @@ func DefaultRegistry() *Registry {
 	_ = r.Register(Format{
 		Descriptor: Descriptor{ID: "110USextend", Name: "110USextend", Operations: []Operation{ReplaceFile, MergeList, MergeStrings}},
 		Writer:     Extend110Writer{},
+		Reader:     Extend110Reader{},
 	})
 	return r
 }

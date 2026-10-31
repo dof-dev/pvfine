@@ -143,7 +143,7 @@ func TestRegistrySeparatesReadWriteCapabilities(t *testing.T) {
 		t.Fatal("reader did not produce neutral package")
 	}
 	writer, _ := registry.Get("110USextend")
-	if writer.Descriptor.CanRead || !writer.Descriptor.CanWrite || writer.Reader != nil {
+	if !writer.Descriptor.CanRead || !writer.Descriptor.CanWrite || writer.Reader == nil {
 		t.Fatal("writer capabilities incorrect")
 	}
 	writer.Descriptor.Operations[0] = DeleteFile

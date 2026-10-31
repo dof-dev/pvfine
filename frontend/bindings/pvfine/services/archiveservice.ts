@@ -218,6 +218,14 @@ export function Search(query: string, cursor: number, limit: number): $Cancellab
 }
 
 /**
+ * SearchEffectResources applies the resource scope before pagination. Particle
+ * paths are discovered across the archive, including monster/ and equipment/.
+ */
+export function SearchEffectResources(kind: string, query: string, cursor: number, limit: number): $CancellablePromise<$models.SearchResult | null> {
+    return $Call.ByID(2434630623, kind, query, cursor, limit);
+}
+
+/**
  * SearchExact 在路径、语义名称和 id 中做不区分大小写的全量匹配。
  * 查询包含 * 或 ? 时，通配符仍按完整字段匹配。
  * cursor 传上次返回的 NextCursor(首次传 0),limit 为本页上限(1..1000)。

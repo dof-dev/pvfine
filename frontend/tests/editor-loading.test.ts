@@ -341,3 +341,20 @@ test("对比 Tab 开启时不调用 GetFile(-999)", async () => {
   expect(api.GetFile).not.toHaveBeenCalledWith(-999);
   expect(api.GetAnnotationsForText).not.toHaveBeenCalledWith(-999, expect.anything());
 });
+
+test("AI 写入后同步文本基线，保留后端未保存标记，后续保存不被误当作本地草稿", async () => {
+  api.GetFileBasic.mockResolvedValue(meta(1, "old"));
+  const store = useEditorStore();
+  await store.openFile(1);
+  api.ResolveFiles.mockResolvedValue([{ fileIndex: 1, path: "map/1.lst", size: 3, dataType: 1 }]);
+  api.GetFile.mockResolvedValue({ ...meta(1, "new"), modified: true });
+  await store.syncMCPWorkspace();
+  expect(store.activeTab?.text).toBe("new");
+  expect(store.activeTab?.original).toBe("new");
+  expect(store.activeTab?.modified).toBe(true);
+  expect(store.dirtyCount).toBe(0);
+  expect(store.archiveDiffDrafts()).toEqual([]);
+  api.GetFile.mockResolvedValue({ ...meta(1, "new"), modified: false });
+  await store.syncMCPWorkspace();
+  expect(store.activeTab?.modified).toBe(false);
+});

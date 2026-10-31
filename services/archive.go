@@ -74,11 +74,20 @@ func (c *core) openArchive(path string) (ArchiveInfo, error) {
 	if err != nil {
 		return ArchiveInfo{}, err
 	}
+	return c.installOpenedArchive(path, a, startedAt)
+}
+
+func (c *core) installOpenedArchive(path string, a *pvf.Archive, startedAt time.Time) (ArchiveInfo, error) {
 	if a.FileCount() >= largeArchiveIndexThreshold {
 		generation, ctx, err := c.setArchiveWithDeferredDiskIndex(a)
 		if err != nil {
 			return ArchiveInfo{}, err
 		}
+		c.mu.Lock()
+		c.mcpWorkspaceID = mcpID()
+		c.mcpEpoch++
+		c.mcpSourceHash = a.SourceHash()
+		c.mu.Unlock()
 		c.recordOpenDuration(time.Since(startedAt))
 		info := a.Info()
 		emitEvent("archive:opened", info)
@@ -93,6 +102,11 @@ func (c *core) openArchive(path string) (ArchiveInfo, error) {
 	if err := c.setArchive(a); err != nil {
 		return ArchiveInfo{}, err
 	}
+	c.mu.Lock()
+	c.mcpWorkspaceID = mcpID()
+	c.mcpEpoch++
+	c.mcpSourceHash = a.SourceHash()
+	c.mu.Unlock()
 	c.recordOpenDuration(time.Since(startedAt))
 	info := a.Info()
 	// Version repository discovery/recovery is deliberately detached from the

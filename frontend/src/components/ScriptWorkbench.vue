@@ -624,6 +624,9 @@ onBeforeUnmount(() => {
             </div>
             <NButton v-if="script.hasPreview" text size="tiny" type="error" @click="onDiscard">丢弃</NButton>
           </div>
+          <NAlert v-if="script.runOrigin === 'mcp' && script.hasPreview" type="info" :bordered="false" class="script-error">
+            当前预览来自 AI 任务，左侧仍保留你的脚本源码。
+          </NAlert>
           <NAlert v-if="script.error" type="error" :bordered="false" class="script-error">
             {{ script.error }}
           </NAlert>

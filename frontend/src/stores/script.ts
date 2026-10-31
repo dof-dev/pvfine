@@ -1,7 +1,8 @@
+import { assertMCPIdle } from "../mcpActivity";
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { Events } from "@wailsio/runtime";
-import { ScriptService, ScriptWindowService } from "../../bindings/pvfine/services";
+import { MCPService, ScriptService, ScriptWindowService } from "../../bindings/pvfine/services";
 import type {
   ScriptApplyResult,
   ScriptCompileResult,
@@ -54,6 +55,7 @@ export const useScriptStore = defineStore("script", () => {
   const stale = ref(false);
   const compileResult = ref<ScriptCompileResult | null>(null);
   const runResult = ref<ScriptRunResult | null>(null);
+  const runOrigin = ref<"ui" | "mcp">("ui");
   const logs = ref<ScriptLog[]>([]);
   const progress = ref({ done: 0, total: 0, message: "", currentPath: "" });
   const rows = ref<ScriptFilePreview[]>([]);
@@ -399,6 +401,8 @@ export const useScriptStore = defineStore("script", () => {
   }
 
   async function run(): Promise<ScriptRunResult> {
+    assertMCPIdle();
+    runOrigin.value = "ui";
     if (!canRun.value) throw new Error("当前无法运行脚本");
     const request = ++runRequest;
     running.value = true;
@@ -501,6 +505,7 @@ export const useScriptStore = defineStore("script", () => {
   }
 
   async function apply(): Promise<ScriptApplyResult> {
+    assertMCPIdle();
     if (!canApply.value || !planId.value) throw new Error("没有选中的脚本变更");
     applying.value = true;
     error.value = "";
@@ -570,6 +575,23 @@ export const useScriptStore = defineStore("script", () => {
     };
   }
 
+  async function adoptMCPResult(result: ScriptRunResult) {
+    runOrigin.value = "mcp";
+    if (!result?.runId) return;
+    resetPreview();
+    stale.value = false;
+    runResult.value = result;
+    logs.value = (result.logs ?? []).filter((item): item is ScriptLog => !!item);
+    if (result.planId) {
+      try {
+        const page = await ScriptService.PreviewPage(result.planId, "", 0, 100);
+        if (page) applyPage(page, false);
+      } catch (value: any) { error.value = errorMessage(value); }
+    }
+   }
+  Events.On("mcp:script-cleared", (event: any) => { if (eventData(event)?.planId === planId.value) resetPreview(); });
+  Events.On("mcp:script-result", (event: any) => { void adoptMCPResult(eventData(event)); });
+  void MCPService.CurrentScriptResult().then(result => { if (result) void adoptMCPResult(result); }).catch(() => {});
   Events.On("script:state", handleState);
   Events.On("script:log", handleLog);
   Events.On("script:progress", handleProgress);
@@ -628,6 +650,7 @@ export const useScriptStore = defineStore("script", () => {
     compileResult,
     diagnostics,
     runResult,
+    runOrigin,
     logs,
     progress,
     rows,

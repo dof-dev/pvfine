@@ -55,6 +55,8 @@ type exportFile struct {
 }
 
 type exportPlan struct {
+	mcpOwned bool
+
 	preview    ExportPreview
 	request    ExportRequest
 	archive    *pvf.Archive
@@ -84,7 +86,10 @@ func NewExportService(c *core) *ExportService {
 
 func (s *ExportService) Formats() []modpkg.Descriptor { return s.registry.List() }
 
-func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, resultErr error) {
+func (s *ExportService) Prepare(request ExportRequest) (*ExportPreview, error) {
+	return s.prepare(request, false)
+}
+func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *ExportPreview, resultErr error) {
 	started := time.Now()
 	defer func() {
 		count := 0
@@ -98,6 +103,9 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 	defer finish()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.plan != nil && s.plan.mcpOwned && !mcpOwned {
+		return nil, fmt.Errorf("EXPORT_PLAN_PENDING: MCP 导出预览待处理")
+	}
 	if request.Mode != "direct" && request.Mode != "mod" {
 		return nil, fmt.Errorf("未知导出模式: %s", request.Mode)
 	}
@@ -153,7 +161,7 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 	developmentLog("[pvfine:export] prepare phase=source files=%d skipped_tables=%d elapsed=%s",
 		len(changes), source.skippedTables, time.Since(phaseStarted).Round(time.Millisecond))
 	p := &exportPlan{
-		request: request, archive: s.c.archive, repo: s.c.versionRepo,
+		mcpOwned: mcpOwned, request: request, archive: s.c.archive, repo: s.c.versionRepo,
 		revision: s.c.batchRevision, generation: s.c.archiveGeneration,
 		loadID: s.c.versionLoadID, headID: s.c.versionHead.ID, created: time.Now(),
 		preview: ExportPreview{ID: fmt.Sprint(exportSequence.Add(1)), Warnings: []string{}},
@@ -252,6 +260,24 @@ func (s *ExportService) Prepare(request ExportRequest) (result *ExportPreview, r
 	}
 	if p.preview.FileCount == 0 {
 		return nil, errors.New("没有可导出的文件或可应用的 mod 内容")
+	}
+	// The legacy UI selection exporter renders unknown types as empty text.
+	// MCP direct exports preserve binary bytes so a directory export is usable.
+	if mcpOwned && request.Mode == "direct" && (request.Source == "selection" || request.Source == "memory") {
+		for index := range p.files {
+			fileIndex, ok := s.c.archive.Find(p.files[index].path)
+			if !ok {
+				continue
+			}
+			dataType := s.c.archive.File(fileIndex).DataType
+			if dataType != pvf.TypeScript && dataType != pvf.TypeUnicode {
+				raw, err := s.c.archive.RawBytes(fileIndex)
+				if err != nil {
+					return nil, err
+				}
+				p.files[index].data = append([]byte(nil), raw...)
+			}
+		}
 	}
 	if request.Source == "archive-diff" && !s.validLocked(p) {
 		return nil, ErrExportStale

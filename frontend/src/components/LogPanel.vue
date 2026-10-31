@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
-import { NButton, NCheckbox, NCheckboxGroup, NIcon, NTooltip } from "naive-ui";
+import { computed, nextTick, ref, watch } from "vue";
+import { NButton, NCheckbox, NCheckboxGroup, NIcon, NTooltip, NVirtualList, type VirtualListInst } from "naive-ui";
 import { ChevronDown20Regular, ChevronUp20Regular, Delete20Regular } from "@vicons/fluent";
 import { logLevels, useLogStore } from "../stores/logs";
 
 const logs = useLogStore();
-const viewport = ref<HTMLElement | null>(null);
+const viewport = ref<VirtualListInst | null>(null);
+// 折叠期间不筛选历史日志，也不触发虚拟列表更新。
+const visibleEntries = computed(() => logs.expanded ? logs.filtered : []);
 let scrollRevision = 0;
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
@@ -13,15 +15,15 @@ async function scrollToLatest() {
   const revision = ++scrollRevision;
   await nextTick();
   if (revision === scrollRevision && logs.follow && viewport.value) {
-    viewport.value.scrollTop = viewport.value.scrollHeight;
+    viewport.value.scrollTo({ index: visibleEntries.value.length - 1 });
   }
 }
-watch(() => [logs.filtered, logs.expanded, logs.follow], () => {
+watch(() => [visibleEntries.value, logs.expanded, logs.follow], () => {
   if (logs.expanded && logs.follow) void scrollToLatest();
 });
 
-function onScroll() {
-  const element = viewport.value;
+function onScroll(event: Event) {
+  const element = event.target as HTMLElement | null;
   if (element) logs.follow = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
 }
 
@@ -57,16 +59,22 @@ function timeText(timestamp: string): string {
         </NTooltip>
       </div>
     </div>
-    <div v-if="logs.expanded" id="app-log-content" ref="viewport" class="log-content"
-      role="region" aria-label="日志记录" tabindex="0" @scroll="onScroll">
-      <div v-if="!logs.filtered.length" class="log-empty">
+    <div v-if="logs.expanded" id="app-log-content" class="log-content"
+      role="region" aria-label="日志记录" tabindex="0">
+      <div v-if="!visibleEntries.length" class="log-empty">
         {{ logs.entries.length ? "当前等级下暂无日志" : "暂无日志" }}
       </div>
-      <div v-for="entry in logs.filtered" :key="entry.id" v-memo="[entry]" class="log-line" :class="`log-line--${entry.level.toLowerCase()}`">
-        <time :datetime="entry.timestamp" :title="entry.timestamp">{{ timeText(entry.timestamp) }}</time>
-        <span class="log-level">{{ entry.level === "ERROR" ? "ERR" : entry.level }}</span>
-        <span class="log-message"><span class="log-source">[{{ entry.source }}]</span> {{ entry.message }}</span>
-      </div>
+      <NVirtualList v-else ref="viewport" class="log-list" :items="visibleEntries" :item-size="24"
+        key-field="id" item-resizable :default-scroll-index="logs.follow ? visibleEntries.length - 1 : undefined"
+        :padding-top="5" :padding-bottom="5" @scroll="onScroll">
+        <template #default="{ item: entry }">
+          <div class="log-line" :class="`log-line--${entry.level.toLowerCase()}`">
+            <time :datetime="entry.timestamp" :title="entry.timestamp">{{ timeText(entry.timestamp) }}</time>
+            <span class="log-level">{{ entry.level === "ERROR" ? "ERR" : entry.level }}</span>
+            <span class="log-message"><span class="log-source">[{{ entry.source }}]</span> {{ entry.message }}</span>
+          </div>
+        </template>
+      </NVirtualList>
     </div>
   </section>
 </template>
@@ -82,14 +90,15 @@ function timeText(timestamp: string): string {
 .log-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .log-controls :deep(.n-checkbox-group) { display: flex; gap: 10px; flex-wrap: wrap; }
 .log-controls :deep(.n-checkbox__label) { font-size: 11px; }
-.log-content { flex: 1; min-height: 0; overflow: auto; padding: 5px 10px; font-family: Consolas, "Microsoft YaHei", monospace; font-size: 12px; line-height: 1.65; user-select: text; -webkit-user-select: text; }
+.log-content { flex: 1; min-height: 0; overflow: hidden; font-family: Consolas, "Microsoft YaHei", monospace; font-size: 12px; line-height: 1.65; user-select: text; -webkit-user-select: text; }
+.log-list { height: 100%; }
 .log-content * { user-select: text; -webkit-user-select: text; }
-.log-line { display: grid; grid-template-columns: 96px 42px minmax(0, 1fr); gap: 8px; padding: 2px 0; align-items: baseline; }
+.log-line { display: grid; grid-template-columns: 96px 42px minmax(0, 1fr); gap: 8px; padding: 2px 10px; box-sizing: border-box; min-height: 24px; align-items: baseline; }
 .log-message { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 .log-level { font-size: 11px; }
 .log-line--debug { color: var(--pvf-text-muted); }
 .log-line--info .log-level { color: var(--pvf-info); }
 .log-line--warn { color: var(--pvf-warning); }
 .log-line--error { color: var(--pvf-error); }
-.log-empty { color: var(--pvf-text-muted); padding: 14px 0; }
+.log-empty { color: var(--pvf-text-muted); padding: 19px 10px; }
 </style>

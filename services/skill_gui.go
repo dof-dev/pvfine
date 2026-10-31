@@ -118,8 +118,82 @@ func parseSkill(text string) *SkillDocument {
 
 func parseSkillWithTemplates(text string, resolve func(string) string) *SkillDocument {
 	view := pvf.ParseScriptView(text)
-	// Resolve references before counting placeholders and consuming bindings.
-	// Only the display template changes; numeric source offsets stay untouched.
+	normalizeViewSkillTemplates(&view, resolve)
+
+	scopes := collectSkillTokensByScope(&view)
+	doc := &SkillDocument{Name: scopes.name, Modes: []SkillMode{}}
+
+	sharedIssues := []string{}
+	sharedProperties := []SkillProperty{}
+	for _, group := range scopes.root.property {
+		sharedProperties = append(sharedProperties, parseSkillProperties(group, &sharedIssues)...)
+	}
+
+	rootStaticIssues := []string{}
+	rootStaticNumbers := parseSkillStatic(scopes.root.static, &rootStaticIssues)
+
+	hasDungeon := scopes.hasExplicit["dungeon"] || len(scopes.root.levelInfo) > 0 || len(scopes.root.static) > 0
+	hasPvp := scopes.hasExplicit["pvp"]
+
+	specs := []struct {
+		id      string
+		present bool
+	}{
+		{id: "dungeon", present: hasDungeon},
+		{id: "pvp", present: hasPvp},
+	}
+
+	for _, spec := range specs {
+		if !spec.present {
+			continue
+		}
+		mode := buildSkillMode(
+			spec.id,
+			scopes.modes[spec.id],
+			&scopes.root,
+			rootStaticNumbers,
+			rootStaticIssues,
+			sharedProperties,
+			sharedIssues,
+		)
+		doc.Modes = append(doc.Modes, mode)
+	}
+	return doc
+}
+
+type skillSectionGroups struct {
+	static         [][]pvf.ScriptElement
+	levelInfo      [][]pvf.ScriptElement
+	property       [][]pvf.ScriptElement
+	lastStaticID   int
+	lastLevelID    int
+	lastPropertyID int
+}
+
+func newSkillSectionGroups() *skillSectionGroups {
+	return &skillSectionGroups{
+		lastStaticID:   -1,
+		lastLevelID:    -1,
+		lastPropertyID: -1,
+	}
+}
+
+func appendSkillTokenGroup(groups *[][]pvf.ScriptElement, lastID *int, e pvf.ScriptElement) {
+	if *lastID != e.SectionID {
+		*groups = append(*groups, []pvf.ScriptElement{})
+		*lastID = e.SectionID
+	}
+	(*groups)[len(*groups)-1] = append((*groups)[len(*groups)-1], e)
+}
+
+type skillTokensByScope struct {
+	name        string
+	root        skillSectionGroups
+	modes       map[string]*skillSectionGroups
+	hasExplicit map[string]bool
+}
+
+func normalizeViewSkillTemplates(view *pvf.ScriptView, resolve func(string) string) {
 	for i := range view.Elements {
 		e := &view.Elements[i]
 		if e.Kind != pvf.ScriptElementToken || e.Section != "level property" || !isSkillTemplateToken(e.TokenType) {
@@ -130,108 +204,152 @@ func parseSkillWithTemplates(text string, resolve func(string) string) *SkillDoc
 		}
 		e.Value = normalizeSkillTemplate(e.Value)
 	}
-	doc := &SkillDocument{Modes: []SkillMode{}}
-	shared := []SkillProperty{}
-	for _, id := range []string{"dungeon", "pvp"} {
-		mode := SkillMode{ID: id, Static: []SkillNumber{}, Levels: [][]SkillNumber{}, Properties: []SkillProperty{}, Issues: []string{}}
-		sections := map[string][][]pvf.ScriptElement{}
-		lastID := map[string]int{}
-		present := false
-		for _, e := range view.Elements {
-			if e.Kind == pvf.ScriptElementSection && e.Section == id {
-				present = true
-			}
-			if e.Kind != pvf.ScriptElementToken {
-				continue
-			}
-			if e.Section == "name" && doc.Name == "" {
-				doc.Name = e.Value
-			}
-			inMode := false
-			for _, parent := range e.SectionPath {
-				if parent == id {
-					inMode = true
-				}
-			}
-			if !inMode || (e.Section != "static data" && e.Section != "level info" && e.Section != "level property") {
-				continue
-			}
-			if lastID[e.Section] != e.SectionID {
-				sections[e.Section] = append(sections[e.Section], []pvf.ScriptElement{})
-				lastID[e.Section] = e.SectionID
-			}
-			groups := sections[e.Section]
-			groups[len(groups)-1] = append(groups[len(groups)-1], e)
-		}
-		for _, name := range []string{"static data", "level info"} {
-			groups := sections[name]
-			if len(groups) > 1 {
-				mode.Issues = append(mode.Issues, "重复的 ["+name+"]，为避免误改已禁用该区域")
-				continue
-			}
-			if len(groups) == 0 {
-				continue
-			}
-			values := []SkillNumber{}
-			valid := true
-			for _, e := range groups[0] {
-				n, err := strconv.ParseFloat(e.Value, 64)
-				if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || (e.TokenType != 0 && e.TokenType != 2) {
-					valid = false
-					break
-				}
-				values = append(values, SkillNumber{Value: n, Start: e.Start, End: e.End, TokenType: e.TokenType})
-			}
-			if !valid {
-				mode.Issues = append(mode.Issues, "["+name+"] 包含非数值，已禁用该区域")
-				continue
-			}
-			if name == "static data" {
-				mode.Static = values
-				continue
-			}
-			if len(values) == 0 {
-				continue
-			}
-			width := int(values[0].Value)
-			if width <= 0 || float64(width) != values[0].Value || (len(values)-1)%width != 0 {
-				mode.Issues = append(mode.Issues, "[level info] 列数或等级数据长度异常，已禁用动态编辑")
-				continue
-			}
-			mode.Width = width
-			for i := 1; i < len(values); i += width {
-				mode.Levels = append(mode.Levels, values[i:i+width])
-			}
-		}
-		for _, group := range sections["level property"] {
-			mode.Properties = append(mode.Properties, parseSkillProperties(group, &mode.Issues)...)
-		}
-		if present {
-			doc.Modes = append(doc.Modes, mode)
-		}
+}
+
+func collectSkillTokensByScope(view *pvf.ScriptView) skillTokensByScope {
+	scopes := skillTokensByScope{
+		root: *newSkillSectionGroups(),
+		modes: map[string]*skillSectionGroups{
+			"dungeon": newSkillSectionGroups(),
+			"pvp":     newSkillSectionGroups(),
+		},
+		hasExplicit: map[string]bool{},
 	}
-	groups := map[int][]pvf.ScriptElement{}
-	order := []int{}
+
 	for _, e := range view.Elements {
-		if e.Kind != pvf.ScriptElementToken || e.Section != "level property" || len(e.SectionPath) != 1 {
+		if e.Kind == pvf.ScriptElementSection {
+			if e.Section == "dungeon" || e.Section == "pvp" {
+				scopes.hasExplicit[e.Section] = true
+			}
 			continue
 		}
-		if _, ok := groups[e.SectionID]; !ok {
-			order = append(order, e.SectionID)
+		if e.Kind != pvf.ScriptElementToken {
+			continue
 		}
-		groups[e.SectionID] = append(groups[e.SectionID], e)
-	}
-	issues := []string{}
-	for _, id := range order {
-		shared = append(shared, parseSkillProperties(groups[id], &issues)...)
-	}
-	for i := range doc.Modes {
-		if len(doc.Modes[i].Properties) == 0 {
-			doc.Modes[i].Properties = shared
+		if e.Section == "name" && scopes.name == "" {
+			scopes.name = e.Value
 		}
-		doc.Modes[i].Issues = append(doc.Modes[i].Issues, issues...)
+
+		targetMode := ""
+		for _, parent := range e.SectionPath {
+			if parent == "dungeon" || parent == "pvp" {
+				targetMode = parent
+				break
+			}
+		}
+
+		var target *skillSectionGroups
+		if targetMode != "" {
+			target = scopes.modes[targetMode]
+		} else if len(e.SectionPath) == 1 {
+			target = &scopes.root
+		} else {
+			continue
+		}
+
+		switch e.Section {
+		case "static data":
+			appendSkillTokenGroup(&target.static, &target.lastStaticID, e)
+		case "level info":
+			appendSkillTokenGroup(&target.levelInfo, &target.lastLevelID, e)
+		case "level property":
+			appendSkillTokenGroup(&target.property, &target.lastPropertyID, e)
+		}
 	}
-	return doc
+	return scopes
+}
+
+func buildSkillMode(
+	modeID string,
+	mData *skillSectionGroups,
+	rootData *skillSectionGroups,
+	rootStatic []SkillNumber,
+	rootStaticIssues []string,
+	sharedProps []SkillProperty,
+	sharedPropIssues []string,
+) SkillMode {
+	mode := SkillMode{
+		ID:         modeID,
+		Static:     []SkillNumber{},
+		Levels:     [][]SkillNumber{},
+		Properties: []SkillProperty{},
+		Issues:     []string{},
+	}
+
+	// 1. static data: 优先使用当前模式自身定义的；若无，继承/回退根级
+	if mData != nil && len(mData.static) > 0 {
+		mode.Static = parseSkillStatic(mData.static, &mode.Issues)
+	} else if rootData != nil && len(rootData.static) > 0 {
+		mode.Static = rootStatic
+		mode.Issues = append(mode.Issues, rootStaticIssues...)
+	}
+
+	// 2. level info: 优先使用当前模式自身定义的；若无且为 dungeon 模式，回退根级
+	if mData != nil && len(mData.levelInfo) > 0 {
+		mode.Width, mode.Levels = parseSkillLevels(mData.levelInfo, &mode.Issues)
+	} else if modeID == "dungeon" && rootData != nil && len(rootData.levelInfo) > 0 {
+		mode.Width, mode.Levels = parseSkillLevels(rootData.levelInfo, &mode.Issues)
+	}
+
+	// 3. level property: 优先使用当前模式自身定义的；若无，使用根级共享属性
+	if mData != nil && len(mData.property) > 0 {
+		for _, group := range mData.property {
+			mode.Properties = append(mode.Properties, parseSkillProperties(group, &mode.Issues)...)
+		}
+	} else {
+		mode.Properties = sharedProps
+		mode.Issues = append(mode.Issues, sharedPropIssues...)
+	}
+
+	return mode
+}
+
+func parseSkillNumbers(group []pvf.ScriptElement, issues *[]string, sectionName string) []SkillNumber {
+	values := make([]SkillNumber, 0, len(group))
+	for _, e := range group {
+		n, err := strconv.ParseFloat(e.Value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || (e.TokenType != 0 && e.TokenType != 2) {
+			*issues = append(*issues, "["+sectionName+"] 包含非数值，已禁用该区域")
+			return nil
+		}
+		values = append(values, SkillNumber{Value: n, Start: e.Start, End: e.End, TokenType: e.TokenType})
+	}
+	return values
+}
+
+func parseSkillStatic(groups [][]pvf.ScriptElement, issues *[]string) []SkillNumber {
+	if len(groups) > 1 {
+		*issues = append(*issues, "重复的 [static data]，为避免误改已禁用该区域")
+		return nil
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return parseSkillNumbers(groups[0], issues, "static data")
+}
+
+func parseSkillLevels(groups [][]pvf.ScriptElement, issues *[]string) (int, [][]SkillNumber) {
+	if len(groups) > 1 {
+		*issues = append(*issues, "重复的 [level info]，为避免误改已禁用该区域")
+		return 0, nil
+	}
+	if len(groups) == 0 {
+		return 0, nil
+	}
+	values := parseSkillNumbers(groups[0], issues, "level info")
+	if len(values) == 0 {
+		return 0, nil
+	}
+	width := int(values[0].Value)
+	if width <= 0 || float64(width) != values[0].Value || (len(values)-1)%width != 0 {
+		*issues = append(*issues, "[level info] 列数或等级数据长度异常，已禁用动态编辑")
+		return 0, nil
+	}
+	levels := make([][]SkillNumber, 0, (len(values)-1)/width)
+	for i := 1; i < len(values); i += width {
+		levels = append(levels, values[i:i+width])
+	}
+	return width, levels
 }
 
 func parseSkillProperties(tokens []pvf.ScriptElement, issues *[]string) []SkillProperty {

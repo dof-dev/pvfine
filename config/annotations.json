@@ -7638,9 +7638,9 @@
         "section": "booster info"
       },
       "annotation": {
-        "title": "增强剂信息",
+        "title": "礼盒信息",
         "type": "text",
-        "content": "增强剂奖励配置"
+        "content": "礼盒奖励配置"
       },
       "group": "stk"
     },
@@ -7656,9 +7656,9 @@
         "section": "booster select category"
       },
       "annotation": {
-        "title": "增强剂选择分类",
+        "title": "礼盒选择分类",
         "type": "text",
-        "content": "增强剂的可选分类"
+        "content": "礼盒的可选分类"
       },
       "group": "stk"
     },
@@ -7674,9 +7674,9 @@
         "section": "booster selection num"
       },
       "annotation": {
-        "title": "增强剂可选数量",
+        "title": "礼盒可选数量",
         "type": "text",
-        "content": "增强剂可选数量"
+        "content": "礼盒可选数量"
       },
       "group": "stk"
     },
@@ -7692,9 +7692,9 @@
         "section": "booster category num"
       },
       "annotation": {
-        "title": "增强剂分类数量",
+        "title": "礼盒分类数量",
         "type": "text",
-        "content": "增强剂分类数量"
+        "content": "礼盒分类数量"
       },
       "group": "stk"
     },
@@ -7710,9 +7710,9 @@
         "section": "booster category name"
       },
       "annotation": {
-        "title": "增强剂分类名称",
+        "title": "礼盒分类名称",
         "type": "text",
-        "content": "增强剂分类名称"
+        "content": "礼盒分类名称"
       },
       "group": "stk"
     },
@@ -7784,7 +7784,7 @@
       "annotation": {
         "title": "时装奖励",
         "type": "text",
-        "content": "增强剂中的时装奖励"
+        "content": "礼盒中的时装奖励"
       },
       "group": "stk"
     },
@@ -7802,7 +7802,7 @@
       "annotation": {
         "title": "宠物奖励",
         "type": "text",
-        "content": "增强剂中的宠物奖励"
+        "content": "礼盒中的宠物奖励"
       },
       "group": "stk"
     },
@@ -7820,7 +7820,7 @@
       "annotation": {
         "title": "装备奖励",
         "type": "text",
-        "content": "增强剂中的装备奖励"
+        "content": "礼盒中的装备奖励"
       },
       "group": "stk"
     },
@@ -7838,7 +7838,7 @@
       "annotation": {
         "title": "道具奖励",
         "type": "text",
-        "content": "增强剂中的道具奖励"
+        "content": "礼盒中的道具奖励"
       },
       "group": "stk"
     },
@@ -7856,7 +7856,7 @@
       "annotation": {
         "title": "其它奖励",
         "type": "text",
-        "content": "增强剂中的其它奖励"
+        "content": "礼盒中的其它奖励"
       },
       "group": "stk"
     },
@@ -7872,9 +7872,9 @@
         "section": "cera"
       },
       "annotation": {
-        "title": "点券奖励",
+        "title": "商城道具奖励",
         "type": "text",
-        "content": "增强剂中的点券奖励"
+        "content": "礼盒中的商城道具奖励；首个参数为抽取项数，其后每三个参数为一组：道具 ID、权重、道具数量"
       },
       "group": "stk"
     },
@@ -8664,9 +8664,9 @@
         "section": "booster equipment upgrade"
       },
       "annotation": {
-        "title": "增强剂装备升级",
+        "title": "礼盒装备升级",
         "type": "text",
-        "content": "增强剂中的装备升级配置"
+        "content": "礼盒中的装备升级配置"
       },
       "group": "stk"
     },
@@ -8682,9 +8682,9 @@
         "section": "booster equipment separate"
       },
       "annotation": {
-        "title": "增强剂装备分离",
+        "title": "礼盒装备分离",
         "type": "text",
-        "content": "增强剂中的装备分离配置"
+        "content": "礼盒中的装备分离配置"
       },
       "group": "stk"
     },
@@ -8700,9 +8700,9 @@
         "section": "booster equipment grade"
       },
       "annotation": {
-        "title": "增强剂装备品级",
+        "title": "礼盒装备品级",
         "type": "text",
-        "content": "增强剂中的装备品级"
+        "content": "礼盒中的装备品级"
       },
       "group": "stk"
     },

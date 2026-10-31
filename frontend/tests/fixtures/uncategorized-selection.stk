@@ -1,0 +1,54 @@
+[name]
+	`灿烂的徽章自选套装礼盒`
+
+[explain]
+	`开启后， 可以从8种灿烂的徽章中选择1种， 并获得4个所选种类的徽章。`
+
+[grade]
+	1
+
+[rarity]
+	3
+
+[usable job]
+	`[all]`
+[/usable job]
+
+[attach type]
+	`[free]`
+
+[minimum level]
+	1
+
+[icon]
+	`Item/stackable/cash.img`	133
+
+[stackable type]
+	`[booster selection]`	0
+
+[move wav]
+	`BONE_TOUCH`
+
+[booster category num]
+	0
+
+[booster selection num]
+	1
+
+[booster select category]
+	0	0
+	[stackable]
+		2500033	4	2500036	4	2510046	4	2510037	4	2520037	4	2520043	4	2530040	4	2530037	4
+	[/stackable]
+[/booster select category]
+
+[booster category name]
+	`请选择徽章。`
+[/booster category name]
+
+[npc gift disallowance]
+	1
+
+[impossible contents]
+	`gift`
+[/impossible contents]

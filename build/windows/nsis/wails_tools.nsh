@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "pvfine"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.15.0"
+    !define INFO_PRODUCTVERSION "0.17.0"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "© 2026, dof-dev"

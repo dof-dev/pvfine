@@ -1,0 +1,68 @@
+[name]
+	`阿尔比恩悬案称号宝珠自选礼盒 (1个)`
+
+[explain]
+	`开启后， 可以选择获得1个拨云见日宝珠。
+
+
+
+    拨云见日宝珠只能用于2017劳动节称号。 使用后， 可以给称号赋予宝珠所拥有的技能加成。
+
+
+
+    拨云见日宝珠为账号绑定。`
+
+[flavor text]
+	`<阿尔比恩悬案>`
+
+[grade]
+	1
+
+[rarity]
+	2
+
+[usable job]
+	`[all]`
+[/usable job]
+
+[attach type]
+	`[account]`
+
+[minimum level]
+	1
+
+[icon]
+	`Item/stackable/cash_cn.img`	2271
+
+[icon mark]
+	`item/IconMark.img`	34
+
+[field image]
+	`Item/stackable/field_material_cn.img`	246
+
+[stackable type]
+	`[booster selection]`	0
+
+[move wav]
+	`BONE_TOUCH`
+
+[booster category num]
+	1	0
+
+[booster selection num]
+	1
+
+[booster select category]
+	0	0
+	[stackable]
+		490700960	1	490700964	1	490700965	1	490700966	1	490700967	1	490700968	1	490700969	1	490700970	1	490700971	1	490700972	1	490700973	1	490700974	1	490700975	1	490700976	1
+	[/stackable]
+[/booster select category]
+
+[booster category name]
+	``
+[/booster category name]
+
+[impossible contents]
+	`gift`
+[/impossible contents]

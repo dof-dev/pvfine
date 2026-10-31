@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { NButton, useDialog, useMessage } from "naive-ui";
+import { NButton, NIcon, NInput, useDialog, useMessage } from "naive-ui";
+import { Search24Regular } from "@vicons/fluent";
 import { useSettingsStore } from "../stores/settings";
 import {
   assignBinding,
@@ -18,7 +19,23 @@ const dialog = useDialog();
 const message = useMessage();
 const recording = ref<ShortcutCommandId | null>(null);
 const recordError = ref("");
-const groups = computed(() => [...new Set(shortcutCommands.map((command) => command.group))]);
+const searchQuery = ref("");
+
+const filteredCommands = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+  if (!query) return shortcutCommands;
+  return shortcutCommands.filter((command) => {
+    const labelMatch = command.label.toLowerCase().includes(query);
+    const groupMatch = command.group.toLowerCase().includes(query);
+    const binding = effectiveBinding(command.id, settings.shortcutOverrides).toLowerCase();
+    const bindingMatch = binding.includes(query);
+    return labelMatch || groupMatch || bindingMatch;
+  });
+});
+
+const groups = computed(() => [
+  ...new Set(filteredCommands.value.map((command) => command.group)),
+]);
 
 watch([() => settings.visible, () => settings.activeTab], ([visible, tab]) => {
   if (!visible || tab !== "shortcuts") cancelRecording();
@@ -78,8 +95,13 @@ function onRecordKeydown(event: KeyboardEvent): void {
     cancelRecording();
     return;
   }
-  if ((event.key === "Backspace" || event.key === "Delete") &&
-    !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+  if (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey
+  ) {
     cancelRecording();
     requestBinding(command, "");
     return;
@@ -110,7 +132,8 @@ function clearBinding(command: ShortcutCommandId): void {
 
 function restoreBinding(command: ShortcutCommandId): void {
   cancelRecording();
-  const defaultBinding = shortcutCommands.find((entry) => entry.id === command)?.defaultBinding ?? "";
+  const defaultBinding =
+    shortcutCommands.find((entry) => entry.id === command)?.defaultBinding ?? "";
   requestBinding(command, defaultBinding);
 }
 
@@ -128,21 +151,65 @@ function restoreAll(): void {
 
 <template>
   <div class="shortcut-settings">
-    <div class="shortcut-intro">
-      <div>
-        <div class="shortcut-intro-title">应用快捷键</div>
-        <div class="shortcut-intro-desc">点击按键开始录制。普通按键需搭配 Cmd/Ctrl/Alt，F1–F12 可单独使用；Esc 取消，单按 Delete 或 Backspace 清除绑定。</div>
+    <!-- 顶部操作与搜索栏 -->
+    <div class="shortcut-header-card">
+      <div class="shortcut-search-row">
+        <NInput
+          v-model:value="searchQuery"
+          size="small"
+          placeholder="搜索命令名称或按键（例如：保存、查找、Cmd+S）…"
+          clearable
+          class="shortcut-search-input"
+        >
+          <template #prefix>
+            <NIcon :size="14" class="search-icon">
+              <Search24Regular />
+            </NIcon>
+          </template>
+        </NInput>
+        <NButton
+          size="small"
+          secondary
+          :disabled="settings.saving || !Object.keys(settings.shortcutOverrides).length"
+          @click="restoreAll"
+        >
+          全部恢复默认
+        </NButton>
       </div>
-      <NButton size="small" secondary :disabled="settings.saving || !Object.keys(settings.shortcutOverrides).length" @click="restoreAll">
-        全部恢复默认
-      </NButton>
+      <div class="shortcut-tip">
+        点击按键框后直接按下新快捷键。普通按键需搭配修饰键（Cmd/Ctrl/Alt），F1–F12 可单按；单按 Delete / Backspace 清除，按 Esc 取消录制。
+      </div>
     </div>
 
+    <!-- 无搜索结果提示 -->
+    <div v-if="filteredCommands.length === 0" class="shortcut-empty">
+      未找到与 “{{ searchQuery }}” 匹配的快捷键命令
+    </div>
+
+    <!-- 按分组展示命令列表 -->
     <section v-for="group in groups" :key="group" class="shortcut-group">
-      <div class="shortcut-group-title">{{ group }}</div>
+      <div class="shortcut-group-header">
+        <span class="shortcut-group-title">{{ group }}</span>
+        <span class="shortcut-group-badge">
+          {{ filteredCommands.filter((entry) => entry.group === group).length }}
+        </span>
+      </div>
       <div class="shortcut-list">
-        <div v-for="command in shortcutCommands.filter((entry) => entry.group === group)" :key="command.id" class="shortcut-row">
-          <span class="shortcut-name">{{ command.label }}</span>
+        <div
+          v-for="command in filteredCommands.filter((entry) => entry.group === group)"
+          :key="command.id"
+          class="shortcut-row"
+        >
+          <div class="shortcut-info">
+            <span class="shortcut-name">{{ command.label }}</span>
+            <span
+              v-if="Object.hasOwn(settings.shortcutOverrides, command.id)"
+              class="shortcut-custom-tag"
+            >
+              已自定义
+            </span>
+          </div>
+
           <div class="shortcut-binding-cell">
             <button
               type="button"
@@ -152,12 +219,43 @@ function restoreAll(): void {
               :aria-label="`录制${command.label}快捷键`"
               @click="beginRecording(command.id)"
             >
-              {{ recording === command.id ? "请按组合键…" : formatBinding(effectiveBinding(command.id, settings.shortcutOverrides)) }}
+              <span v-if="recording === command.id" class="shortcut-recording-text">
+                请按组合键…
+              </span>
+              <kbd v-else-if="effectiveBinding(command.id, settings.shortcutOverrides)" class="shortcut-kbd">
+                {{ formatBinding(effectiveBinding(command.id, settings.shortcutOverrides)) }}
+              </kbd>
+              <span v-else class="shortcut-unassigned">未指定快捷键</span>
             </button>
-            <span v-if="recording === command.id && recordError" class="shortcut-record-error" role="alert">{{ recordError }}</span>
+            <span
+              v-if="recording === command.id && recordError"
+              class="shortcut-record-error"
+              role="alert"
+            >
+              {{ recordError }}
+            </span>
           </div>
-          <NButton size="tiny" quaternary :aria-label="`清除${command.label}快捷键`" :disabled="settings.saving || !effectiveBinding(command.id, settings.shortcutOverrides)" @click="clearBinding(command.id)">清除</NButton>
-          <NButton size="tiny" quaternary :aria-label="`恢复${command.label}默认快捷键`" :disabled="settings.saving || !Object.hasOwn(settings.shortcutOverrides, command.id)" @click="restoreBinding(command.id)">默认</NButton>
+
+          <div class="shortcut-actions">
+            <NButton
+              size="tiny"
+              quaternary
+              :aria-label="`清除${command.label}快捷键`"
+              :disabled="settings.saving || !effectiveBinding(command.id, settings.shortcutOverrides)"
+              @click="clearBinding(command.id)"
+            >
+              清除
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              :aria-label="`恢复${command.label}默认快捷键`"
+              :disabled="settings.saving || !Object.hasOwn(settings.shortcutOverrides, command.id)"
+              @click="restoreBinding(command.id)"
+            >
+              默认
+            </NButton>
+          </div>
         </div>
       </div>
     </section>
@@ -165,19 +263,218 @@ function restoreAll(): void {
 </template>
 
 <style scoped>
-.shortcut-settings { display: flex; flex-direction: column; gap: 18px; max-height: min(720px, calc(100vh - 220px)); overflow-y: auto; padding-right: 4px; }
-.shortcut-intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.shortcut-intro-title, .shortcut-group-title { color: var(--pvf-text-primary); font-size: 13px; font-weight: 600; }
-.shortcut-intro-desc { margin-top: 4px; color: var(--pvf-text-faint); font-size: 12px; line-height: 1.5; }
-.shortcut-record-error { color: var(--pvf-error); font-size: 11px; line-height: 1.4; }
-.shortcut-group { display: flex; flex-direction: column; gap: 8px; }
-.shortcut-list { overflow: hidden; border: 1px solid var(--pvf-border-subtle); border-radius: 10px; background: var(--pvf-surface-card); }
-.shortcut-row { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; }
-.shortcut-row + .shortcut-row { border-top: 1px solid var(--pvf-border-faint); }
-.shortcut-name { flex: 1; min-width: 0; color: var(--pvf-text-primary); font-size: 13px; }
-.shortcut-binding-cell { display: flex; flex-direction: column; gap: 4px; width: 145px; flex: 0 0 145px; }
-.shortcut-binding { width: 100%; padding: 6px 9px; border: 1px solid var(--pvf-border-normal); border-radius: 6px; background: var(--pvf-surface-subtle); color: var(--pvf-text-primary); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
-.shortcut-binding:hover, .shortcut-binding:focus-visible, .shortcut-binding--recording { border-color: var(--pvf-primary); outline: none; box-shadow: 0 0 0 2px var(--pvf-effect-focus-ring); }
-.shortcut-binding--recording { color: var(--pvf-primary); }
-@media (max-width: 600px) { .shortcut-row { flex-wrap: wrap; } .shortcut-name { flex-basis: 100%; } .shortcut-binding-cell { flex: 1; width: auto; } }
+.shortcut-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shortcut-header-card {
+  padding: 12px 14px;
+  background: var(--pvf-surface-card);
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcut-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shortcut-search-input {
+  flex: 1;
+}
+
+.search-icon {
+  color: var(--pvf-text-faint);
+  display: flex;
+  align-items: center;
+}
+
+.shortcut-tip {
+  color: var(--pvf-text-faint);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.shortcut-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--pvf-text-faint);
+  font-size: 13px;
+  background: var(--pvf-surface-card);
+  border: 1px dashed var(--pvf-border-subtle);
+  border-radius: 9px;
+}
+
+.shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcut-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.shortcut-group-title {
+  color: var(--pvf-text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.shortcut-group-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--pvf-surface-subtle);
+  color: var(--pvf-text-faint);
+}
+
+.shortcut-list {
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 9px;
+  background: var(--pvf-surface-card);
+  overflow: hidden;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 14px;
+  transition: background-color 0.15s ease;
+}
+
+.shortcut-row:hover {
+  background: var(--pvf-surface-hover);
+}
+
+.shortcut-row + .shortcut-row {
+  border-top: 1px solid var(--pvf-border-faint);
+}
+
+.shortcut-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcut-name {
+  color: var(--pvf-text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortcut-custom-tag {
+  display: inline-flex;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--pvf-primary);
+  background: var(--pvf-primary-soft);
+  border-radius: 4px;
+}
+
+.shortcut-binding-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 150px;
+  flex: 0 0 150px;
+}
+
+.shortcut-binding {
+  width: 100%;
+  padding: 4px 8px;
+  min-height: 28px;
+  border: 1px solid var(--pvf-border-subtle);
+  border-radius: 6px;
+  background: var(--pvf-surface-subtle);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.shortcut-binding:hover,
+.shortcut-binding:focus-visible {
+  border-color: var(--pvf-primary-hover);
+  background: var(--pvf-surface-hover);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pvf-effect-focus-ring);
+}
+
+.shortcut-binding--recording {
+  border-color: var(--pvf-primary);
+  background: var(--pvf-primary-soft);
+  box-shadow: 0 0 0 2px var(--pvf-effect-focus-ring);
+}
+
+.shortcut-recording-text {
+  color: var(--pvf-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shortcut-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--pvf-text-primary);
+  letter-spacing: 0.2px;
+}
+
+.shortcut-unassigned {
+  font-size: 11px;
+  color: var(--pvf-text-faint);
+  font-style: italic;
+}
+
+.shortcut-record-error {
+  color: var(--pvf-error);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.shortcut-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+  .shortcut-row {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+  .shortcut-info {
+    flex-basis: 100%;
+  }
+  .shortcut-binding-cell {
+    flex: 1;
+    width: auto;
+  }
+}
 </style>

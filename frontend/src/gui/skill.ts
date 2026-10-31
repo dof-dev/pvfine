@@ -83,3 +83,6 @@ export const skillJobNames: Record<string, string> = {
   creatormage: "缔造者", demonicswordman: "黑暗武士", gunblader: "枪剑士",
   archer: "弓箭手",
 };
+
+/** A source index, independent of preview level and display multiplier. */
+export interface SkillDataSelection { dynamic: boolean; index: number; mode: string }

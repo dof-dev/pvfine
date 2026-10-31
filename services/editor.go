@@ -263,6 +263,8 @@ func (s *EditorService) Save() (ArchiveInfo, error) {
 		s.c.mu.Unlock()
 		return ArchiveInfo{}, err
 	}
+	s.c.mcpSourceHash = a.SourceHash()
+	s.c.mcpSaveSequence++
 	s.c.markAdvancedSearchStaleLocked(a)
 	saveMutations := a.MutationsSince(0)
 	a.ClearMutations()
@@ -410,36 +412,13 @@ func (s *EditorService) SaveAsDialog() (string, error) {
 	if path == "" {
 		return "", nil // 用户取消
 	}
-	progress := archiveSaveProgressEmitter()
-	s.c.mu.Lock()
-	if s.c.archive != a {
-		s.c.mu.Unlock()
+	s.c.mu.RLock()
+	sameArchive := s.c.archive == a
+	s.c.mu.RUnlock()
+	if !sameArchive {
 		return "", ErrNoArchive
 	}
-	if err := s.c.ensureVersionReadyLocked(); err != nil {
-		s.c.mu.Unlock()
-		return "", err
-	}
-	sourcePath := a.SourcePath()
-	if err := a.SaveAsWithProgress(path, progress); err != nil {
-		s.c.mu.Unlock()
-		return "", err
-	}
-	s.c.markAdvancedSearchStaleLocked(a)
-	saveMutations := a.MutationsSince(0)
-	a.ClearMutations()
-	info := a.Info()
-	s.c.mu.Unlock()
-	if err := s.c.scheduleArchiveMutations(a, saveMutations); err != nil {
-		return "", err
-	}
-	s.c.persistCurrentSQLiteIndexAsync()
-	s.c.persistCurrentSearchIndexCacheAsync()
-	if s.c.autosave != nil {
-		s.c.autosave.DropForSource(sourcePath)
-	}
-	emitEvent("archive:saved", info)
-	return path, nil
+	return s.saveCopy(path, true, "")
 }
 
 type exportSelection struct {

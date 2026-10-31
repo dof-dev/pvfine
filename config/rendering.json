@@ -25,7 +25,9 @@
       },
       "format": {
         "tokensPerLine": 2,
-        "standaloneValues": [-1]
+        "standaloneValues": [
+          -1
+        ]
       }
     },
     {
@@ -37,7 +39,9 @@
       },
       "format": {
         "tokensPerLine": 17,
-        "nestedSections": ["list"]
+        "nestedSections": [
+          "list"
+        ]
       }
     },
     {
@@ -397,6 +401,22 @@
       },
       "format": {
         "tokensPerLine": 9
+      }
+    },
+    {
+      "id": "user.rule.aaf15bba-9653-41ae-b16c-17f4fb640e66",
+      "match": {
+        "extensions": [
+          ".stk"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "cera"
+      },
+      "format": {
+        "tokensPerLine": 3,
+        "offset": 1
       }
     }
   ]

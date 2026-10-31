@@ -298,6 +298,12 @@ export interface BookmarkGroup {
     "entries"?: BookmarkEntry[] | null;
 }
 
+export interface BuiltinSkill {
+    "id": string;
+    "title": string;
+    "description": string;
+}
+
 /**
  * CacheClearResult reports what one clear pass removed.
  */
@@ -380,6 +386,19 @@ export interface EditorAnnotation {
     "inlineImage"?: boolean;
     "placeholder"?: PlaceholderRef | null;
     "rarity": number;
+}
+
+export interface EffectParticle {
+    "life": number;
+    "frequency": number;
+    "maximum": number;
+    "maximumTime": number;
+    "gravity": number;
+    "position": number[] | null;
+    "area": number[] | null;
+    "alpha": number[] | null;
+    "velocity": number[] | null;
+    "acceleration": number[] | null;
 }
 
 /**
@@ -603,6 +622,7 @@ export interface ImportPreview {
     "overwrittenCount": number;
     "entries": (ImportPreviewEntry | null)[] | null;
     "entriesTruncated": boolean;
+    "convertedCount": number;
 }
 
 /**
@@ -614,6 +634,7 @@ export interface ImportPreviewEntry {
     "dataType": number;
     "size": number;
     "overwrite": boolean;
+    "sourceEncoding": string;
 }
 
 /**
@@ -625,6 +646,40 @@ export interface ImportResult {
     "importedCount": number;
     "overwrittenCount": number;
     "changedPaths"?: string[] | null;
+}
+
+export interface IndependentDropDocument {
+    "version": string;
+    "rows": IndependentDropRow[] | null;
+    "lists": IndependentDropList[] | null;
+    "balance": SkillNumber[] | null;
+    "bodyEnd": number;
+    "isList": boolean;
+    "issues": string[] | null;
+}
+
+export interface IndependentDropItem {
+    "fields": SkillNumber[] | null;
+    "name": string;
+}
+
+export interface IndependentDropList {
+    "id": string;
+    "path": string;
+    "fileIndex": number;
+}
+
+export interface IndependentDropRow {
+    "listTagStart": number;
+    "fields": SkillNumber[] | null;
+    "items": IndependentDropItem[] | null;
+    "monsterName": string;
+    "itemName": string;
+    "start": number;
+    "end": number;
+    "listStart": number;
+    "listEnd": number;
+    "hasExtensions": boolean;
 }
 
 /**
@@ -671,6 +726,53 @@ export interface IndexStatus {
 }
 
 /**
+ * ItemAppearance shares the item rarity and icon metadata used by shop views.
+ */
+export interface ItemAppearance {
+    "icon": ImageReference | null;
+    "rarity": number;
+}
+
+/**
+ * ItemCreateRequest carries all relevant editor drafts, so unsaved list entries
+ * participate in collision checks and survive registration.
+ */
+export interface ItemCreateRequest {
+    "path": string;
+    "id": string;
+    "name": string;
+    "text": string;
+    "revision": number;
+    "drafts": ShopDraft[] | null;
+}
+
+export interface ItemCreateResult {
+    "fileIndex": number;
+    "path": string;
+    "id": string;
+    "files": ShopEditedFile[] | null;
+}
+
+export interface ItemCreationCheck {
+    "revision": number;
+    "listPath": string;
+    "entryPath": string;
+    "conflicts": string[] | null;
+}
+
+export interface ItemEffectLayer {
+    "path": string;
+    "animation": AniPreviewDocument | null;
+    "particle"?: EffectParticle | null;
+}
+
+export interface ItemEffectPreview {
+    "objectPath": string;
+    "layers": ItemEffectLayer[] | null;
+    "issues": string[] | null;
+}
+
+/**
  * ListRegistrationTarget describes a list that can register one archive file.
  */
 export interface ListRegistrationTarget {
@@ -679,6 +781,38 @@ export interface ListRegistrationTarget {
     "entryPath": string;
     "suggestedId": string;
     "hasIndexHash": boolean;
+}
+
+export interface MCPStatus {
+    "enabled": boolean;
+    "port": number;
+    "endpoint": string;
+    "error"?: string;
+    "busy": boolean;
+}
+
+export interface ModImportFile {
+    "path": string;
+    "operation": string;
+    "overwrite": boolean;
+    "pairs": ModImportPair[] | null;
+}
+
+export interface ModImportPair {
+    "key": string;
+    "value": string;
+    "previous": string;
+    "overwrite": boolean;
+}
+
+export interface ModImportPreview {
+    "id": string;
+    "name": string;
+    "version": string;
+    "format": string;
+    "importedCount": number;
+    "overwrittenCount": number;
+    "files": ModImportFile[] | null;
 }
 
 /**
@@ -1036,6 +1170,13 @@ export interface SkillEntry {
     "job": string;
 }
 
+export interface SkillInstallResult {
+    "id": string;
+    "path": string;
+    "status": string;
+    "message": string;
+}
+
 export interface SkillMode {
     "id": string;
     "static": SkillNumber[] | null;
@@ -1065,6 +1206,57 @@ export interface SkillPropertyBinding {
     "dynamic": boolean;
     "index": number;
     "multiplier": number;
+}
+
+export interface SkillTreeBranch {
+    "insertOffset": number;
+    "job": string;
+    "name": string;
+    "nodes": SkillTreeNode[] | null;
+}
+
+export interface SkillTreeDocument {
+    "text": string;
+    "fileIndex": number;
+    "path": string;
+    "common": SkillTreeNode[] | null;
+    "branches": SkillTreeBranch[] | null;
+    "issues": string[] | null;
+}
+
+export interface SkillTreeNode {
+    "sourceStart": number;
+    "sourceClose": number;
+    "positionTokens": SkillNumber[] | null;
+    "nextTokens": SkillNumber[] | null;
+    "id": number;
+    "x": number;
+    "y": number;
+    "positionKind": string;
+    "position": number[] | null;
+    "next": number[] | null;
+    "name": string;
+    "explain": string;
+    "path": string;
+    "fileIndex": number;
+    "icon": ImageReference | null;
+    "requiredLevel": number | null;
+}
+
+/**
+ * SkillTreeRegistration retains the job token: skill IDs are local to this job.
+ */
+export interface SkillTreeRegistration {
+    "job": string;
+    "kind": string;
+    "path": string;
+}
+
+export interface SkillTreeSkill {
+    "id": number;
+    "name": string;
+    "path": string;
+    "fileIndex": number;
 }
 
 export interface StoredFileSet {

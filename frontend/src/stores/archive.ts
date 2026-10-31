@@ -1,3 +1,4 @@
+import { assertMCPIdle } from "../mcpActivity";
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { Events } from "@wailsio/runtime";
@@ -184,6 +185,7 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   async function openPath(path: string): Promise<ArchiveInfo | null> {
+    assertMCPIdle();
     if (!path.trim()) return null;
     loading.value = true;
     loadError.value = "";
@@ -200,6 +202,7 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   async function openDialog() {
+    assertMCPIdle();
     loading.value = true;
     loadError.value = "";
     try {
@@ -216,6 +219,7 @@ export const useArchiveStore = defineStore("archive", () => {
   }
 
   async function close() {
+    assertMCPIdle();
     await ArchiveService.Close();
     stopIndexPolling();
     info.value = null;

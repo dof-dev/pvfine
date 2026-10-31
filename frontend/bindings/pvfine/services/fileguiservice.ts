@@ -31,6 +31,29 @@ export function ApplyWorldDropEdit(req: $models.WorldDropEditRequest): $Cancella
     return $Call.ByID(237649473, req);
 }
 
+export function CheckItemCreation(req: $models.ItemCreateRequest): $CancellablePromise<$models.ItemCreationCheck | null> {
+    return $Call.ByID(597891646, req);
+}
+
+/**
+ * CreateItem stages the script, LST and (where required) indexhash before
+ * publishing one version operation. No PVF disk write happens here.
+ */
+export function CreateItem(req: $models.ItemCreateRequest): $CancellablePromise<$models.ItemCreateResult | null> {
+    return $Call.ByID(3967276739, req);
+}
+
+/**
+ * ListSkillTreeSkills lists registered IDs in the current job, including common skills.
+ */
+export function ListSkillTreeSkills(job: string): $CancellablePromise<$models.SkillTreeSkill[] | null> {
+    return $Call.ByID(2588513399, job);
+}
+
+export function ListSkillTrees(): $CancellablePromise<$models.SkillTreeRegistration[] | null> {
+    return $Call.ByID(2559201962);
+}
+
 export function ListSkills(): $CancellablePromise<$models.SkillEntry[] | null> {
     return $Call.ByID(3606807130);
 }
@@ -39,11 +62,45 @@ export function ReadForge(fileIndex: number, text: string): $CancellablePromise<
     return $Call.ByID(1666123291, fileIndex, text);
 }
 
+export function ReadIndependentDrop(fileIndex: number, text: string): $CancellablePromise<$models.IndependentDropDocument | null> {
+    return $Call.ByID(286472991, fileIndex, text);
+}
+
 /**
  * ReadItem resolves the same item union used by shop lists and search pickers.
  */
 export function ReadItem(id: string, drafts: $models.ShopDraft[] | null): $CancellablePromise<$models.ShopItem | null> {
     return $Call.ByID(3301299, id, drafts);
+}
+
+/**
+ * ReadItemAppearances batches presentation metadata without reading item prices.
+ */
+export function ReadItemAppearances(ids: string[] | null): $CancellablePromise<{ [_ in string]?: $models.ItemAppearance | null } | null> {
+    return $Call.ByID(3207892534, ids);
+}
+
+/**
+ * ReadItemEffectPreview resolves live LST references, relative paths and editor
+ * drafts. It reads only PVF resources; sprite decoding remains in ImageService.
+ */
+export function ReadItemEffectPreview(fileIndex: number, objectID: string, particle: string, drafts: $models.ShopDraft[] | null): $CancellablePromise<$models.ItemEffectPreview | null> {
+    return $Call.ByID(1037122538, fileIndex, objectID, particle, drafts);
+}
+
+/**
+ * ReadItemIcons reads only display metadata for the currently visible rewards.
+ */
+export function ReadItemIcons(ids: string[] | null): $CancellablePromise<{ [_ in string]?: $models.ImageReference | null } | null> {
+    return $Call.ByID(2935306771, ids);
+}
+
+/**
+ * ReadItemNames resolves equipment and stackable names using the same item
+ * relations and localized text as other archive views. Missing IDs are omitted.
+ */
+export function ReadItemNames(ids: string[] | null): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(3212344113, ids);
 }
 
 /**
@@ -56,6 +113,20 @@ export function ReadShop(fileIndex: number, text: string): $CancellablePromise<$
 
 export function ReadSkill(fileIndex: number, text: string): $CancellablePromise<$models.SkillDocument | null> {
     return $Call.ByID(3027074897, fileIndex, text);
+}
+
+/**
+ * ReadSkillTree resolves only registered trees, using the current archive overlay.
+ */
+export function ReadSkillTree(job: string, kind: string): $CancellablePromise<$models.SkillTreeDocument | null> {
+    return $Call.ByID(2818122281, job, kind);
+}
+
+/**
+ * ReadSkillTreeDraft projects the editor draft without changing the archive.
+ */
+export function ReadSkillTreeDraft(job: string, kind: string, text: string): $CancellablePromise<$models.SkillTreeDocument | null> {
+    return $Call.ByID(3201412064, job, kind, text);
 }
 
 export function ReadUpgrade(fileIndex: number, text: string): $CancellablePromise<$models.UpgradeDocument | null> {

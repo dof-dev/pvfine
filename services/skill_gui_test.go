@@ -179,3 +179,173 @@ func TestSkillReal90CN(t *testing.T) {
 		t.Fatal("description template changed")
 	}
 }
+
+func TestSkillRootOnlyMode(t *testing.T) {
+	// 类似 skill/priest/jupiter.skl：无显式 [dungeon] / [pvp]，直接在根级定义 static data, level info 和 level property
+	text := "[name]\n`神罚之锤`\n[static data]\n250 300\n[/static data]\n[level info]\n2 100 200 300 400\n[/level info]\n[level property]\n1 99 `攻击力 : <int>\n持续时间 : <int>` -1 0 1.0 -1 1 1.0\n[/level property]"
+	doc := parseSkill(text)
+	if doc.Name != "神罚之锤" {
+		t.Fatalf("name mismatch: got %q", doc.Name)
+	}
+	if len(doc.Modes) != 1 {
+		t.Fatalf("expected 1 mode, got %d", len(doc.Modes))
+	}
+	dungeon := doc.Modes[0]
+	if dungeon.ID != "dungeon" {
+		t.Fatalf("expected dungeon mode, got %q", dungeon.ID)
+	}
+	if len(dungeon.Static) != 2 || dungeon.Static[0].Value != 250 || dungeon.Static[1].Value != 300 {
+		t.Fatalf("static mismatch: %+v", dungeon.Static)
+	}
+	if dungeon.Width != 2 || len(dungeon.Levels) != 2 || dungeon.Levels[0][0].Value != 100 || dungeon.Levels[1][1].Value != 400 {
+		t.Fatalf("levels mismatch: %+v", dungeon.Levels)
+	}
+	if len(dungeon.Properties) != 1 || len(dungeon.Properties[0].Bindings) != 2 {
+		t.Fatalf("properties mismatch: %+v", dungeon.Properties)
+	}
+	if len(dungeon.Issues) != 0 {
+		t.Fatalf("unexpected issues: %v", dungeon.Issues)
+	}
+}
+
+func TestSkillRootFallbackAndPvpInheritance(t *testing.T) {
+	// 根级定义 static data 和 level info，显式 [pvp] 定义其专属 level info，未显式定义 [dungeon]
+	text := "[name]\n`基础精通`\n[static data]\n10 20\n[/static data]\n[level info]\n1 100 110\n[/level info]\n[pvp]\n[level info]\n1 50 55\n[/level info]\n[/pvp]\n[level property]\n0 0 `攻击提升 : <int>` -1 0 1.0\n[/level property]"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 2 {
+		t.Fatalf("expected 2 modes (dungeon fallback & pvp), got %d", len(doc.Modes))
+	}
+	dungeon := doc.Modes[0]
+	pvp := doc.Modes[1]
+	if dungeon.ID != "dungeon" || pvp.ID != "pvp" {
+		t.Fatalf("unexpected mode IDs: %s, %s", dungeon.ID, pvp.ID)
+	}
+	// dungeon 使用根级 level info
+	if dungeon.Levels[0][0].Value != 100 || dungeon.Levels[1][0].Value != 110 {
+		t.Fatalf("dungeon levels mismatch: %+v", dungeon.Levels)
+	}
+	// pvp 使用专属 level info
+	if pvp.Levels[0][0].Value != 50 || pvp.Levels[1][0].Value != 55 {
+		t.Fatalf("pvp levels mismatch: %+v", pvp.Levels)
+	}
+	// pvp 继承根级 static data
+	if len(pvp.Static) != 2 || pvp.Static[0].Value != 10 || pvp.Static[1].Value != 20 {
+		t.Fatalf("pvp static inheritance failed: %+v", pvp.Static)
+	}
+	// 共享根级 level property
+	if len(dungeon.Properties) != 1 || len(pvp.Properties) != 1 {
+		t.Fatalf("shared properties failed: d=%d, p=%d", len(dungeon.Properties), len(pvp.Properties))
+	}
+}
+
+func TestSkillExplicitDungeonInheritsRootStatic(t *testing.T) {
+	// 显式 [dungeon] 和 [pvp] 均未定义 static data，根级定义了 static data
+	text := "[name]\n`瞬影打`\n[static data]\n99\n[/static data]\n[dungeon]\n[level info]\n1 300\n[/level info]\n[/dungeon]\n[pvp]\n[level info]\n1 150\n[/level info]\n[/pvp]"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 2 {
+		t.Fatalf("expected 2 modes, got %d", len(doc.Modes))
+	}
+	for _, m := range doc.Modes {
+		if len(m.Static) != 1 || m.Static[0].Value != 99 {
+			t.Fatalf("mode %s static inheritance failed: %+v", m.ID, m.Static)
+		}
+	}
+}
+
+func TestSkillRootStaticIssuesNotLostOnFallback(t *testing.T) {
+	// 根级 static data 包含非法非数值，子模式继承时必须保留错误提示，不能静默吞掉
+	text := "[name]\n`异常技能`\n[static data]\n100 NOT_A_NUMBER 200\n[/static data]\n[level info]\n1 50\n[/level info]\n[pvp]\n[level info]\n1 30\n[/level info]"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 2 {
+		t.Fatalf("expected 2 modes, got %d", len(doc.Modes))
+	}
+	for _, m := range doc.Modes {
+		if len(m.Static) != 0 {
+			t.Fatalf("expected empty static on error, got %d", len(m.Static))
+		}
+		hasStaticIssue := false
+		for _, issue := range m.Issues {
+			if strings.Contains(issue, "[static data]") {
+				hasStaticIssue = true
+				break
+			}
+		}
+		if !hasStaticIssue {
+			t.Fatalf("mode %s lost root static issue: %v", m.ID, m.Issues)
+		}
+	}
+}
+
+func TestSkillPureMechanismSkillWithoutNumericBlocks(t *testing.T) {
+	// 纯机制/状态类技能，无 static data 也无 level info，且无显式模式
+	text := "[name]\n`受身蹲伏`\n[type]\n`[passive]`\n[required level]\n10\n"
+	doc := parseSkill(text)
+	if doc.Name != "受身蹲伏" {
+		t.Fatalf("name mismatch: %q", doc.Name)
+	}
+	if len(doc.Modes) != 0 {
+		t.Fatalf("expected 0 modes for pure mechanism skill, got %d", len(doc.Modes))
+	}
+}
+
+func TestSkillStaticOnlyPassive(t *testing.T) {
+	// 只有静态数据的被动技能（无 level info）
+	text := "[name]\n`布甲精通`\n[static data]\n0 20 100 500\n[/static data]\n"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 1 {
+		t.Fatalf("expected 1 mode, got %d", len(doc.Modes))
+	}
+	m := doc.Modes[0]
+	if m.ID != "dungeon" || len(m.Static) != 4 || len(m.Levels) != 0 {
+		t.Fatalf("unexpected static-only mode: %+v", m)
+	}
+}
+
+func TestSkillRootLevelInfoMalformed(t *testing.T) {
+	// 根级 level info 长度异常（不能被列宽整除）
+	text := "[name]\n`破损等级技能`\n[static data]\n10\n[/static data]\n[level info]\n3 100 200\n[/level info]"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 1 {
+		t.Fatalf("expected 1 mode, got %d", len(doc.Modes))
+	}
+	m := doc.Modes[0]
+	if len(m.Levels) != 0 {
+		t.Fatalf("expected empty levels on malformed width, got %d", len(m.Levels))
+	}
+	hasLevelIssue := false
+	for _, issue := range m.Issues {
+		if strings.Contains(issue, "[level info]") {
+			hasLevelIssue = true
+			break
+		}
+	}
+	if !hasLevelIssue {
+		t.Fatalf("missing level info issue: %v", m.Issues)
+	}
+}
+
+func TestSkillRootDuplicateLevelInfoDisabled(t *testing.T) {
+	// 根级存在重复的 [level info]，无显式 [dungeon] 时回退应正确报告 issue 并禁用动态等级数据
+	text := "[name]\n`重复等级技能`\n[static data]\n10\n[/static data]\n[level info]\n1 50\n[/level info]\n[level info]\n1 60\n[/level info]"
+	doc := parseSkill(text)
+	if len(doc.Modes) != 1 {
+		t.Fatalf("expected 1 mode, got %d", len(doc.Modes))
+	}
+	m := doc.Modes[0]
+	if len(m.Levels) != 0 {
+		t.Fatalf("expected levels disabled on duplicate groups, got %d", len(m.Levels))
+	}
+	hasDupIssue := false
+	for _, issue := range m.Issues {
+		if strings.Contains(issue, "重复的 [level info]") {
+			hasDupIssue = true
+			break
+		}
+	}
+	if !hasDupIssue {
+		t.Fatalf("expected duplicate issue, got: %v", m.Issues)
+	}
+}
+
+
+

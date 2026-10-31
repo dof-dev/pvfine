@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"log"
 	"log/slog"
@@ -119,6 +118,9 @@ func (c *closeCoordinator) handlerFor(window application.Window) func(*applicati
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed frontend/src/script-api.d.ts
+var scriptAPIDeclaration string
+
 func main() {
 	logOutput := services.CaptureLogs(log.Writer())
 	log.SetOutput(logOutput)
@@ -132,6 +134,11 @@ func main() {
 	// One file set service backs both the sidebar and the script API, so a
 	// scripted change and a manual save target the same document.
 	fileSetService := services.NewFileSetService()
+	archiveService := services.NewArchiveService(core)
+	editorService := services.NewEditorService(core, settingsService)
+	scriptService := services.NewScriptService(core, fileSetService)
+	exportService := services.NewExportService(core)
+	mcpService := services.NewMCPService(core, archiveService, editorService, scriptService, exportService, scriptAPIDeclaration)
 	runtimeLogLevel := slog.LevelWarn
 	if buildmode.Development {
 		runtimeLogLevel = slog.LevelInfo
@@ -145,13 +152,14 @@ func main() {
 		ErrorHandler:     func(err error) { services.LogServiceError(err) },
 		FileAssociations: []string{".pvf"},
 		Services: []application.Service{
-			application.NewService(services.NewArchiveService(core)),
-			application.NewService(services.NewEditorService(core, settingsService)),
+			application.NewService(archiveService),
+			application.NewService(editorService),
 			application.NewService(services.NewDropService(core)),
 			application.NewService(services.NewBatchService(core)),
-			application.NewService(services.NewScriptService(core, fileSetService)),
+			application.NewService(scriptService),
 			application.NewService(services.NewVersionService(core)),
-			application.NewService(services.NewExportService(core)),
+			application.NewService(exportService),
+			application.NewService(services.NewModImportService(core)),
 			application.NewService(services.NewAnnotationService(core)),
 			application.NewService(services.NewRenderingService(core)),
 			application.NewService(services.NewRuleService(core)),
@@ -164,6 +172,8 @@ func main() {
 			application.NewService(fileSetService),
 			application.NewService(services.NewBookmarkService()),
 			application.NewService(services.NewArchiveDiffService(core)),
+			application.NewService(mcpService),
+			application.NewService(services.NewSkillService()),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -173,7 +183,8 @@ func main() {
 		},
 	})
 	services.ObserveLogEvents(app)
-	app.RegisterService(application.NewService(services.NewUpdateService(app, appVersion)))
+	updateService := services.NewUpdateService(app, appVersion)
+	app.RegisterService(application.NewService(updateService))
 	scriptWindowService := services.NewScriptWindowService(app)
 	app.RegisterService(application.NewService(scriptWindowService))
 	closeCoordinator := newCloseCoordinator(app, scriptWindowService)
@@ -186,7 +197,7 @@ func main() {
 	if updaterEnabled {
 		appMenu.Add("检查更新").OnClick(func(*application.Context) {
 			go func() {
-				if err := app.Updater.CheckAndInstall(context.Background()); err != nil {
+				if err := updateService.CheckForUpdates(); err != nil {
 					log.Printf("检查更新失败: %v", err)
 				}
 			}()
@@ -260,7 +271,7 @@ func main() {
 	})
 
 	if updaterEnabled {
-		startBackgroundUpdateCheck(app)
+		startBackgroundUpdateCheck(updateService)
 	}
 
 	if err := app.Run(); err != nil {
@@ -294,22 +305,17 @@ func configureUpdater(app *application.App) bool {
 	return true
 }
 
-func startBackgroundUpdateCheck(app *application.App) {
+func startBackgroundUpdateCheck(updateService *services.UpdateService) {
 	if githubRepository == "" || appVersion == "" || appVersion == "dev" || appVersion == "0.0.0" {
 		return
 	}
 
 	go func() {
 		// Give the first window time to enter the event loop before opening the
-		// updater window when a newer release is available.
+		// update confirmation when a newer release is available.
 		time.Sleep(3 * time.Second)
 
-		release, err := app.Updater.Check(context.Background())
-		if err != nil || release == nil {
-			return
-		}
-
-		if err := app.Updater.CheckAndInstall(context.Background()); err != nil {
+		if err := services.CheckForUpdatesInBackground(updateService); err != nil {
 			log.Printf("自动更新失败: %v", err)
 		}
 	}()

@@ -16,6 +16,11 @@ import (
 
 func twFixture(t *testing.T) []byte {
 	t.Helper()
+	return twFixtureWithScript(t, nil)
+}
+
+func twFixtureWithScript(t *testing.T, nativeScript []byte) []byte {
+	t.Helper()
 	encode := func(s string) []byte {
 		b, e := traditionalchinese.Big5.NewEncoder().Bytes([]byte(s))
 		if e != nil {
@@ -35,6 +40,9 @@ func twFixture(t *testing.T) []byte {
 	script := []byte{0xb0, 0xd0, 5, 0, 0, 0, 0, 7, 1, 0, 0, 0, 5, 2, 0, 0, 0, 2, 4, 0, 0, 0}
 	// Legacy writers sometimes declare padding as part of the script.
 	script = append(script, 0, 0)
+	if nativeScript != nil {
+		script = nativeScript
+	}
 	reference := []byte{0xb0, 0xd0, 5, 0, 0, 0, 0, 9, 0, 0, 0, 0, 10, 4, 0, 0, 0}
 	list := []byte{0xb0, 0xd0, 2, 0, 0, 0, 0, 7, 3, 0, 0, 0}
 	var tree, body bytes.Buffer
@@ -64,6 +72,66 @@ func twFixture(t *testing.T) []byte {
 	out.Write(enc)
 	out.Write(body.Bytes())
 	return out.Bytes()
+}
+
+func TestTWOpaqueNumericTokenRoundTrip(t *testing.T) {
+	native := []byte{0xb0, 0xd0, 5, 2, 0, 0, 0}
+	for _, v := range []uint32{0, 1, 0x7fffffff, 0x80000000, 0xffffffff} {
+		native = append(native, 3, 0, 0, 0, 0)
+		binary.LittleEndian.PutUint32(native[len(native)-4:], v)
+	}
+	original := twFixtureWithScript(t, native)
+	a, err := Parse(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Release()
+	i, _ := a.Find("equipment/test.equ")
+	raw, err := a.RawBytes(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p := 5; p < len(raw); p += 5 {
+		if raw[p] != 1 || !bytes.Equal(raw[p+1:p+5], native[p+3:p+7]) {
+			t.Fatal("native token type/value not preserved")
+		}
+	}
+	var untouched bytes.Buffer
+	if err := a.SaveTo(&untouched); err != nil || !bytes.Equal(original, untouched.Bytes()) {
+		t.Fatal("untouched archive changed")
+	}
+	text, err := a.Text(i)
+	if err != nil || !strings.Contains(text, "{1=-2147483648}") || !strings.Contains(text, "{1=-1}") {
+		t.Fatal("opaque tokens not rendered losslessly")
+	}
+	reader := a.NewFileComparisonReader()
+	fp, err := reader.CanonicalFingerprint(context.Background(), i, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := bytes.Clone(raw)
+	changed[6]++
+	next, err := reader.CanonicalFingerprint(context.Background(), i, changed)
+	if err != nil || fp.Digest == next.Digest {
+		t.Fatal("comparison ignored opaque token value")
+	}
+	if err := a.SetText(i, text); err != nil {
+		t.Fatal(err)
+	}
+	var saved bytes.Buffer
+	if err := a.SaveTo(&saved); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Parse(saved.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Release()
+	i, _ = b.Find("equipment/test.equ")
+	got, err := b.tw.payload(b.data, i)
+	if err != nil || !bytes.Equal(native, got) {
+		t.Fatal("native token bytes changed after text edit/save/reopen")
+	}
 }
 
 func TestTWRoundTrip(t *testing.T) {

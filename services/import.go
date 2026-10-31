@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -41,23 +40,26 @@ type ImportPreview struct {
 	OverwrittenCount int                   `json:"overwrittenCount"`
 	Entries          []*ImportPreviewEntry `json:"entries"`
 	EntriesTruncated bool                  `json:"entriesTruncated"`
+	ConvertedCount   int                   `json:"convertedCount"`
 }
 
 // ImportPreviewEntry is one validated source-to-archive mapping.
 type ImportPreviewEntry struct {
-	SourcePath string `json:"sourcePath"`
-	TargetPath string `json:"targetPath"`
-	DataType   int32  `json:"dataType"`
-	Size       int64  `json:"size"`
-	Overwrite  bool   `json:"overwrite"`
+	SourcePath     string `json:"sourcePath"`
+	TargetPath     string `json:"targetPath"`
+	DataType       int32  `json:"dataType"`
+	Size           int64  `json:"size"`
+	Overwrite      bool   `json:"overwrite"`
+	SourceEncoding string `json:"sourceEncoding"`
 }
 
 type importFile struct {
-	sourcePath string
-	targetPath string
-	data       []byte
-	text       string
-	dataType   int32
+	sourcePath     string
+	targetPath     string
+	data           []byte
+	sourceEncoding string
+	text           string
+	dataType       int32
 }
 
 type importSelection struct {
@@ -118,6 +120,9 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 		Entries:    []*ImportPreviewEntry{},
 	}
 	for _, file := range files {
+		if file.sourceEncoding != "" && file.sourceEncoding != "UTF-8" {
+			preview.ConvertedCount++
+		}
 		_, overwrite := a.Find(file.targetPath)
 		if overwrite {
 			preview.OverwrittenCount++
@@ -126,11 +131,12 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 		}
 		if len(preview.Entries) < maxImportPreviewEntries {
 			preview.Entries = append(preview.Entries, &ImportPreviewEntry{
-				SourcePath: file.sourcePath,
-				TargetPath: file.targetPath,
-				DataType:   file.dataType,
-				Size:       int64(len(file.data)),
-				Overwrite:  overwrite,
+				SourcePath:     file.sourcePath,
+				TargetPath:     file.targetPath,
+				DataType:       file.dataType,
+				Size:           int64(len(file.data)),
+				Overwrite:      overwrite,
+				SourceEncoding: file.sourceEncoding,
 			})
 		} else {
 			preview.EntriesTruncated = true
@@ -174,7 +180,30 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 		return nil, errorsNoImportFiles()
 	}
 
+	return s.importPrepared(files, targetDir, mode)
+}
+
+func (s *ArchiveService) importPrepared(files []importFile, targetDir, mode string) (*ImportResult, error) {
+	return s.importPreparedRevision(files, targetDir, mode, "", 0)
+}
+func (s *ArchiveService) importPreparedRevision(files []importFile, targetDir, mode, workspace string, expectedRevision uint64) (*ImportResult, error) {
+	return s.importPreparedChecked(files, targetDir, mode, "导入文件", func() error {
+		if workspace != "" && (s.c.mcpWorkspaceID != workspace || s.c.batchRevision != expectedRevision) {
+			return fmt.Errorf("STALE_IMPORT")
+		}
+		return nil
+	})
+}
+
+// check runs under the core lock, atomically with taking the staging snapshot.
+func (s *ArchiveService) importPreparedChecked(files []importFile, targetDir, mode, label string, check func() error) (*ImportResult, error) {
+	var err error
 	s.c.mu.Lock()
+	if err := check(); err != nil {
+		s.c.mu.Unlock()
+		return nil, err
+	}
+
 	a := s.c.archive
 	if a == nil {
 		s.c.mu.Unlock()
@@ -218,6 +247,7 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 	// projection without holding the core lock. A concurrent archive mutation
 	// invalidates this import before it is installed.
 	revision := s.c.batchRevision
+	repo, loadID, headID := s.c.versionRepo, s.c.versionLoadID, s.c.versionHead.ID
 	s.c.batchRevision++
 	incrementalSQLite := s.c.diskIndex != nil && s.c.diskIndex.entries != nil
 	s.c.mu.Unlock()
@@ -234,7 +264,7 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 		s.c.mu.Unlock()
 		return nil, prepareErr
 	}
-	if s.c.archive != a || s.c.batchRevision != revision+1 {
+	if s.c.archive != a || s.c.batchRevision != revision+1 || s.c.versionRepo != repo || s.c.versionLoadID != loadID || s.c.versionHead.ID != headID {
 		closePreparedArchiveIndexes(prepared)
 		s.c.mu.Unlock()
 		return nil, ErrBatchPlanStale
@@ -261,7 +291,7 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 		return nil, installErr
 	}
 	if s.c.versionRepo != nil {
-		if err := s.c.recordVersionMutationLocked("导入文件", before, after); err != nil {
+		if err := s.c.recordVersionMutationLocked(label, before, after); err != nil {
 			s.c.mu.Unlock()
 			return nil, err
 		}
@@ -330,6 +360,9 @@ func normalizeImportTargetDir(raw string) (string, error) {
 }
 
 func collectImportFiles(sourcePaths []string, targetDir string) ([]importFile, error) {
+	return collectImportFilesLimited(sourcePaths, targetDir, 0)
+}
+func collectImportFilesLimited(sourcePaths []string, targetDir string, maxFiles int) ([]importFile, error) {
 	selections := make([]importSelection, 0, len(sourcePaths))
 	seenSelections := make(map[string]struct{}, len(sourcePaths))
 	for _, rawPath := range sourcePaths {
@@ -400,6 +433,9 @@ func collectImportFiles(sourcePaths []string, targetDir string) ([]importFile, e
 		targetPath, err := normalizeNewFilePath(targetPath)
 		if err != nil {
 			return fmt.Errorf("来源 %q 映射到归档路径失败: %w", sourcePath, err)
+		}
+		if maxFiles > 0 && len(files) >= maxFiles {
+			return fmt.Errorf("IMPORT_LIMIT: 导入文件过多")
 		}
 		files = append(files, importFile{sourcePath: sourcePath, targetPath: targetPath})
 		return nil
@@ -486,10 +522,9 @@ func readImportFiles(files []importFile, mode string) error {
 		file.data = data
 		file.dataType = importDataType(file.targetPath)
 		if mode == ImportModeText {
-			if !utf8.Valid(data) {
-				return fmt.Errorf("文本文件 %q 不是有效的 UTF-8", file.sourcePath)
+			if err := file.decodeText(); err != nil {
+				return err
 			}
-			file.text = strings.TrimPrefix(string(data), "\uFEFF")
 		}
 	}
 	return nil

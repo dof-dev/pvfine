@@ -126,7 +126,7 @@ func (a *Archive) tryParseSpecialMarker(marker string) (type1Token, bool) {
 
 // tryParseSpecialMarkerWithResolver parses the `{N=`...`}` / `{N=value}`
 // block-value markers. N is 5 or 7 for the 90US token streams and 8 or 10 for
-// the newer Paged110 ones.
+// the newer Paged110 ones. TW also uses {1=value} for opaque native type 3.
 func (a *Archive) tryParseSpecialMarkerWithResolver(marker string, resolve func(string) (int32, error)) (type1Token, bool, error) {
 	var tok type1Token
 	if len(marker) < 4 || marker[0] != '{' || marker[len(marker)-1] != '}' {
@@ -138,11 +138,18 @@ func (a *Archive) tryParseSpecialMarkerWithResolver(marker string, resolve func(
 		return tok, false, nil
 	}
 	n, err := strconv.Atoi(inner[:eq])
-	if err != nil || (n != 5 && n != 7 && n != 8 && n != 10) {
+	if err != nil || (n != 5 && n != 7 && n != 8 && n != 10 && !(n == 1 && a.tw != nil)) {
 		return tok, false, nil
 	}
 	typ := byte(n)
 	inner = strings.TrimSpace(inner[eq+1:])
+	if typ == 1 {
+		v, err := strconv.ParseInt(inner, 10, 32)
+		if err != nil {
+			return tok, false, err
+		}
+		return type1Token{typ, int32(v)}, true, nil
+	}
 	innerRunes := []rune(inner)
 	if value, next, ok := readBacktickString(innerRunes, 0); ok && next == len(innerRunes) {
 		inner = value

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -157,6 +158,95 @@ func TestUpgradeSelectTypedTables(t *testing.T) {
 	} {
 		if _, _, err := upgradeTableTokens(candidate, "normal"); err == nil {
 			t.Fatal("accepted missing or ambiguous target")
+		}
+	}
+}
+
+const upgrade19Row1 = "2.2 0.018 0.1 0.033 0.2 0.6 0 0 1 0 3037 10 1 0.018 0.1 0.033 0.17 0.228 0"
+const upgrade19Row5 = "7.7 0.128 0.7 0.233 1.2 1.8 0 10000 2 1 3037 50 5 0.09 0.5 0.169 0.83 0.684 0"
+const upgrade19Row11 = "12.1 0.22 1.2 0.4 2 2.7 0 70000 3 0 3037 120 11 0.144 0.8 0.27 1.33 1.026 0"
+
+func TestUpgrade19ColumnsRowsAndFields(t *testing.T) {
+	text := "# 😀\r\n[table]\r\n[table type]\r\n`normal`\r\n" + upgrade19Row1 + "\r\n" + upgrade19Row5 + "\r\n" + upgrade19Row11 + "\r\n[/table]"
+	doc, err := parseUpgrade(text, "normal")
+	if err != nil || len(doc.Rows) != 3 {
+		t.Fatalf("parseUpgrade 19 columns: %v %v", doc, err)
+	}
+	r1, r5, r11 := doc.Rows[0], doc.Rows[1], doc.Rows[2]
+
+	if r1.Level != 1 || r1.Fields[0].Value != 0 || r1.Fields[1].Value != 1 || r1.Fields[2].Value != 0 || r1.Fields[3].Value != 3037 || r1.Fields[4].Value != 10 {
+		t.Fatalf("row 1 fields wrong: %+v", r1)
+	}
+	if len(r1.FieldsT2) != 0 {
+		t.Fatalf("row 1 should not have FieldsT2: %+v", r1.FieldsT2)
+	}
+
+	if r5.Level != 2 || r5.Fields[0].Value != 10000 || r5.Fields[1].Value != 2 || r5.Fields[2].Value != 1 || r5.Fields[3].Value != 3037 || r5.Fields[4].Value != 50 {
+		t.Fatalf("row 5 fields wrong: %+v", r5)
+	}
+
+	if r11.Level != 3 || r11.Fields[0].Value != 70000 || r11.Fields[1].Value != 3 || r11.Fields[2].Value != 0 || r11.Fields[4].Value != 120 {
+		t.Fatalf("row 11 fields wrong: %+v", r11)
+	}
+
+	source := utf16.Encode([]rune(strings.ReplaceAll(text, "\r\n", "\n")))
+	for _, row := range doc.Rows {
+		for _, field := range row.Fields {
+			if got := string(utf16.Decode(source[field.Start:field.End])); got != strconv.FormatInt(int64(field.Value), 10) {
+				t.Fatalf("wrong field position: %s, want %d", got, int64(field.Value))
+			}
+		}
+	}
+
+	large19, err := parseUpgrade("[table]\n[table type]\n`normal` "+strings.Repeat(upgrade19Row1+"\n", 255)+"[/table]", "normal")
+	if err != nil || len(large19.Rows) != 255 || large19.Rows[254].Level != 255 {
+		t.Fatalf("19 column 255 levels truncated: %v", err)
+	}
+}
+
+func TestUpgradeRealArchive86JP(t *testing.T) {
+	testFile := os.Getenv("PVF_TESTFILE")
+	if testFile == "" {
+		t.Skip("PVF_TESTFILE not set")
+	}
+	a, err := pvf.Open(testFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Release()
+
+	core := NewCore()
+	if err := core.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	defer core.closeArchive()
+
+	gui := NewFileGUIService(core)
+
+	for _, path := range []string{"etc/upgrade.etc", "etc/amplifyupgrade.etc"} {
+		idx, ok := a.Find(path)
+		if !ok {
+			t.Logf("archive does not have %s", path)
+			continue
+		}
+		text, err := a.Text(idx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc, err := gui.ReadUpgrade(idx, text)
+		if err != nil {
+			t.Fatalf("ReadUpgrade %s failed: %v", path, err)
+		}
+		if len(doc.Rows) != 255 {
+			t.Fatalf("%s rows = %d, want 255", path, len(doc.Rows))
+		}
+		if doc.Rows[0].Fields[3].Value <= 0 {
+			t.Fatalf("%s material ID invalid: %v", path, doc.Rows[0].Fields[3].Value)
+		}
+		if doc.Rows[0].CostName == "" {
+			t.Logf("%s note: costName empty (no annotation database or unknown item)", path)
+		} else {
+			t.Logf("%s item 1 costName: %s", path, doc.Rows[0].CostName)
 		}
 	}
 }

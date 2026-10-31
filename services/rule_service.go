@@ -182,6 +182,7 @@ func (s *RuleService) activate(category string, snap *ruleconfig.Snapshot) error
 	specChanged := false
 	if ann != nil {
 		old := searchIndexSpecFingerprint(c.searchableListSpecsLocked())
+		c.annotationSnapshot = snap
 		c.annotationEngine = ann.ForVersion(c.archive.ClientVersion())
 		c.annotationErr = nil
 		c.annotationRelations = make(map[string]map[string]*relationTarget)
@@ -258,6 +259,7 @@ func (c *core) loadInitialRules(store *ruleconfig.Store) {
 			continue
 		}
 		if ann != nil {
+			c.annotationSnapshot = snap
 			c.annotationEngine = ann
 			c.annotationErr = nil
 		}

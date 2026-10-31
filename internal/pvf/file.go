@@ -578,6 +578,13 @@ func (a *Archive) writeScriptForPath(ctx context.Context, raw []byte, path strin
 				atLineStart = true
 				resetTokensOnLine()
 			}
+		case 1:
+			if a.tw != nil {
+				writeValuePrefix()
+				sb.WriteString("{1=")
+				sb.WriteString(strconv.FormatInt(int64(v), 10))
+				sb.WriteString("}")
+			}
 		case 2:
 			writeValuePrefix()
 			f := math.Float32frombits(uint32(v))

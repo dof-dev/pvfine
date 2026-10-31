@@ -306,3 +306,25 @@ func utf16RuneLen(r rune) int {
 	}
 	return 1
 }
+
+// ScriptSectionClosingOffsets maps opening tags to their matching closing tag
+// positions in editor UTF-16 units. The lexer excludes comments and strings.
+func ScriptSectionClosingOffsets(text, section string) map[int]int {
+	result := map[int]int{}
+	stack := []int{}
+	for _, lexeme := range lexScriptText(text) {
+		if !lexeme.isSection || lexeme.name != section {
+			continue
+		}
+		if !lexeme.closing {
+			stack = append(stack, lexeme.start)
+			continue
+		}
+		if len(stack) == 0 {
+			continue
+		}
+		result[stack[len(stack)-1]] = lexeme.start
+		stack = stack[:len(stack)-1]
+	}
+	return result
+}

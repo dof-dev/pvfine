@@ -108,6 +108,7 @@ func (c *core) invalidateScriptPlanLocked() {
 	if c.scriptPlan != nil {
 		c.scriptPlan.transaction.Rollback()
 		c.scriptPlan = nil
+		c.mcpScriptPlan = ""
 	}
 }
 
@@ -333,14 +334,24 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 			tx.Rollback()
 			return ScriptRunResult{}, ErrScriptPlanStale
 		}
+		if s.c.mcpScriptPlan != "" || s.c.mcpImportPlan != "" {
+			s.c.mu.Unlock()
+			tx.Rollback()
+			return ScriptRunResult{}, fmt.Errorf("PLAN_PENDING: 请先处理 MCP 预览")
+		}
 		s.c.scriptCancel = cancel
 		s.c.invalidateScriptPlanLocked()
 		s.c.mu.Unlock()
 
 		logEntries := make([]*ScriptLog, 0)
 		logCount := 0
+		logBytes := 0
 		appendLog := func(entry scriptengine.LogEntry) {
-			if logCount < scriptMaxLogs {
+			if len(entry.Message) > 16<<10 {
+				entry.Message = entry.Message[:16<<10] + "…[截断]"
+			}
+			logBytes += len(entry.Message)
+			if logCount < scriptMaxLogs && logBytes <= 256<<10 {
 				logEntries = append(logEntries, &ScriptLog{Level: entry.Level, Message: entry.Message})
 				emitEvent("script:log", map[string]any{
 					"runId":   runID,
@@ -350,12 +361,13 @@ func (s *ScriptService) Run(ctx context.Context, request ScriptRunRequest) (Scri
 				logCount++
 				return
 			}
-			if logCount == scriptMaxLogs {
-				logCount++
+			if logCount <= scriptMaxLogs {
+				logCount = scriptMaxLogs + 1
+				logEntries = append(logEntries, &ScriptLog{Level: scriptengine.LogLevelWarn, Message: "日志达到条数或 256 KiB 上限，后续日志已省略"})
 				emitEvent("script:log", map[string]any{
 					"runId":   runID,
 					"level":   scriptengine.LogLevelWarn,
-					"message": fmt.Sprintf("日志已达到 %d 条上限,后续日志已省略", scriptMaxLogs),
+					"message": "日志达到条数或 256 KiB 上限，后续日志已省略",
 				})
 			}
 		}
@@ -757,6 +769,7 @@ func (s *ScriptService) Discard(planID string) {
 	if s.c.scriptPlan != nil && s.c.scriptPlan.id == planID {
 		s.c.scriptPlan.transaction.Rollback()
 		s.c.scriptPlan = nil
+		s.c.mcpScriptPlan = ""
 	}
 	s.c.mu.Unlock()
 }

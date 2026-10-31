@@ -235,7 +235,16 @@ func readDropRateDocument(a *pvf.Archive) (*DropRateDocument, error) {
 	return &DropRateDocument{Sections: sections}, nil
 }
 
-func readDropRateSection(a *pvf.Archive, spec dropRateFileSpec) (*DropRateSection, error) {
+type parsedDropRateFile struct {
+	index     int32
+	raw       []byte
+	document  *pvf.ScriptDocument
+	section   *pvf.ScriptSection
+	values    []int64
+	groupSize int
+}
+
+func loadDropRateFile(a *pvf.Archive, spec dropRateFileSpec) (*parsedDropRateFile, error) {
 	index, ok := a.Find(spec.path)
 	if !ok {
 		return nil, fmt.Errorf("找不到掉率文件: %s", spec.path)
@@ -263,11 +272,26 @@ func readDropRateSection(a *pvf.Archive, spec dropRateFileSpec) (*DropRateSectio
 	if err != nil {
 		return nil, err
 	}
+	return &parsedDropRateFile{
+		index:     index,
+		raw:       raw,
+		document:  document,
+		section:   section,
+		values:    values,
+		groupSize: groupSize,
+	}, nil
+}
+
+func readDropRateSection(a *pvf.Archive, spec dropRateFileSpec) (*DropRateSection, error) {
+	file, err := loadDropRateFile(a, spec)
+	if err != nil {
+		return nil, err
+	}
 
 	groups := make([]*DropRateGroup, 0, spec.groupCount)
 	for groupIndex := 0; groupIndex < spec.groupCount; groupIndex++ {
-		start := spec.offset + groupIndex*groupSize
-		rates, err := decodeDropRateGroup(values[start : start+groupSize])
+		start := spec.offset + groupIndex*file.groupSize
+		rates, err := decodeDropRateGroup(file.values[start : start+file.groupSize])
 		if err != nil {
 			return nil, fmt.Errorf("掉率文件 %s 第 %d 组无效: %w", spec.path, groupIndex+1, err)
 		}
@@ -297,73 +321,66 @@ func prepareDropRateReplacements(a *pvf.Archive, sections []*DropRateSection) ([
 		if !ok {
 			return nil, fmt.Errorf("缺少掉率 section: %s", spec.key)
 		}
-		if len(sectionInput.Groups) != spec.groupCount {
-			return nil, fmt.Errorf("掉率 section %s 有 %d 组,需要 %d 组", spec.key, len(sectionInput.Groups), spec.groupCount)
-		}
-
-		index, ok := a.Find(spec.path)
-		if !ok {
-			return nil, fmt.Errorf("找不到掉率文件: %s", spec.path)
-		}
-		if a.File(index).DataType != pvf.TypeScript {
-			return nil, fmt.Errorf("掉率文件不是脚本类型: %s", spec.path)
-		}
-		raw, err := a.RawBytes(index)
-		if err != nil {
-			return nil, fmt.Errorf("读取掉率文件 %s 失败: %w", spec.path, err)
-		}
-		document, err := a.ParseScriptDocument(raw)
-		if err != nil {
-			return nil, fmt.Errorf("解析掉率文件 %s 失败: %w", spec.path, err)
-		}
-		section, ok := document.Section([]string{dropRateSectionName}, 0)
-		if !ok {
-			return nil, fmt.Errorf("掉率文件缺少 section [%s]: %s", dropRateSectionName, spec.path)
-		}
-		values, err := scriptIntegerValues(section.Values(), spec.path)
+		replacement, err := prepareDropRateFileReplacement(a, spec, sectionInput)
 		if err != nil {
 			return nil, err
 		}
-		groupSize, err := dropRateGroupWidth(values, spec)
-		if err != nil {
-			return nil, err
-		}
-
-		for groupIndex, group := range sectionInput.Groups {
-			if group == nil {
-				return nil, fmt.Errorf("掉率 section %s 第 %d 组为空", spec.key, groupIndex+1)
-			}
-			if err := validateDropRates(group.Rates); err != nil {
-				return nil, fmt.Errorf("掉率 section %s 第 %d 组无效: %w", spec.key, groupIndex+1, err)
-			}
-			start := spec.offset + groupIndex*groupSize
-			currentRates, err := decodeDropRateGroup(values[start : start+groupSize])
-			if err != nil {
-				return nil, fmt.Errorf("掉率文件 %s 第 %d 组无效: %w", spec.path, groupIndex+1, err)
-			}
-			if equalDropRates(currentRates, group.Rates) {
-				continue
-			}
-			cumulative := int64(0)
-			for rateIndex := 0; rateIndex < dropRateValueCount-1; rateIndex++ {
-				cumulative += int64(group.Rates[rateIndex]) * dropRateRawPerUnit
-				if err := section.Set(pvf.ScriptValue{
-					Type:  pvf.ScriptTokenInteger,
-					Value: cumulative,
-				}, start+rateIndex); err != nil {
-					return nil, fmt.Errorf("修改掉率文件 %s 第 %d 组失败: %w", spec.path, groupIndex+1, err)
-				}
-			}
-		}
-		encoded, err := a.EncodeScriptDocument(document)
-		if err != nil {
-			return nil, fmt.Errorf("编码掉率文件 %s 失败: %w", spec.path, err)
-		}
-		if !bytes.Equal(raw, encoded) {
-			replacements = append(replacements, dropRateReplacement{index: index, path: spec.path, raw: encoded})
+		if replacement != nil {
+			replacements = append(replacements, *replacement)
 		}
 	}
 	return replacements, nil
+}
+
+func prepareDropRateFileReplacement(a *pvf.Archive, spec dropRateFileSpec, sectionInput *DropRateSection) (*dropRateReplacement, error) {
+	if len(sectionInput.Groups) != spec.groupCount {
+		return nil, fmt.Errorf("掉率 section %s 有 %d 组,需要 %d 组", spec.key, len(sectionInput.Groups), spec.groupCount)
+	}
+
+	file, err := loadDropRateFile(a, spec)
+	if err != nil {
+		return nil, err
+	}
+
+	for groupIndex, group := range sectionInput.Groups {
+		if group == nil {
+			return nil, fmt.Errorf("掉率 section %s 第 %d 组为空", spec.key, groupIndex+1)
+		}
+		if err := validateDropRates(group.Rates); err != nil {
+			return nil, fmt.Errorf("掉率 section %s 第 %d 组无效: %w", spec.key, groupIndex+1, err)
+		}
+		start := spec.offset + groupIndex*file.groupSize
+		groupSlice := file.values[start : start+file.groupSize]
+		offset, err := detectDropRateGroupOffset(groupSlice)
+		if err != nil {
+			return nil, fmt.Errorf("掉率文件 %s 第 %d 组无效: %w", spec.path, groupIndex+1, err)
+		}
+		currentRates, err := decodeDropRateGroupWithOffset(groupSlice, offset)
+		if err != nil {
+			return nil, fmt.Errorf("掉率文件 %s 第 %d 组无效: %w", spec.path, groupIndex+1, err)
+		}
+		if equalDropRates(currentRates, group.Rates) {
+			continue
+		}
+		cumulative := int64(0)
+		for rateIndex := 0; rateIndex < dropRateValueCount-1; rateIndex++ {
+			cumulative += int64(group.Rates[rateIndex]) * dropRateRawPerUnit
+			if err := file.section.Set(pvf.ScriptValue{
+				Type:  pvf.ScriptTokenInteger,
+				Value: cumulative,
+			}, start+offset+rateIndex); err != nil {
+				return nil, fmt.Errorf("修改掉率文件 %s 第 %d 组失败: %w", spec.path, groupIndex+1, err)
+			}
+		}
+	}
+	encoded, err := a.EncodeScriptDocument(file.document)
+	if err != nil {
+		return nil, fmt.Errorf("编码掉率文件 %s 失败: %w", spec.path, err)
+	}
+	if !bytes.Equal(file.raw, encoded) {
+		return &dropRateReplacement{index: file.index, path: spec.path, raw: encoded}, nil
+	}
+	return nil, nil
 }
 
 func equalDropRates(left, right []int) bool {
@@ -393,25 +410,49 @@ func scriptIntegerValues(values []pvf.ScriptValue, path string) ([]int64, error)
 	return result, nil
 }
 
+func isDropTerminal(val int64) bool {
+	return val >= 1_000_000 && val <= 1_000_002
+}
+
+func detectDropRateGroupOffset(group []int64) (int, error) {
+	if len(group) < dropRateLegacyGroupSize {
+		return 0, fmt.Errorf("分组至少需要 %d 个值", dropRateLegacyGroupSize)
+	}
+	if isDropTerminal(group[4]) {
+		return 0, nil
+	}
+	if group[0] == 0 {
+		if isDropTerminal(group[5]) {
+			return 1, nil
+		}
+		return 0, fmt.Errorf("终止阈值 %d 不在兼容范围内", group[5])
+	}
+	return 0, fmt.Errorf("终止阈值 %d 不在兼容范围内", group[4])
+}
+
 // decodeDropRateGroup accepts the legacy six-value group. The sixth value is
 // intentionally kept unchanged by the five-rarity editor; newer revisions
 // append more thresholds, which are also retained without reinterpretation.
+// Hell drop files prepend a leading 0 threshold (skipping common drops), so
+// five-rarity thresholds start at index 1 and terminate at index 5.
 func decodeDropRateGroup(group []int64) ([]int, error) {
-	if len(group) < 6 {
-		return nil, fmt.Errorf("分组至少需要 6 个值")
+	offset, err := detectDropRateGroupOffset(group)
+	if err != nil {
+		return nil, err
 	}
+	return decodeDropRateGroupWithOffset(group, offset)
+}
+
+func decodeDropRateGroupWithOffset(group []int64, offset int) ([]int, error) {
 	previous := int64(0)
-	diffs := make([]int64, 5)
+	diffs := make([]int64, dropRateValueCount)
 	for index := range diffs {
-		current := group[index]
+		current := group[offset+index]
 		if current < previous {
 			return nil, fmt.Errorf("累计阈值递减")
 		}
 		diffs[index] = current - previous
 		previous = current
-	}
-	if group[4] < 1_000_000 || group[4] > 1_000_002 {
-		return nil, fmt.Errorf("终止阈值 %d 不在兼容范围内", group[4])
 	}
 
 	rates := make([]int, len(diffs))

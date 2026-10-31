@@ -43,6 +43,34 @@ func TestDecodeDropRateGroupSupportsLegacySixValuesAndQuantizesToHundredths(t *t
 	}
 }
 
+func TestDecodeDropRateGroupSupportsLeadingZeroHellGroup(t *testing.T) {
+	// 真实 90US etc/itemdropinfo_monster_hell.etc 中的第 1 组与第 2 组 (困难 3% 史诗, 非常困难 5% 史诗)
+	group1 := []int64{0, 350000, 750000, 850000, 970000, 1000001, 1000001}
+	group2 := []int64{0, 350000, 750000, 850000, 950000, 1000002, 1000001}
+
+	rates1, err := decodeDropRateGroup(group1)
+	if err != nil {
+		t.Fatalf("group1 decode failed: %v", err)
+	}
+	want1 := []int{3500, 4000, 1000, 1200, 300}
+	for i := range want1 {
+		if rates1[i] != want1[i] {
+			t.Fatalf("rates1[%d] = %d, want %d", i, rates1[i], want1[i])
+		}
+	}
+
+	rates2, err := decodeDropRateGroup(group2)
+	if err != nil {
+		t.Fatalf("group2 decode failed: %v", err)
+	}
+	want2 := []int{3500, 4000, 1000, 1000, 500}
+	for i := range want2 {
+		if rates2[i] != want2[i] {
+			t.Fatalf("rates2[%d] = %d, want %d", i, rates2[i], want2[i])
+		}
+	}
+}
+
 func TestDecodeDropRateGroupRejectsDecreasingOrInvalidTerminal(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -51,6 +79,10 @@ func TestDecodeDropRateGroupRejectsDecreasingOrInvalidTerminal(t *testing.T) {
 		{name: "short", group: []int64{1, 2, 3}},
 		{name: "decreasing", group: []int64{100, 200, 150, 1000000, 1000001, 1000002}},
 		{name: "terminal too small", group: []int64{100, 200, 300, 400, 999999, 1000000}},
+		{name: "terminal too large", group: []int64{100, 200, 300, 400, 1000003, 1000000}},
+		{name: "leading zero decreasing", group: []int64{0, 300, 200, 400, 500, 1000001, 1000001}},
+		{name: "leading zero terminal too small", group: []int64{0, 100, 200, 300, 400, 999999, 1000001}},
+		{name: "leading zero terminal too large", group: []int64{0, 100, 200, 300, 400, 1000003, 1000001}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -223,6 +255,150 @@ func TestDropRateServiceReadsRealSupportedArchive(t *testing.T) {
 				t.Fatalf("section %s rates %#v: %v", section.Key, group.Rates, err)
 			}
 		}
+	}
+}
+
+func TestDropRateServiceReadsAndAppliesLeadingZeroHellArchive(t *testing.T) {
+	c := NewCore()
+	a := pvf.New()
+	files := map[string]string{
+		"etc/itemdropinfo_monster_hell.etc":   "[basis of rarity dicision]\n2 0 350000 750000 850000 970000 1000001 1000001 0 350000 750000 850000 950000 1000002 1000001\n",
+		"etc/itemdropinfo_clearreward.etc":    "[basis of rarity dicision]\n100000 300000 730000 930000 1000001 1000002 1000003\n",
+		"etc/itemdropinfo_monseter.etc":       "[basis of rarity dicision]\n500000 800000 950000 980000 1000001 1000002 1000003 300000 500000 750000 950000 1000001 1000002 1000003 200000 300000 700000 920000 1000001 1000002 1000003 100000 300000 650000 880000 1000001 1000002 1000003\n",
+		"etc/itemdropinfo_monseter_extra.etc": "[basis of rarity dicision]\n500000 800000 950000 980000 1000001 1000002 1000003 300000 500000 750000 950000 1000001 1000002 1000003 200000 300000 700000 920000 1000001 1000002 1000003 100000 300000 650000 880000 1000001 1000002 1000003\n",
+	}
+	for path, text := range files {
+		if _, err := a.AddFileText(path, text, pvf.TypeScript); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+
+	service := NewDropService(c)
+	document, err := service.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hell := document.Sections[0]
+	if hell.Key != "hell" || len(hell.Groups) != 2 {
+		t.Fatalf("hell section = %#v", hell)
+	}
+	if rates := hell.Groups[0].Rates; len(rates) != 5 || rates[4] != 300 {
+		t.Fatalf("hell group 1 rates = %#v, want epic 300 (3%%)", rates)
+	}
+	if rates := hell.Groups[1].Rates; len(rates) != 5 || rates[4] != 500 {
+		t.Fatalf("hell group 2 rates = %#v, want epic 500 (5%%)", rates)
+	}
+
+	hell.Groups[1].Rates = []int{2000, 2000, 500, 500, 5000}
+	result, err := service.Apply(DropRateApplyRequest{
+		Revision: document.Revision,
+		Sections: document.Sections,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.FileIndexes) != 1 {
+		t.Fatalf("modified file count = %d, want 1", len(result.FileIndexes))
+	}
+
+	reloaded, err := service.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int{2000, 2000, 500, 500, 5000}
+	for i := range want {
+		if reloaded.Sections[0].Groups[1].Rates[i] != want[i] {
+			t.Fatalf("reloaded rates[%d] = %d, want %d", i, reloaded.Sections[0].Groups[1].Rates[i], want[i])
+		}
+	}
+
+	fileIndex, ok := a.Find("etc/itemdropinfo_monster_hell.etc")
+	if !ok {
+		t.Fatal("找不到深渊文件")
+	}
+	raw, err := a.RawBytes(fileIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := a.ParseScriptDocument(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec, ok := doc.Section([]string{"basis of rarity dicision"}, 0)
+	if !ok {
+		t.Fatal("找不到 section")
+	}
+	values, err := scriptIntegerValues(sec.Values(), "etc/itemdropinfo_monster_hell.etc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedTokens := []int64{2, 0, 350000, 750000, 850000, 970000, 1000001, 1000001, 0, 200000, 400000, 450000, 500000, 1000002, 1000001}
+	if len(values) != len(expectedTokens) {
+		t.Fatalf("values length = %d, want %d", len(values), len(expectedTokens))
+	}
+	for i, exp := range expectedTokens {
+		if values[i] != exp {
+			t.Fatalf("values[%d] = %d, want %d", i, values[i], exp)
+		}
+	}
+}
+
+func TestDecodeDropRateGroupWithZeroCommonRate(t *testing.T) {
+	// 普通怪物但白装率为 0% 的合法掉落配置 (终止阈值在 index 4)
+	group := []int64{0, 400000, 700000, 900000, 1000000, 700}
+	offset, err := detectDropRateGroupOffset(group)
+	if err != nil {
+		t.Fatalf("detectDropRateGroupOffset failed: %v", err)
+	}
+	if offset != 0 {
+		t.Fatalf("offset = %d, want 0", offset)
+	}
+	rates, err := decodeDropRateGroup(group)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	want := []int{0, 4000, 3000, 2000, 1000}
+	for i := range want {
+		if rates[i] != want[i] {
+			t.Fatalf("rates[%d] = %d, want %d", i, rates[i], want[i])
+		}
+	}
+}
+
+func TestDecodeDropRateGroupWithZeroCommonRateAndExtendedSlots(t *testing.T) {
+	// 普通怪白装为 0%，且 index 5 是扩展终止位 1000001
+	group := []int64{0, 400000, 700000, 900000, 1000000, 1000001, 700}
+	offset, err := detectDropRateGroupOffset(group)
+	if err != nil {
+		t.Fatalf("detectDropRateGroupOffset failed: %v", err)
+	}
+	if offset != 0 {
+		t.Fatalf("offset = %d, want 0 (should not be misclassified as hell drop)", offset)
+	}
+	rates, err := decodeDropRateGroup(group)
+	if err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	want := []int{0, 4000, 3000, 2000, 1000}
+	for i := range want {
+		if rates[i] != want[i] {
+			t.Fatalf("rates[%d] = %d, want %d", i, rates[i], want[i])
+		}
+	}
+}
+
+func TestDetectDropRateGroupOffsetRejectsInvalid(t *testing.T) {
+	// 长度不足
+	if _, err := detectDropRateGroupOffset([]int64{1, 2, 3}); err == nil {
+		t.Fatal("expected error for short group")
+	}
+	// index 4 和 index 5 均不是有效终止阈值
+	if _, err := detectDropRateGroupOffset([]int64{0, 200, 400, 600, 800, 900}); err == nil {
+		t.Fatal("expected error for invalid terminal thresholds")
 	}
 }
 

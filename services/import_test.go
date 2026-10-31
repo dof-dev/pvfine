@@ -208,7 +208,7 @@ func TestArchiveServiceImportFilesRollsBackOnInvalidText(t *testing.T) {
 		"",
 		ImportModeText,
 	)
-	if err == nil || !strings.Contains(err.Error(), "有效的 UTF-8") {
+	if err == nil || !strings.Contains(err.Error(), "UTF-8") {
 		t.Fatalf("invalid text error = %v", err)
 	}
 	if c.archive.FileCount() != beforeCount || c.archive.ModifiedCount() != beforeModified {

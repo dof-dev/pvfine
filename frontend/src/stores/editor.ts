@@ -1,8 +1,9 @@
+import { assertMCPIdle } from "../mcpActivity";
 import { defineStore } from "pinia";
 import { computed, markRaw, nextTick, reactive, ref } from "vue";
 import { Events } from "@wailsio/runtime";
 import { ArchiveService, EditorService, FileGUIService } from "../../bindings/pvfine/services";
-import type { ShopEditRequest, ShopEditResult, WorldDropEditRequest, WorldDropEditResult } from "../../bindings/pvfine/services/models";
+import type { ItemCreateRequest, ItemCreateResult, ShopEditRequest, ShopEditResult, WorldDropEditRequest, WorldDropEditResult } from "../../bindings/pvfine/services/models";
 import { useFileGUIStore } from "./fileGUI";
 import { createGUIModes } from "../gui/state";
 import type { EditorAnnotation, FileMeta, TreeTag, ImageReference } from "../../bindings/pvfine/services/models";
@@ -689,6 +690,38 @@ export const useEditorStore = defineStore("editor", () => {
     modes.set(index, mode);
   }
 
+  function itemCreationDrafts() {
+    return allFiles.value.filter(isTextDirty).map(tab => ({ fileIndex: tab.index, path: tab.path, text: tab.text }));
+  }
+
+  async function createItem(request: ItemCreateRequest): Promise<ItemCreateResult> {
+    assertMCPIdle();
+    if (saving.value || guiApplying.value) throw new Error("正在保存，请稍后再试");
+    const gui = useFileGUIStore(), epoch = gui.epoch;
+    saving.value = true;
+    guiApplying.value = true;
+    try {
+      await nextTick();
+      const result = await FileGUIService.CreateItem({ ...request, drafts: itemCreationDrafts() });
+      if (!result) throw new Error("未收到物品创建结果");
+      if (gui.epoch !== epoch) throw new Error("归档已切换，已忽略旧界面的创建结果");
+      for (const file of result.files ?? []) {
+        const tab = getFileDraft(file.fileIndex);
+        if (tab?.path === file.path && (tab.text === file.beforeText || tab.text === file.text)) {
+          tab.text = file.text;
+          tab.original = file.text;
+          tab.modified = true;
+        }
+      }
+      const refreshed = await Promise.allSettled([
+        refreshBatchFiles((result.files ?? []).map(file => file.fileIndex)),
+        useArchiveStore().refreshInfo(),
+      ]);
+      if (refreshed.some(r => r.status === 'rejected')) guiRefreshWarning.value = '物品已创建，部分界面刷新失败，可重新打开文件';
+      return result;
+    } finally { saving.value = false; guiApplying.value = false; }
+  }
+
   /** 提交商店 GUI 编辑:校验草稿一致性与归档代次,成功后同步受影响标签的文本。 */
   async function applyShopEdit(request: ShopEditRequest): Promise<ShopEditResult> {
     if (saving.value) throw new Error("正在保存，请稍后再试");
@@ -780,6 +813,19 @@ export const useEditorStore = defineStore("editor", () => {
     return true;
   }
 
+  async function openIndependentDrop(requestedPaneId?: EditorPaneId): Promise<boolean> {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const nodes = await ArchiveService.ResolveFiles(["etc/independent_drop.etc"]);
+    const target = nodes?.find(node => node && !node.isDir && node.fileIndex >= 0);
+    if (!target) throw new Error("此归档未包含 etc/independent_drop.etc，可能不支持独立掉落");
+    await openFile(target.fileIndex, targetPaneId);
+    const tab = tabs.value.find(tab => tab.index === target.fileIndex);
+    if (!tab) return false;
+    if (tab.loadError) throw new Error(tab.loadError);
+    setGUIMode(target.fileIndex, "gui", targetPaneId);
+    return true;
+  }
+
   /** 工具菜单与文件 GUI 共用同一标签，保留已打开文件的草稿。 */
   async function openUpgrade(amplify = false, requestedPaneId?: EditorPaneId): Promise<boolean> {
     const targetPaneId = resolvePaneId(requestedPaneId);
@@ -863,6 +909,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 保存指定文件，供文件 GUI 与通用 GUI 共用。 */
   async function saveFileTab(index: number): Promise<boolean> {
+    assertMCPIdle();
     if (saving.value) return false;
     if (index === COMPARE_TAB_INDEX) return saveCompareDraft();
     const tab = getFileDraft(index);
@@ -939,6 +986,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 保存到源文件 */
   async function save() {
+    assertMCPIdle();
     if (saving.value) throw new Error("正在保存，请稍后再试");
     const archive = useArchiveStore();
     const guiDirtyTab = allFiles.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
@@ -970,6 +1018,7 @@ export const useEditorStore = defineStore("editor", () => {
 
   /** 另存为新 PVF,返回保存路径(取消返回 null) */
   async function saveAs() {
+    assertMCPIdle();
     if (saving.value) throw new Error("正在保存，请稍后再试");
     const archive = useArchiveStore();
     const guiDirtyTab = allFiles.value.find((tab) => tab.editable && hasGUIDirty(tab.index));
@@ -986,10 +1035,6 @@ export const useEditorStore = defineStore("editor", () => {
       const path = await EditorService.SaveAsDialog();
       if (path) {
         archiveSaveStage.value = "finishing";
-        for (const tab of allFiles.value) {
-          tab.original = tab.text;
-          tab.modified = false;
-        }
         await archive.refreshInfo();
       }
       return path || null;
@@ -1191,7 +1236,7 @@ export const useEditorStore = defineStore("editor", () => {
             // 归档整体重载:索引已失效,直接采用新内容。
             tab.text = meta.text;
             tab.original = meta.text;
-            tab.modified = false;
+            tab.modified = meta.modified;
           } else {
             tab.modified = meta.modified;
             // 本地有未保存编辑时保留编辑器内容,不被后端结果覆盖。
@@ -1205,6 +1250,11 @@ export const useEditorStore = defineStore("editor", () => {
       if (!emptyPane) break;
       closeSplit(emptyPane.id);
     }
+  }
+
+  /** Called only while the MCP preparation barrier holds and drafts are clean. */
+  async function syncMCPWorkspace(): Promise<void> {
+    await refreshAfterArchiveChange(allFiles.value.map(tab => tab.path), true);
   }
 
   async function refreshOpenTabTags(): Promise<void> {
@@ -1318,6 +1368,8 @@ export const useEditorStore = defineStore("editor", () => {
     tabs,
     getFileDraft,
     openGUIFile,
+    itemCreationDrafts,
+    createItem,
     panes,
     layout,
     activeKey,
@@ -1336,6 +1388,7 @@ export const useEditorStore = defineStore("editor", () => {
     applyShopEdit,
     applyWorldDropEdit,
     openWorldDrop,
+    openIndependentDrop,
     getGUIModes,
     setGUIMode,
     registerGUIDirtyChecker,
@@ -1380,6 +1433,7 @@ export const useEditorStore = defineStore("editor", () => {
     refreshRenderedText,
     refreshBatchFiles,
     refreshAfterArchiveChange,
+    syncMCPWorkspace,
     refreshMergedFiles,
   };
 });

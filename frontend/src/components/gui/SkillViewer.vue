@@ -4,11 +4,12 @@ import { NButton, NEmpty, NInputNumber, NModal, NRadio, NRadioGroup, NSlider, NS
 import { FileGUIService } from "../../../bindings/pvfine/services";
 import type { SkillDocument, SkillNumber } from "../../../bindings/pvfine/services/models";
 import type { GUIFile } from "../../gui/types";
-import { editSkillNumbers, skillPreview, type SkillOperation } from "../../gui/skill";
+import { editSkillNumbers, skillPreview, type SkillOperation, type SkillDataSelection } from "../../gui/skill";
 import { useEditorStore } from "../../stores/editor";
 import { useFileGUIStore } from "../../stores/fileGUI";
 
-const props = defineProps<{ file: GUIFile; active: boolean }>();
+const props = defineProps<{ file: GUIFile; active: boolean; selecting?: boolean }>();
+const emit = defineEmits<{ (e: "select-data", value: SkillDataSelection): void }>();
 const editor = useEditorStore();
 const gui = useFileGUIStore();
 const message = useMessage();
@@ -26,7 +27,7 @@ const mode = computed(() => {
 });
 const maxLevel = computed(() => Math.max(1, mode.value?.levels.length ?? 0));
 const ready = computed(() => !loading.value && !error.value && sourceText.value === props.file.text);
-const canEdit = computed(() => ready.value && props.file.editable && !editor.saving && !editor.guiApplying);
+const canEdit = computed(() => props.active && ready.value && (props.selecting || props.file.editable) && !editor.saving && !editor.guiApplying);
 const dirty = computed(() => {
   const tab = editor.getFileDraft(props.file.index);
   return !!tab && tab.path === props.file.path && editor.isTextDirty(tab);
@@ -65,7 +66,7 @@ async function load() {
     if (current === generation && epoch === gui.epoch) error.value = String(e);
   } finally { if (current === generation) loading.value = false; }
 }
-watch(() => [props.file.index, props.file.text, gui.epoch, gui.revision, props.active], () => {
+watch(() => JSON.stringify([props.file.index, props.file.path, props.file.text, gui.epoch, gui.revision, props.active]), () => {
   generation++;
   clearTimeout(timer);
   if (props.active) timer = setTimeout(load, 80);
@@ -77,6 +78,10 @@ function openEdit(dynamic: boolean, column: number, row = level.value) {
   if (!canEdit.value || !mode.value) return;
   const token = dynamic ? mode.value.levels[row - 1]?.[column] : mode.value.static[column];
   if (!token) return;
+  if (props.selecting) {
+    emit("select-data", { dynamic, index: column, mode: mode.value.id });
+    return;
+  }
   Object.assign(edit, { show: true, dynamic, column, row, all: dynamic, operation: "set", operand: token.value, text: props.file.text, epoch: gui.epoch, mode: mode.value.id });
 }
 function apply() {
@@ -107,9 +112,10 @@ async function save() {
       <div><h2>{{ document?.name || '技能参数' }}</h2></div>
       <div class="mode-tabs" role="group" aria-label="技能数值模式">
         <NButton v-for="m in document?.modes" :key="m.id" :type="mode?.id === m.id ? 'primary' : 'default'" :disabled="loading || edit.show" @click="selectedMode = m.id">{{ m.id === 'dungeon' ? '地下城' : '决斗场' }}</NButton>
-        <NButton type="primary" :loading="editor.saving" :disabled="!file.editable || !dirty || edit.show || editor.saving || editor.guiApplying" @click="save">保存技能</NButton>
+        <NButton v-if="!selecting" type="primary" :loading="editor.saving" :disabled="!file.editable || !dirty || edit.show || editor.saving || editor.guiApplying" @click="save">保存技能</NButton>
       </div>
     </header>
+    <p v-if="selecting" class="hint">点击属性描述中的数值，或直接点击数据表数值，选择对应的数据索引。</p>
     <div v-if="error" class="error" role="alert">{{ error }} <NButton size="small" @click="load">重新加载</NButton></div>
     <NSpin :show="loading">
       <template v-if="mode">

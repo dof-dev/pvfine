@@ -11,6 +11,11 @@ export interface GUIProvider {
   id: string;
   label: string;
   readOnly: boolean;
+  launcher: {
+    fileTypes: string;
+    paths: string[];
+    queries: string[];
+  };
   matches: (file: GUIFile) => boolean;
   component: Component;
 }
