@@ -187,6 +187,7 @@ wails3 task package    # 打包平台发布安装包
 - [S4A21 PVF 格式逆向分析规格与数学算法](docs/FORMAT.md)
 - [110US (Paged110) 容器结构与密钥分析](docs/PVF新格式分析.md)
 - [PVF 变体架构与 100CN / TW 接入设计](docs/PVF变体架构.md)
+- [115CN 内置支持与 GUI 兼容性检查](docs/115CN兼容性.md)
 - [MOD 格式注册与 110USextend 导出约定](docs/MOD.md)
 - [JavaScript 脚本工作区设计与 API](docs/脚本工作区设计.md)
 - [标注与渲染规则设计说明](docs/rule-editor.md)

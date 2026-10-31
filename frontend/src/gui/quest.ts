@@ -47,6 +47,7 @@ export const questGrades = [
 ];
 export function parseQuest(text: string): QuestDocument {
   const sections: QuestSection[] = [];
+  const open: QuestSection[] = [];
   let current: QuestSection | undefined;
   let i = 0;
   function stringEnd(start: number): number {
@@ -67,12 +68,25 @@ export function parseQuest(text: string): QuestDocument {
       if (end < 0) throw new Error('存在未闭合的字段标签，请先在 DSL 中修复');
       const name = text.slice(i + 1, end).trim();
       if (name.startsWith('/')) {
-        if (current && name.slice(1).trim() === current.name) { current.end = i; current.paired = true; current = undefined; }
-        else throw new Error('字段闭合或嵌套结构无法识别，请在 DSL 中编辑');
+        const match = open.findLastIndex(s => s.name === name.slice(1).trim());
+        if (match < 0) throw new Error('字段闭合或嵌套结构无法识别，请在 DSL 中编辑');
+        const section = open[match]!;
+        section.end = i;
+        section.paired = true;
+        const position = sections.indexOf(section);
+        // Preserve nested blocks as opaque, read-only root fields. Their
+        // children must never shadow the quest's name, type or reward fields.
+        if (position < sections.length - 1) {
+          section.issue = '包含嵌套字段，请在 DSL 中编辑';
+          sections.splice(position + 1);
+        }
+        open.splice(match);
+        current = undefined;
       } else {
         if (current) current.end = i;
         current = { name, start, body: end + 1, end: text.length, paired: false, tokens: [], issue: '' };
         sections.push(current);
+        open.push(current);
       }
       i = end + 1; continue;
     }
@@ -96,6 +110,7 @@ export function parseQuest(text: string): QuestDocument {
     current?.tokens.push({ start, end: i, value, kind, markerType, reference: kind === 'string' ? questReference(value) : undefined });
   }
   for (const section of sections) {
+    if (section.issue) continue;
     if (sections.filter((s) => s.name === section.name).length > 1) section.issue = '存在重复字段，请在 DSL 中编辑';
     else if (section.tokens.some((t) => t.kind === 'unsupported')) section.issue = '包含字符串引用或特殊类型，请在 DSL 中编辑';
   }

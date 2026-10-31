@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	ErrDropRateUnsupported = errors.New("基础掉率编辑器仅支持 90US/90CN/TW/110US/100CN PVF")
+	ErrDropRateUnsupported = errors.New("基础掉率编辑器仅支持 90US/90CN/TW/110US/100CN/115CN PVF")
 	ErrDropRateStale       = errors.New("掉率数据已过期,请重新加载")
 )
 
@@ -79,7 +79,7 @@ type DropService struct{ c *core }
 
 func NewDropService(c *core) *DropService { return &DropService{c: c} }
 
-// Read returns the current drop-rate snapshot for the opened 90US/90CN/TW/110US/100CN PVF.
+// Read returns the current drop-rate snapshot for a verified client family.
 func (s *DropService) Read() (*DropRateDocument, error) {
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
@@ -220,7 +220,7 @@ type dropRateReplacement struct {
 }
 
 func supportedDropRateVersion(version string) bool {
-	return version == "90US" || version == "90CN" || version == "TW" || version == "110US" || version == "100CN"
+	return version == "90US" || version == "90CN" || version == "TW" || version == "110US" || version == "100CN" || version == "115CN"
 }
 
 func readDropRateDocument(a *pvf.Archive) (*DropRateDocument, error) {

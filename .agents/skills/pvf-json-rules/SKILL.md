@@ -48,7 +48,7 @@ description: >-
 }
 ```
 
-上例的 `relation` 必须已经存在于 `config/lists.json`（若本仓库重命名/删除，应改用实际存在的 relation）。`match: {}` 表示不限制文件；`match.extensions: [".etc"]` 按扩展名限制；`match.glob: "etc/**/*.etc"` 按归档内相对路径限制，两者同时存在时都必须匹配。glob 的 `**` 可跨目录。规则 ID 在 `rules` 内必须唯一；`pvfVersions` 可选，只允许 `90US`、`90CN`、`110US`、`115US`、`100CN`、`TW`；`group` 只决定编辑器中的显示分类，不代表 token 分组。
+上例的 `relation` 必须已经存在于 `config/lists.json`（若本仓库重命名/删除，应改用实际存在的 relation）。`match: {}` 表示不限制文件；`match.extensions: [".etc"]` 按扩展名限制；`match.glob: "etc/**/*.etc"` 按归档内相对路径限制，两者同时存在时都必须匹配。glob 的 `**` 可跨目录。规则 ID 在 `rules` 内必须唯一；`pvfVersions` 可选，只允许 `90US`、`90CN`、`110US`、`115US`、`115CN`、`100CN`、`TW`；`group` 只决定编辑器中的显示分类，不代表 token 分组。
 
 ### target 选择与索引
 
@@ -117,7 +117,7 @@ description: >-
 | `target.kind: "section"`, `section` | 指定 Section 内排版；按名称不区分大小写匹配。 |
 | `match` | 和标注类似，支持 `extensions` 与 `glob`，`{}` 表示所有文件。 |
 | `format.tokensPerLine` | **必填正整数**；普通内容每行多少个 token，也是动态宽度的回退值。 |
-| `format.tokensPerLineByVersion` | 可选版本→正整数行宽映射（90US、90CN、TW、100CN、110US、115US）；先按归档版本覆盖 `tokensPerLine`，没有对应项则保留回退宽度，其后仍可由 `tokensPerLineIndex` 覆盖。 |
+| `format.tokensPerLineByVersion` | 可选版本→正整数行宽映射（90US、90CN、TW、100CN、110US、115US、115CN）；先按归档版本覆盖 `tokensPerLine`，没有对应项则保留回退宽度，其后仍可由 `tokensPerLineIndex` 覆盖。 |
 | `format.offset` | Section/文件开头前 N 个 token 各占一行，此后再开始 `tokensPerLine` 分组；不是标注用的 `groupOffset`。 |
 | `format.tokensPerLineIndex` | **仅 Section**：取 Section 内从 0 开始的直接 token 中的正整数作为每行宽度，失败则回退到 `tokensPerLine`。 |
 | `format.standaloneValues` | 32 位有符号整数数组；指定的整数 token 独占一行，并重置后续的行计数。 |

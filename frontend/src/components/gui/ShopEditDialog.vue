@@ -16,12 +16,14 @@ const source = { ...props.file };
 const snapshot = props.document;
 const targetTab = props.tabIndex;
 const tab = snapshot.tabs?.[targetTab];
+const localCosts = !!props.entry?.hasLocalCosts;
+const implicitPages = snapshot.tabs?.some((page) => page.implicit) ?? false;
 const sourceSnapshots = new Map(editor.tabs.map((tab) => [tab.path, { text: tab.text, dirty: tab.text !== tab.original }]));
 const itemID = ref(props.entry?.item.id ?? "");
 const item = ref<ShopItem | null>(props.entry?.item ?? null);
 const form = ref(costForm(item.value));
-const setGold = ref(props.action !== "batch-costs");
-const setMaterials = ref(props.action !== "batch-costs");
+const setGold = ref(props.action !== "batch-costs" && !localCosts);
+const setMaterials = ref(props.action !== "batch-costs" && !localCosts);
 const name = ref(tab?.name ?? "");
 const newName = ref("");
 const busy = ref(false);
@@ -49,7 +51,8 @@ watch(itemID, async (id) => {
     const result = await FileGUIService.ReadItem(id, currentDrafts);
     if (request !== itemRequest) return;
     if (!result) throw new Error("物品不存在");
-    item.value = result; form.value = costForm(result);
+    item.value = result;
+    form.value = costForm(result);
     const previous = requestSnapshots.get(result.path);
     if (previous) sourceSnapshots.set(result.path, previous);
   } catch (cause) { if (request === itemRequest) itemError.value = String(cause); }
@@ -100,8 +103,9 @@ async function apply(action: string) {
       <NAlert v-if="error" type="error">{{ error }}</NAlert>
       <template v-if="action === 'manage-tabs'">
         <label>新增分页</label>
-        <div class="shop-dialog-row"><NInput v-model:value="newName" placeholder="分页名称" :disabled="busy" /><NButton :disabled="busy || !newName.trim()" @click="apply('add-tab')">新增</NButton></div>
-        <template v-if="tab">
+        <div class="shop-dialog-row"><NInput v-model:value="newName" placeholder="分页名称" :disabled="busy || implicitPages" /><NButton :disabled="busy || implicitPages || !newName.trim()" @click="apply('add-tab')">新增</NButton></div>
+        <NAlert v-if="implicitPages" type="warning">该商店未定义分页，分页管理需在文本模式完成。</NAlert>
+        <template v-if="tab && !tab.implicit">
           <label>当前分页：{{ tab.name }}</label>
           <div class="shop-dialog-row"><NInput v-model:value="name" placeholder="新的分页名称" :disabled="busy" /><NButton :disabled="busy || !name.trim()" @click="apply('rename-tab')">重命名</NButton></div>
           <NButton type="error" secondary :disabled="busy" @click="deleteTabConfirm = true">删除当前分页</NButton>
@@ -122,11 +126,10 @@ async function apply(action: string) {
           <div v-if="itemLoading" role="status"><NSpin :size="16" /> 正在读取商品成本…</div>
           <NAlert v-if="itemError" type="error">{{ itemError }}</NAlert>
         </template>
-        <template v-else>
-          <div class="shop-dialog-row"><NCheckbox v-model:checked="setGold" :disabled="busy">设置金币</NCheckbox><NCheckbox v-model:checked="setMaterials" :disabled="busy">设置兑换道具</NCheckbox></div>
-        </template>
-        <ShopCostFields v-model="form" :disabled="busy || itemLoading || (editingItem && !item)" :gold-enabled="setGold" :materials-enabled="setMaterials" />
-        <NAlert type="warning">价格与兑换道具保存在物品文件中，修改会影响所有引用该物品的商店。</NAlert>
+        <div v-if="!localCosts" class="shop-dialog-row"><NCheckbox v-model:checked="setGold" :disabled="busy">设置金币</NCheckbox><NCheckbox v-model:checked="setMaterials" :disabled="busy">设置兑换道具</NCheckbox></div>
+        <ShopCostFields v-if="!localCosts" v-model="form" :disabled="busy || itemLoading || (editingItem && !item)" :gold-enabled="setGold" :materials-enabled="setMaterials" />
+        <NAlert v-if="localCosts" type="warning">该记录有商店局部成本，替换商品时保留；局部成本请在文本模式修改。</NAlert>
+        <NAlert v-else type="warning">价格与兑换道具保存在物品文件中，修改会影响所有引用该物品的商店。</NAlert>
         <div v-if="formError" class="shop-form-error">{{ formError }}</div>
         <div class="shop-dialog-footer"><NButton :disabled="busy" @click="emit('close')">取消</NButton><NButton type="primary" :loading="busy" :disabled="!canApply" @click="apply(action)">确认修改</NButton></div>
       </template>

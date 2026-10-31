@@ -145,7 +145,7 @@ export const useDropRateStore = defineStore("dropRate", () => {
   const supported = computed(
     () =>
       archive.open &&
-      ["standard", "alternate", "tw", "paged110", "paged100cn"].includes(archive.info?.format ?? ""),
+      ["standard", "alternate", "tw", "paged110", "paged100cn", "paged115cn"].includes(archive.info?.format ?? ""),
   );
   const dirty = computed(() => formFingerprint(sections.value) !== baseline.value);
   const validationError = computed(() => validateDropRateSections(sections.value));
@@ -168,7 +168,7 @@ export const useDropRateStore = defineStore("dropRate", () => {
 
   async function load(): Promise<boolean> {
     if (!supported.value) {
-      error.value = "基础掉率编辑器仅支持已打开的 90US/90CN/TW/110US/100CN PVF";
+      error.value = "基础掉率编辑器仅支持已打开的 90US/90CN/TW/110US/100CN/115CN PVF";
       return false;
     }
     loading.value = true;

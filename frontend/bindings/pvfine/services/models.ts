@@ -527,6 +527,10 @@ export interface FileSetDocument {
 }
 
 export interface ForgeDocument {
+    /**
+     * Rows use the shared four-field editing contract. Six-column source rows
+     * retain their two additional read-only coefficients in FieldsT2.
+     */
     "rows": UpgradeRow[] | null;
     "grades": UpgradeRow[] | null;
     "grades100": UpgradeRow[] | null;
@@ -989,6 +993,7 @@ export interface ShopEntry {
     "item": ShopItem;
     "sourceStart": number;
     "sourceEnd": number;
+    "hasLocalCosts": boolean;
 }
 
 export interface ShopGroup {
@@ -1016,6 +1021,7 @@ export interface ShopTab {
     "name": string;
     "sourceStart": number;
     "groups": ShopGroup[] | null;
+    "implicit": boolean;
 }
 
 export interface SkillDocument {

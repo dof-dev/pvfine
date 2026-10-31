@@ -10,7 +10,7 @@ import (
 
 func TestPVFVersionRulesAndSourceRoundTrip(t *testing.T) {
 	document := Document{Version: 1}
-	for i, versions := range [][]string{nil, {}, {"90US"}, {"90CN", "110US"}, {"115US"}, {"100CN"}, {"TW"}} {
+	for i, versions := range [][]string{nil, {}, {"90US"}, {"90CN", "110US"}, {"115US"}, {"100CN"}, {"TW"}, {"115CN"}} {
 		document.Rules = append(document.Rules, Rule{ID: string(rune('a' + i)), PVFVersions: versions,
 			Target: TargetSpec{Kind: "path"}, Annotation: AnnotationSpec{Title: string(rune('a' + i)), Type: "text"}})
 	}
@@ -21,7 +21,7 @@ func TestPVFVersionRulesAndSourceRoundTrip(t *testing.T) {
 	for _, tc := range []struct {
 		version string
 		want    int
-	}{{"90US", 3}, {"90CN", 3}, {"110US", 3}, {"115US", 3}, {"", 2}, {"future", 2}, {"100CN", 3}, {"TW", 3}} {
+	}{{"90US", 3}, {"90CN", 3}, {"110US", 3}, {"115US", 3}, {"115CN", 3}, {"", 2}, {"future", 2}, {"100CN", 3}, {"TW", 3}} {
 		t.Run(tc.version, func(t *testing.T) {
 			runtime := engine.ForVersion(tc.version)
 			if got := len(runtime.AnnotatePath("a.equ", false)[0].RuleIDs); got != tc.want {

@@ -177,7 +177,7 @@ func TestValidateDropRates(t *testing.T) {
 }
 
 func TestSupportedDropRateVersion(t *testing.T) {
-	for _, version := range []string{"90US", "90CN", "TW", "110US", "100CN"} {
+	for _, version := range []string{"90US", "90CN", "TW", "110US", "100CN", "115CN"} {
 		if !supportedDropRateVersion(version) {
 			t.Fatalf("version %s should be supported", version)
 		}

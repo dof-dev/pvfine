@@ -228,17 +228,40 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 	if err != nil {
 		return fail(err)
 	}
-	sell := document.Sections([]string{"sell info"})
-	if len(sell) != 1 || !sell[0].HasEndTag() {
-		return fail(fmt.Errorf("商店必须包含一个完整的 [sell info] 区块"))
+	if len(document.Warnings()) > 0 {
+		return fail(fmt.Errorf("商店区块未正确闭合，请先在文本模式修正"))
 	}
-	tabs := document.Sections([]string{"sell info", "tab"})
+	sell := document.Sections([]string{"sell info"})
 	var tab *pvf.ScriptSection
 	if req.Action != "add-tab" {
-		if req.TabIndex < 0 || req.TabIndex >= len(tabs) || req.TabIndex >= len(parsed.Tabs) {
+		if req.TabIndex < 0 || req.TabIndex >= len(parsed.Tabs) {
 			return fail(fmt.Errorf("分页已变化，请重新加载"))
 		}
-		tab = tabs[req.TabIndex]
+		location := parsed.Tabs[req.TabIndex].location
+		matches := document.Sections(location.path)
+		if location.occurrence >= len(matches) {
+			return fail(fmt.Errorf("分页结构已变化"))
+		}
+		tab = matches[location.occurrence]
+		if location.implicit && (req.Action == "rename-tab" || req.Action == "delete-tab") {
+			return fail(fmt.Errorf("该商店没有显式分页，不能重命名或删除分页；可直接编辑商品"))
+		}
+	}
+	if req.SetGold || req.SetMaterials {
+		for ti, page := range parsed.Tabs {
+			if ti != req.TabIndex {
+				continue
+			}
+			for _, group := range page.Groups {
+				for _, entry := range group.Items {
+					if req.Action == "batch-costs" || req.Action == "edit-item" && entry.SourceStart == req.SourceStart {
+						if entry.localGold || entry.localMaterials {
+							return fail(fmt.Errorf("该商品有商店局部价格或兑换材料，请在文本模式修改局部成本；未修改共享物品成本"))
+						}
+					}
+				}
+			}
+		}
 	}
 	itemIDs := []string{}
 	shopChanged := false
@@ -255,10 +278,30 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 		if req.Action == "rename-tab" {
 			err = tab.SetValues([]pvf.ScriptValue{value})
 		} else {
-			tab, err = sell[0].AppendSection("tab", []pvf.ScriptValue{value}, true)
+			for _, page := range parsed.Tabs {
+				if page.location.implicit {
+					return fail(fmt.Errorf("该商店没有显式分页，新增分页需先在文本模式调整结构"))
+				}
+			}
+			var lists []*pvf.ScriptSection
+			for _, page := range parsed.Tabs {
+				matches := document.Sections(page.location.path)
+				if page.location.occurrence >= len(matches) {
+					return fail(fmt.Errorf("分页结构已变化"))
+				}
+				lists = append(lists, shopItemLists(matches[page.location.occurrence])...)
+			}
+			listName := shopListName(lists, a.ClientVersion())
+			if len(parsed.Tabs) > 0 && len(parsed.Tabs[0].location.path) == 1 {
+				tab, err = document.AppendSection("tab", []pvf.ScriptValue{value}, true)
+			} else if len(sell) == 1 && sell[0].HasEndTag() {
+				tab, err = sell[0].AppendSection("tab", []pvf.ScriptValue{value}, true)
+			} else {
+				return fail(fmt.Errorf("无法确定新增分页所属的完整商店区块"))
+			}
 			if err == nil {
 				if parsed.CategoryType == "" {
-					_, err = tab.AppendSection("item list", nil, true)
+					_, err = tab.AppendSection(listName, nil, true)
 				} else {
 					if len(parsed.Categories) == 0 {
 						return fail(fmt.Errorf("商店没有可用分类，请检查商店分类文件"))
@@ -275,7 +318,7 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 						if _, e = group.AppendSection("id", []pvf.ScriptValue{id}, false); e != nil {
 							return fail(e)
 						}
-						if _, e = group.AppendSection("item list", nil, true); e != nil {
+						if _, e = group.AppendSection(listName, nil, true); e != nil {
 							return fail(e)
 						}
 					}
@@ -305,21 +348,21 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 		if ordinal < 0 {
 			return fail(fmt.Errorf("商品位置已变化，请重新打开表单"))
 		}
-		var target *pvf.ScriptSection
-		offset := ordinal
-		for _, list := range shopItemLists(tab) {
-			if offset < len(list.Values()) {
-				target = list
-				break
-			}
-			offset -= len(list.Values())
-		}
-		if target == nil {
+		records := shopRecords(tab)
+		if ordinal >= len(records) {
 			return fail(fmt.Errorf("无法定位商品记录"))
 		}
+		record := records[ordinal]
+		target, offset := record.index, record.offset
 		values := target.Values()
 		if req.Action == "delete-item" {
-			values = append(values[:offset], values[offset+1:]...)
+			if record.block != nil {
+				if err := record.block.Delete(); err != nil {
+					return fail(err)
+				}
+			} else {
+				values = append(values[:offset], values[offset+1:]...)
+			}
 		} else {
 			value, err := shopInteger(req.ItemID)
 			if err != nil {
@@ -331,8 +374,10 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 			values[offset] = value
 			itemIDs = append(itemIDs, req.ItemID)
 		}
-		if err := target.SetValues(values); err != nil {
-			return fail(err)
+		if req.Action != "delete-item" || record.block == nil {
+			if err := target.SetValues(values); err != nil {
+				return fail(err)
+			}
 		}
 		shopChanged = true
 	case "add-item":
@@ -344,15 +389,16 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 			return fail(err)
 		}
 		var target *pvf.ScriptSection
+		listName := shopListName(shopItemLists(tab), a.ClientVersion())
 		if parsed.CategoryType == "" {
 			for _, child := range tab.Children() {
-				if child.Name() == "item list" {
+				if child.Name() == "item list" || child.Name() == "sell item list" {
 					target = child
 					break
 				}
 			}
 			if target == nil {
-				target, err = tab.AppendSection("item list", nil, true)
+				target, err = tab.AppendSection(listName, nil, true)
 			}
 		} else {
 			for _, group := range tab.Children() {
@@ -371,13 +417,13 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 					continue
 				}
 				for _, child := range group.Children() {
-					if child.Name() == "item list" {
+					if child.Name() == "item list" || child.Name() == "sell item list" {
 						target = child
 						break
 					}
 				}
 				if target == nil {
-					target, err = group.AppendSection("item list", nil, true)
+					target, err = group.AppendSection(listName, nil, true)
 				}
 				break
 			}
@@ -406,12 +452,12 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 			if _, e = group.AppendSection("id", []pvf.ScriptValue{id}, false); e != nil {
 				return fail(e)
 			}
-			target, e = group.AppendSection("item list", nil, true)
+			target, e = group.AppendSection(listName, nil, true)
 			if e != nil {
 				return fail(e)
 			}
 		}
-		if err := target.Append(value); err != nil {
+		if err := appendShopRecord(document, target, value); err != nil {
 			return fail(err)
 		}
 		itemIDs = append(itemIDs, req.ItemID)
@@ -420,10 +466,8 @@ func (s *FileGUIService) applyShopEditLocked(req ShopEditRequest) (*ShopEditResu
 		if !req.SetGold && !req.SetMaterials {
 			return fail(fmt.Errorf("请选择至少一种需要批量设置的成本"))
 		}
-		for _, list := range shopItemLists(tab) {
-			for _, v := range list.Values() {
-				itemIDs = append(itemIDs, fmt.Sprint(v.Value))
-			}
+		for _, record := range shopRecords(tab) {
+			itemIDs = append(itemIDs, fmt.Sprint(record.index.Values()[record.offset].Value))
 		}
 		if len(itemIDs) == 0 {
 			return fail(fmt.Errorf("当前分页没有商品"))
@@ -594,11 +638,11 @@ func shopItemLists(tab *pvf.ScriptSection) []*pvf.ScriptSection {
 	lists := []*pvf.ScriptSection{}
 	for _, child := range tab.Children() {
 		switch child.Name() {
-		case "item list":
+		case "item list", "sell item list":
 			lists = append(lists, child)
 		case "category entry":
 			for _, list := range child.Children() {
-				if list.Name() == "item list" {
+				if list.Name() == "item list" || list.Name() == "sell item list" {
 					lists = append(lists, list)
 				}
 			}
@@ -606,6 +650,100 @@ func shopItemLists(tab *pvf.ScriptSection) []*pvf.ScriptSection {
 	}
 	return lists
 }
+
+func shopListName(lists []*pvf.ScriptSection, version string) string {
+	for _, list := range lists {
+		if list.Name() == "sell item list" {
+			return "sell item list"
+		}
+	}
+	if len(lists) == 0 && version == "115CN" {
+		return "sell item list"
+	}
+	return "item list"
+}
+
+type shopRecord struct {
+	index  *pvf.ScriptSection
+	offset int
+	block  *pvf.ScriptSection
+}
+
+func shopRecords(tab *pvf.ScriptSection) []shopRecord {
+	records := []shopRecord{}
+	for _, list := range shopItemLists(tab) {
+		if list.Name() == "item list" {
+			for i := range list.Values() {
+				records = append(records, shopRecord{index: list, offset: i})
+			}
+			continue
+		}
+		for _, block := range list.Children() {
+			if block.Name() != "item" {
+				continue
+			}
+			for _, field := range block.Children() {
+				if field.Name() == "index" {
+					values := field.Values()
+					if len(values) == 1 && values[0].Type == pvf.ScriptTokenInteger && fmt.Sprint(values[0].Value) == "-1" {
+						continue
+					}
+					records = append(records, shopRecord{index: field, block: block})
+				}
+			}
+		}
+	}
+	return records
+}
+
+func appendShopRecord(document *pvf.ScriptDocument, list *pvf.ScriptSection, value pvf.ScriptValue) error {
+	if list.Name() == "item list" {
+		return list.Append(value)
+	}
+	// The direct item integer is the shop entry key, not the product ID.
+	// Allocate above existing keys without renumbering records or copying overrides.
+	var next int64
+	var blocks []*pvf.ScriptSection
+	var collect func([]*pvf.ScriptSection)
+	collect = func(sections []*pvf.ScriptSection) {
+		for _, section := range sections {
+			if section.Name() == "sell item list" {
+				for _, block := range section.Children() {
+					if block.Name() == "item" {
+						blocks = append(blocks, block)
+					}
+				}
+			} else {
+				collect(section.Children())
+			}
+		}
+	}
+	collect(document.Sections(nil))
+	for _, block := range blocks {
+		values := block.Values()
+		if len(values) != 1 {
+			return fmt.Errorf("商品记录序号结构异常，无法新增")
+		}
+		key, err := strconv.ParseInt(fmt.Sprint(values[0].Value), 10, 32)
+		if err != nil || key < 0 || values[0].Type != pvf.ScriptTokenInteger {
+			return fmt.Errorf("商品记录序号无效")
+		}
+		if key >= next {
+			next = key + 1
+		}
+	}
+	key, err := shopInteger(strconv.FormatInt(next, 10))
+	if err != nil {
+		return err
+	}
+	block, err := list.AppendSection("item", []pvf.ScriptValue{key}, true)
+	if err != nil {
+		return err
+	}
+	_, err = block.AppendSection("index", []pvf.ScriptValue{value}, false)
+	return err
+}
+
 func replaceShopCostSection(doc *pvf.ScriptDocument, name string, values []pvf.ScriptValue, paired bool) error {
 	sections := doc.Sections([]string{name})
 	if len(values) == 0 {

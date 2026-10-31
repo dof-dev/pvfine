@@ -26065,12 +26065,13 @@
       "annotation": {
         "title": "锻造等级表",
         "type": "text",
-        "content": "每级 4 项：属性系数 A、属性系数 B、成功率、材料消耗倍率。按记录顺序对应 +1 起的锻造等级。成功率分母 10000；锻造失败不损坏、不降级。A/B 的具体属性含义尚未确认。"
+        "content": "旧版每级 4 项：属性系数 A、属性系数 B、成功率、材料消耗倍率。115CN 每级 6 项，在 A/B 后增加两项原始系数。按记录顺序对应 +1 起的锻造等级。成功率分母 10000；系数的具体属性含义尚未确认。"
       },
       "group": "etc"
     },
     {
       "id": "etc.forge.table.0",
+      "pvfVersions": ["90US", "90CN", "110US", "115US", "100CN", "TW"],
       "match": {
         "glob": "etc/upgrade_separate.etc"
       },
@@ -26089,6 +26090,7 @@
     },
     {
       "id": "etc.forge.table.1",
+      "pvfVersions": ["90US", "90CN", "110US", "115US", "100CN", "TW"],
       "match": {
         "glob": "etc/upgrade_separate.etc"
       },
@@ -26107,6 +26109,7 @@
     },
     {
       "id": "etc.forge.table.2",
+      "pvfVersions": ["90US", "90CN", "110US", "115US", "100CN", "TW"],
       "match": {
         "glob": "etc/upgrade_separate.etc"
       },
@@ -26125,6 +26128,7 @@
     },
     {
       "id": "etc.forge.table.3",
+      "pvfVersions": ["90US", "90CN", "110US", "115US", "100CN", "TW"],
       "match": {
         "glob": "etc/upgrade_separate.etc"
       },
@@ -26139,6 +26143,54 @@
         "type": "text",
         "content": "锻造等级对应的材料倍率，结合装备等级数量基数等参数计算实际消耗；取整规则尚未确认。"
       },
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.0",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 0, "recordTokens": 6},
+      "annotation": {"title": "属性系数 A", "type": "text", "content": "原始属性系数，具体作用尚未确认。"},
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.1",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 1, "recordTokens": 6},
+      "annotation": {"title": "属性系数 B", "type": "text", "content": "原始属性系数，具体作用尚未确认。"},
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.2",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 2, "recordTokens": 6},
+      "annotation": {"title": "附加系数 1", "type": "text", "content": "115CN 增加的原始系数，具体作用尚未确认。"},
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.3",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 3, "recordTokens": 6},
+      "annotation": {"title": "附加系数 2", "type": "text", "content": "115CN 增加的原始系数，具体作用尚未确认。"},
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.4",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 4, "recordTokens": 6},
+      "annotation": {"title": "锻造成功率", "type": "text", "content": "分母 10000；原值 750 = 成功率 7.5%。"},
+      "group": "etc"
+    },
+    {
+      "id": "etc.forge.115cn.table.5",
+      "pvfVersions": ["115CN"],
+      "match": {"glob": "etc/upgrade_separate.etc"},
+      "target": {"kind": "token", "section": "table", "index": 5, "recordTokens": 6},
+      "annotation": {"title": "材料消耗倍率", "type": "text", "content": "锻造等级对应的材料倍率；取整规则尚未确认。"},
       "group": "etc"
     },
     {

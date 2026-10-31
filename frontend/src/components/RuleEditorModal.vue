@@ -95,7 +95,7 @@ const formFields = computed<FormField[]>(() => {
   if (isAnnotation.value) {
     fields.push({
       path: "pvfVersions",
-      label: "PVF 版本（90US / 90CN / 110US / 115US / 100CN / TW）",
+      label: "PVF 版本（90US / 90CN / 110US / 115US / 115CN / 100CN / TW）",
       type: "list",
     });
     if (kind.value === "rule")

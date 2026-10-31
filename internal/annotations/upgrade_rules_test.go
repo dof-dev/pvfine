@@ -94,3 +94,37 @@ func TestDefaultForgeAndLegacyRules(t *testing.T) {
 		t.Fatal("missing legacy annotation")
 	}
 }
+
+func Test115CNForgeRulePositions(t *testing.T) {
+	engine, err := LoadDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "[table]\n2 1 2.6 1 10000 1 3 2 3.6 2 5000 1.11\n[/table]"
+	results := engine.ForVersion("115CN").Annotate("etc/upgrade_separate.etc", pvf.ParseScriptView(text), nil)
+	probabilities := 0
+	for _, result := range results {
+		for _, id := range result.RuleIDs {
+			if strings.HasPrefix(id, "etc.forge.table.") {
+				t.Fatal("legacy four-column annotation leaked into 115CN")
+			}
+			if id == "etc.forge.115cn.table.4" {
+				value := text[result.Start:result.End]
+				if value != "10000" && value != "5000" {
+					t.Fatal("probability annotation points at a coefficient")
+				}
+				probabilities++
+			}
+		}
+	}
+	if probabilities != 2 {
+		t.Fatal("six-column probability annotations missing")
+	}
+	for _, result := range engine.ForVersion("115US").Annotate("etc/upgrade_separate.etc", pvf.ParseScriptView(text), nil) {
+		for _, id := range result.RuleIDs {
+			if strings.HasPrefix(id, "etc.forge.115cn.") {
+				t.Fatal("115CN annotations leaked into 115US")
+			}
+		}
+	}
+}

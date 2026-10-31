@@ -54,6 +54,7 @@ const archiveFormatNames: Record<string, string> = {
   recovered: "UNKNOWN",
   tw: "TW",
   paged115: "115US",
+  paged115cn: "115CN",
   paged100cn: "100CN",
   act60: "60ACT",
 };

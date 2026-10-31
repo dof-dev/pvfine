@@ -41,9 +41,21 @@ describe('任务 GUI', () => {
     expect(editQuest(ref, [{ name: 'level', values: ['10', '120'], kind: 'integer' }])).toContain('{8=`<1::name>`}');
     expect(() => editQuest('[level]\n`1`', [{ name: 'level', values: ['2'], kind: 'integer' }])).toThrow('类型不匹配');
   });
-  it('拒绝未闭合、嵌套数据、非整数和溢出', () => {
-    for (const text of ['[name]\n`oops', '[name', '[outer]\n[inner]\n1\n[/inner]\n[/outer]', '[name]\n{8=`x`']) expect(() => parseQuest(text)).toThrow();
+  it('拒绝未闭合、交叉闭合、非整数和溢出', () => {
+    for (const text of ['[name]\n`oops', '[name', '[outer]\n[inner]\n1\n[/outer]\n[/inner]', '[name]\n{8=`x`']) expect(() => parseQuest(text)).toThrow();
     for (const value of ['', '1.5', 'NaN', '2147483648', '-2147483649']) expect(() => editQuest(source, [{ name: 'sub type', values: [value], kind: 'integer' }])).toThrow();
+  });
+  it('嵌套区块只读保留，子字段不会覆盖顶层字段', () => {
+    const text = '[name]\n`root`\n[change depend on grow job]\n1\n[name]\n`nested`\n[solve message]\n`dialogue`\n[/change depend on grow job]\n[level]\n1 115';
+    const doc = parseQuest(text);
+    expect(questValues(doc, 'name')).toEqual(['root']);
+    expect(questValues(doc, 'solve message')).toEqual([]);
+    expect(doc.sections.find(s => s.name === 'change depend on grow job')?.issue).toContain('嵌套');
+    expect(() => editQuest(text, [{ name: 'change depend on grow job', kind: 'integer', values: ['2'] }])).toThrow('嵌套');
+    expect(editQuest(text, [{ name: 'level', kind: 'integer', values: ['2', '115'] }])).toBe(text.replace('1 115', '2 115'));
+    const paired = '[outer]\n[inner]\n1\n[/inner]\n[other]\n2\n[/outer]\n[level]\n3';
+    expect(parseQuest(paired).sections.map(s => s.name)).toEqual(['outer', 'level']);
+    expect(editQuest(paired, [{ name: 'level', kind: 'integer', values: ['4'] }])).toBe(paired.replace('[level]\n3', '[level]\n4'));
   });
   it('正确处理反引号转义、多行文本和注释中的标签', () => {
     const text = '# [name]\n[name]\n`a``b\n[other]`\n[level]\n1 120';

@@ -72,3 +72,17 @@ func TestDefaultUpgradeAndForgeRendering(t *testing.T) {
 		t.Fatalf("unstable render: %q", next)
 	}
 }
+
+func Test115CNForgeRendering(t *testing.T) {
+	a := New()
+	a.format = paged115CNProfile
+	row := "2 1 2.6 1 10000 1"
+	raw, err := a.encodeScript("[table]\n" + row + " " + row + "\n[/table]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := a.decodeScriptForPath(raw, "etc/upgrade_separate.etc")
+	if strings.Count(text, "\t"+strings.ReplaceAll(row, " ", "\t")+"\n") != 2 {
+		t.Fatal("115CN forge table did not render six values per row")
+	}
+}

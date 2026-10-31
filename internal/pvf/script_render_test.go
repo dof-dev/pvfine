@@ -287,7 +287,7 @@ func TestDropRateRenderingUsesClientGroupWidth(t *testing.T) {
 		profile formatProfile
 		width   int
 	}{
-		{standardProfile, 7}, {alternateProfile, 7}, {twProfile, 6}, {paged100CNProfile, 8}, {paged110Profile, 9}, {recoveredProfile, 7},
+		{standardProfile, 7}, {alternateProfile, 7}, {twProfile, 6}, {paged100CNProfile, 8}, {paged110Profile, 9}, {paged115CNProfile, 9}, {recoveredProfile, 7},
 	} {
 		t.Run(tc.profile.id, func(t *testing.T) {
 			a := New()

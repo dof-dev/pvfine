@@ -12,6 +12,8 @@ type ForgeSection struct {
 	Fields []SkillNumber `json:"fields"`
 }
 type ForgeDocument struct {
+	// Rows use the shared four-field editing contract. Six-column source rows
+	// retain their two additional read-only coefficients in FieldsT2.
 	Rows      []UpgradeRow   `json:"rows"`
 	Grades    []UpgradeRow   `json:"grades"`
 	Grades100 []UpgradeRow   `json:"grades100"`
@@ -87,19 +89,41 @@ func parseForge(text string) (*ForgeDocument, error) {
 		sections[current] = append(sections[current], SkillNumber{Value: n, Start: e.Start, End: e.End, TokenType: e.TokenType})
 	}
 	values := sections["table"]
-	if len(values) == 0 || len(values)%4 != 0 {
-		return nil, fmt.Errorf("[table] 每级需要 4 项")
-	}
 	maximum := sections["separate upgrade max"]
-	if len(maximum) != 1 || maximum[0].TokenType != 0 || maximum[0].Value < 1 || maximum[0].Value > float64(len(values)/4) {
-		return nil, fmt.Errorf("最大锻造等级必须位于 1～%d", len(values)/4)
+	if len(maximum) != 1 || maximum[0].TokenType != 0 || maximum[0].Value < 1 {
+		return nil, fmt.Errorf("最大锻造等级必须为正整数")
+	}
+	width := 0
+	for _, candidate := range []int{4, 6} {
+		if len(values) == 0 || len(values)%candidate != 0 || maximum[0].Value > float64(len(values)/candidate) {
+			continue
+		}
+		valid := true
+		for i := candidate - 2; i < len(values); i += candidate {
+			if values[i].TokenType != 0 || values[i].Value > 10000 {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			if width != 0 {
+				return nil, fmt.Errorf("[table] 的 4 列和 6 列布局存在歧义，请在 DSL 中编辑")
+			}
+			width = candidate
+		}
+	}
+	if width == 0 {
+		return nil, fmt.Errorf("[table] 每级需要 4 或 6 项，成功率必须是 0～10000 的整数，最大等级不能超过数据行数")
 	}
 	doc := &ForgeDocument{Rows: []UpgradeRow{}, Grades: []UpgradeRow{}, Grades100: []UpgradeRow{}, Maximum: maximum[0], Extras: []ForgeSection{}}
-	for i := 0; i < len(values); i += 4 {
-		if values[i+2].TokenType != 0 || values[i+2].Value > 10000 {
-			return nil, fmt.Errorf("第 %d 级成功率必须是 0～10000 的整数", i/4+1)
+	for i := 0; i < len(values); i += width {
+		fields := append([]SkillNumber(nil), values[i:i+2]...)
+		fields = append(fields, values[i+width-2:i+width]...)
+		extra := []SkillNumber{}
+		if width == 6 {
+			extra = append(extra, values[i+2:i+4]...)
 		}
-		doc.Rows = append(doc.Rows, UpgradeRow{Level: i/4 + 1, Fields: append([]SkillNumber(nil), values[i:i+4]...), FieldsT2: []SkillNumber{}})
+		doc.Rows = append(doc.Rows, UpgradeRow{Level: i/width + 1, Fields: fields, FieldsT2: extra})
 	}
 	for _, name := range []string{"item weights by grade", "item weights by grade 100lv"} {
 		fields := sections[name]

@@ -134,7 +134,7 @@ func Validate(document Document) error {
 		}
 		for version, width := range rule.Format.TokensPerLineByVersion {
 			switch version {
-			case "90US", "90CN", "TW", "100CN", "110US", "115US":
+			case "90US", "90CN", "TW", "100CN", "110US", "115US", "115CN":
 			default:
 				problems = append(problems, prefix+".format.tokensPerLineByVersion 包含无效版本 "+version)
 			}

@@ -29,6 +29,7 @@ const (
 	FormatPaged      = "paged"
 	FormatPaged110   = "paged110"
 	FormatPaged115   = "paged115"
+	FormatPaged115CN = "paged115cn"
 	FormatRecovered  = "recovered"
 	FormatPaged100CN = "paged100cn"
 	FormatTW         = "tw"
@@ -51,6 +52,11 @@ var paged110Profile = formatProfile{
 }
 var paged115Profile = formatProfile{
 	id:        FormatPaged115,
+	container: pagedContainer,
+	rules:     pagedContentRules,
+}
+var paged115CNProfile = formatProfile{
+	id:        FormatPaged115CN,
 	container: pagedContainer,
 	rules:     pagedContentRules,
 }
@@ -129,6 +135,8 @@ func (a *Archive) ClientVersion() string {
 		return "110US"
 	case FormatPaged115:
 		return "115US"
+	case FormatPaged115CN:
+		return "115CN"
 	case FormatPaged100CN:
 		return "100CN"
 	case FormatTW:

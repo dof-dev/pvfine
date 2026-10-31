@@ -11,6 +11,9 @@ import (
 // 115US 2.38.2.34 client. This is an identity, not decryption key material.
 const paged115PublicKeyFingerprint = "42631b7746e1b68ac21176a697522b8a569d29a8be1a640328dbf5dbd63d656e"
 
+// Public identity verified against the 115CN archive and matching DNF.exe.
+const paged115CNPublicKeyFingerprint = "5ef4f68c9b85f782538a4b55fbd2273533bfbda5ec23234116998ed952e902b9"
+
 // Public identity of the DNF.exe candidate verified by unsealing the 100CN
 // sidecar and validating the archive header. This constant is only a public identity.
 const paged100CNPublicKeyFingerprint = "414b83aac1af7822c5038b0b98946cc3feda05930007afee1812df240a6bb85d"
@@ -34,6 +37,9 @@ func pagedClientProfile(key *rsa.PublicKey) formatProfile {
 	}
 	if hex.EncodeToString(fingerprint[:]) == paged115PublicKeyFingerprint {
 		return paged115Profile
+	}
+	if hex.EncodeToString(fingerprint[:]) == paged115CNPublicKeyFingerprint {
+		return paged115CNProfile
 	}
 	if hex.EncodeToString(fingerprint[:]) == paged100CNPublicKeyFingerprint {
 		return paged100CNProfile

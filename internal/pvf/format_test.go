@@ -124,7 +124,7 @@ func TestUnknownHashWritePolicy(t *testing.T) {
 }
 
 func TestBatchClonePreservesContainerAndRules(t *testing.T) {
-	for _, profile := range []formatProfile{paged110Profile, paged115Profile, pagedProfile, paged100CNProfile} {
+	for _, profile := range []formatProfile{paged110Profile, paged115Profile, paged115CNProfile, pagedProfile, paged100CNProfile} {
 		t.Run(profile.id, func(t *testing.T) {
 			a := New()
 			a.format = profile
@@ -172,7 +172,7 @@ func TestContentRulesIndependentOfContainer(t *testing.T) {
 }
 
 func TestPagedWriteRequiresPageState(t *testing.T) {
-	for _, profile := range []formatProfile{paged110Profile, paged115Profile, pagedProfile, paged100CNProfile} {
+	for _, profile := range []formatProfile{paged110Profile, paged115Profile, paged115CNProfile, pagedProfile, paged100CNProfile} {
 		t.Run(profile.id, func(t *testing.T) {
 			a := New()
 			a.format = profile
@@ -236,7 +236,7 @@ func TestParseRejectsInvalidNameSection(t *testing.T) {
 // This exercises page wrapping, parsing, edits and clone/save with synthetic
 // page state, independently of proprietary sidecar fixtures.
 func TestPagedContainerSyntheticRoundTrip(t *testing.T) {
-	for _, profile := range []formatProfile{paged110Profile, paged115Profile, pagedProfile, paged100CNProfile} {
+	for _, profile := range []formatProfile{paged110Profile, paged115Profile, paged115CNProfile, pagedProfile, paged100CNProfile} {
 		t.Run(profile.id, func(t *testing.T) {
 			a := New()
 			a.format = profile
@@ -359,7 +359,7 @@ func TestClientVersion(t *testing.T) {
 		want    string
 	}{
 		{standardProfile, "90US"}, {alternateProfile, "90CN"}, {paged110Profile, "110US"},
-		{paged115Profile, "115US"}, {pagedProfile, ""}, {recoveredProfile, ""}, {formatProfile{id: "future"}, ""}, {paged100CNProfile, "100CN"}, {twProfile, "TW"},
+		{paged115Profile, "115US"}, {paged115CNProfile, "115CN"}, {pagedProfile, ""}, {recoveredProfile, ""}, {formatProfile{id: "future"}, ""}, {paged100CNProfile, "100CN"}, {twProfile, "TW"},
 	} {
 		a := New()
 		a.format = tc.profile
@@ -382,7 +382,7 @@ func TestPagedClientProfiles(t *testing.T) {
 			t.Fatal("bundled public identity changed")
 		}
 	}
-	for _, profile := range []formatProfile{paged110Profile, paged115Profile, pagedProfile, paged100CNProfile} {
+	for _, profile := range []formatProfile{paged110Profile, paged115Profile, paged115CNProfile, pagedProfile, paged100CNProfile} {
 		a := New()
 		a.format = profile
 		if !a.IsPaged() || !a.IsPaged110() || !a.Info().Paged110 {

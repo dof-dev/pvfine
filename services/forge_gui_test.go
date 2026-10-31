@@ -2,6 +2,7 @@ package services
 
 import (
 	"pvfine/internal/pvf"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -33,6 +34,33 @@ func TestForgeStructureAndSource(t *testing.T) {
 		if _, err := parseForge(invalid); err == nil {
 			t.Fatal("accepted invalid forge text")
 		}
+	}
+}
+
+func TestForgeSixColumnRows(t *testing.T) {
+	text := strings.Replace(forgeTestText,
+		"2 1 10000 1 3 2 5000 1.11 4 3 5000 1.21 6 4 3000 1.32 8 5 3000 1.42 13 9 1500 1.53 18 12 1500 1.63 25 18 750 1.74",
+		"2 1 2.6 1 10000 1 3 2 3.6 2 5000 1.11 4 3 5.8 3 5000 1.21 6 4 7.8 4 3000 1.32 8 5 9.8 5 3000 1.42 13 9 15.8 9 1500 1.53 18 12 20.8 12 1500 1.63 25 18 27.8 18 750 1.74", 1)
+	doc, err := parseForge(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Rows) != 8 || doc.Rows[0].Fields[2].Value != 10000 || doc.Rows[1].Fields[3].Value != 1.11 ||
+		len(doc.Rows[0].FieldsT2) != 2 || doc.Rows[0].FieldsT2[0].Value != 2.6 || doc.Rows[7].Fields[2].Value != 750 {
+		t.Fatal("six-column source fields were not mapped correctly")
+	}
+	source := utf16.Encode([]rune(strings.ReplaceAll(text, "\r\n", "\n")))
+	for _, row := range doc.Rows {
+		for _, field := range append(append([]SkillNumber{}, row.Fields...), row.FieldsT2...) {
+			got, err := strconv.ParseFloat(string(utf16.Decode(source[field.Start:field.End])), 64)
+			if err != nil || got != field.Value {
+				t.Fatal("source offsets were lost")
+			}
+		}
+	}
+	ambiguous := "[table]\n" + strings.Repeat("1 1 1 1 10000 1 ", 2) + "\n[/table]\n[separate upgrade max]\n2\n[item weights by grade]\n1 3326 1\n[/item weights by grade]"
+	if _, err := parseForge(ambiguous); err == nil {
+		t.Fatal("ambiguous four/six column layout accepted")
 	}
 }
 

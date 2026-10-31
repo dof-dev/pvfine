@@ -189,7 +189,7 @@ func Validate(document Document) error {
 	validateVersions := func(prefix string, versions []string) {
 		for _, version := range versions {
 			if !ValidPVFVersion(version) {
-				problems = append(problems, fmt.Sprintf("%s.pvfVersions 包含无效版本 %q，只允许 90US、90CN、110US、115US、100CN、TW", prefix, version))
+				problems = append(problems, fmt.Sprintf("%s.pvfVersions 包含无效版本 %q，只允许 90US、90CN、110US、115US、115CN、100CN、TW", prefix, version))
 			}
 		}
 	}

@@ -25,6 +25,9 @@ var paged100CNEmbeddedClient []byte
 //go:embed assets/clients/115us.bin
 var paged115EmbeddedClient []byte
 
+//go:embed assets/clients/115cn.bin
+var paged115CNEmbeddedClient []byte
+
 type bundledPagedClient struct {
 	sealed   []byte
 	key      *rsa.PrivateKey
@@ -46,7 +49,7 @@ func bundledPagedClients() []bundledPagedClient {
 			data    []byte
 			profile formatProfile
 		}{{paged110EmbeddedClient, paged110Profile}, {paged100CNEmbeddedClient, paged100CNProfile},
-			{paged115EmbeddedClient, paged115Profile}} {
+			{paged115EmbeddedClient, paged115Profile}, {paged115CNEmbeddedClient, paged115CNProfile}} {
 			if client, err := decodeBundledPagedClient(resource.data, resource.profile); err == nil {
 				bundledClientState.clients = append(bundledClientState.clients, client)
 			}

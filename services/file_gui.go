@@ -35,9 +35,12 @@ type ShopItem struct {
 	Costs     []ShopCost      `json:"costs"`
 }
 type ShopEntry struct {
-	Item        ShopItem `json:"item"`
-	SourceStart int      `json:"sourceStart"`
-	SourceEnd   int      `json:"sourceEnd"`
+	Item                      ShopItem `json:"item"`
+	SourceStart               int      `json:"sourceStart"`
+	SourceEnd                 int      `json:"sourceEnd"`
+	HasLocalCosts             bool     `json:"hasLocalCosts"`
+	localCosts                []ShopCost
+	localGold, localMaterials bool
 }
 type ShopGroup struct {
 	CategoryID  string      `json:"categoryId"`
@@ -48,6 +51,8 @@ type ShopTab struct {
 	Name        string      `json:"name"`
 	SourceStart int         `json:"sourceStart"`
 	Groups      []ShopGroup `json:"groups"`
+	Implicit    bool        `json:"implicit"`
+	location    shopLocation
 }
 type ShopDocument struct {
 	Revision     uint64         `json:"revision"`
@@ -89,6 +94,17 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 			shopIssue(doc, "use category", err.Error())
 		} else {
 			doc.Categories = categories
+		}
+		unclassified := false
+		for _, tab := range doc.Tabs {
+			for _, group := range tab.Groups {
+				if group.CategoryID == "" && len(group.Items) > 0 {
+					unclassified = true
+				}
+			}
+		}
+		if unclassified {
+			doc.Categories = append([]ShopCategory{{ID: "", Name: "未分类"}}, doc.Categories...)
 		}
 	}
 	// Metadata and complete items are separate caches: materials need no costs,
@@ -152,6 +168,34 @@ func (s *FileGUIService) ReadShop(fileIndex int32, text string) (*ShopDocument, 
 					}
 				}
 				items[id], entry.Item = item, item
+			}
+		}
+	}
+	for ti := range doc.Tabs {
+		for gi := range doc.Tabs[ti].Groups {
+			for ei := range doc.Tabs[ti].Groups[gi].Items {
+				entry := &doc.Tabs[ti].Groups[gi].Items[ei]
+				if !entry.localGold && !entry.localMaterials {
+					continue
+				}
+				costs := []ShopCost{}
+				for _, cost := range entry.Item.Costs {
+					if cost.Kind == "gold" && entry.localGold || cost.Kind == "material" && entry.localMaterials {
+						continue
+					}
+					costs = append(costs, cost)
+				}
+				for _, cost := range entry.localCosts {
+					if cost.Kind == "material" {
+						material, _, found := resolve(cost.ItemID)
+						cost.Name, cost.Icon = material.Name, material.Icon
+						if !found {
+							shopIssue(doc, "need material", "找不到兑换道具 #"+cost.ItemID)
+						}
+					}
+					costs = append(costs, cost)
+				}
+				entry.Item.Costs = costs
 			}
 		}
 	}
@@ -233,98 +277,6 @@ func readShopCategories(a *pvf.Archive, categoryType string) ([]ShopCategory, er
 	return nil, fmt.Errorf("商店分类文件中找不到大分类：%s", categoryType)
 }
 
-// parseShop uses semantic section paths and IDs rather than whitespace or
-// line-based records, so repeated blocks retain their order and source range.
-func parseShop(text string) *ShopDocument {
-	doc := &ShopDocument{Categories: []ShopCategory{}, Tabs: []ShopTab{}, Issues: []PreviewIssue{}}
-	view := pvf.ParseScriptView(text)
-	values := make(map[int][]pvf.ScriptElement)
-	for _, e := range view.Elements {
-		if e.Kind == pvf.ScriptElementToken {
-			values[e.SectionID] = append(values[e.SectionID], e)
-		}
-	}
-	ti, gi := -1, -1
-	categories := make(map[string]bool)
-	for _, e := range view.Elements {
-		if e.Kind != pvf.ScriptElementSection {
-			continue
-		}
-		p := strings.Join(e.SectionPath, "/")
-		vs := values[e.SectionID]
-		first := ""
-		if len(vs) > 0 {
-			first = vs[0].Value
-		}
-		switch p {
-		case "sell info/use category":
-			doc.CategoryType = first
-		case "sell info/tab":
-			if first == "" {
-				first = fmt.Sprintf("分页 %d", len(doc.Tabs)+1)
-			}
-			doc.Tabs = append(doc.Tabs, ShopTab{Name: first, SourceStart: e.Start, Groups: []ShopGroup{}})
-			ti, gi = len(doc.Tabs)-1, -1
-		case "sell info/tab/category entry":
-			if ti < 0 {
-				continue
-			}
-			doc.Tabs[ti].Groups = append(doc.Tabs[ti].Groups, ShopGroup{SourceStart: e.Start, Items: []ShopEntry{}})
-			gi = len(doc.Tabs[ti].Groups) - 1
-		case "sell info/tab/category entry/id":
-			if ti < 0 || gi < 0 {
-				continue
-			}
-			doc.Tabs[ti].Groups[gi].CategoryID = first
-			if _, err := strconv.ParseInt(first, 10, 32); err != nil {
-				shopIssue(doc, e.Section, "分类 ID 无效："+first)
-			}
-		case "sell info/tab/item list", "sell info/tab/category entry/item list":
-			if ti < 0 {
-				continue
-			}
-			if p == "sell info/tab/item list" {
-				doc.Tabs[ti].Groups = append(doc.Tabs[ti].Groups, ShopGroup{SourceStart: e.Start, Items: []ShopEntry{}})
-				gi = len(doc.Tabs[ti].Groups) - 1
-			}
-			if gi < 0 {
-				shopIssue(doc, e.Section, "商品列表缺少分类区块")
-				continue
-			}
-			group := &doc.Tabs[ti].Groups[gi]
-			for _, v := range vs {
-				if _, err := strconv.ParseInt(v.Value, 10, 32); err != nil || v.TokenType != 0 {
-					shopIssue(doc, e.Section, "商品 ID 无效："+v.Value)
-					continue
-				}
-				group.Items = append(group.Items, ShopEntry{Item: ShopItem{ID: v.Value}, SourceStart: v.Start, SourceEnd: v.End})
-			}
-		default:
-			if e.Section == "item list" {
-				shopIssue(doc, e.Section, "无法识别商品列表所在的商店结构")
-			}
-		}
-	}
-	for _, tab := range doc.Tabs {
-		for _, group := range tab.Groups {
-			if group.CategoryID != "" && !categories[group.CategoryID] {
-				categories[group.CategoryID] = true
-				doc.Categories = append(doc.Categories, ShopCategory{ID: group.CategoryID})
-			}
-			if doc.CategoryType != "" && group.CategoryID == "" {
-				shopIssue(doc, "category entry", "分类商品缺少分类 ID")
-			}
-		}
-	}
-	if doc.CategoryType == "" && len(doc.Categories) > 0 {
-		shopIssue(doc, "use category", "存在分类商品，但未声明大分类类型")
-	}
-	if len(doc.Tabs) == 0 {
-		shopIssue(doc, "sell info", "未找到可展示的商店分页，请检查文本结构")
-	}
-	return doc
-}
-
 func shopCosts(text, id string, doc *ShopDocument) []ShopCost {
 	costs := []ShopCost{}
 	view := pvf.ParseScriptView(text)
@@ -334,33 +286,38 @@ func shopCosts(text, id string, doc *ShopDocument) []ShopCost {
 			sections[e.SectionID] = append(sections[e.SectionID], e)
 		}
 	}
-	validNumber := func(e pvf.ScriptElement) bool {
-		n, err := strconv.ParseInt(e.Value, 10, 32)
-		return err == nil && n >= 0 && e.TokenType == 0
-	}
 	for _, e := range view.Elements {
 		if e.Kind != pvf.ScriptElementSection || len(e.SectionPath) != 1 {
 			continue
 		}
-		vs := sections[e.SectionID]
-		switch e.Section {
-		case "price":
-			if len(vs) != 1 || !validNumber(vs[0]) {
-				shopIssue(doc, "price", "商品 #"+id+" 的金币价格无效")
+		costs = append(costs, shopCostValues(e.Section, sections[e.SectionID], id, doc)...)
+	}
+	return costs
+}
+
+func shopCostValues(name string, vs []pvf.ScriptElement, id string, doc *ShopDocument) []ShopCost {
+	costs := []ShopCost{}
+	validNumber := func(e pvf.ScriptElement) bool {
+		n, err := strconv.ParseInt(e.Value, 10, 32)
+		return err == nil && n >= 0 && e.TokenType == 0
+	}
+	switch name {
+	case "price":
+		if len(vs) != 1 || !validNumber(vs[0]) {
+			shopIssue(doc, "price", "商品 #"+id+" 的金币价格无效")
+			return costs
+		}
+		costs = append(costs, ShopCost{Kind: "gold", Quantity: vs[0].Value, Name: "金币"})
+	case "need material":
+		if len(vs) == 0 || len(vs)%2 != 0 {
+			shopIssue(doc, "need material", "商品 #"+id+" 的兑换道具必须按 ID、数量成对配置")
+		}
+		for i := 0; i+1 < len(vs); i += 2 {
+			if !validNumber(vs[i]) || !validNumber(vs[i+1]) {
+				shopIssue(doc, "need material", "商品 #"+id+" 的兑换成本无效")
 				continue
 			}
-			costs = append(costs, ShopCost{Kind: "gold", Quantity: vs[0].Value, Name: "金币"})
-		case "need material":
-			if len(vs) == 0 || len(vs)%2 != 0 {
-				shopIssue(doc, "need material", "商品 #"+id+" 的兑换道具必须按 ID、数量成对配置")
-			}
-			for i := 0; i+1 < len(vs); i += 2 {
-				if !validNumber(vs[i]) || !validNumber(vs[i+1]) {
-					shopIssue(doc, "need material", "商品 #"+id+" 的兑换成本无效")
-					continue
-				}
-				costs = append(costs, ShopCost{Kind: "material", ItemID: vs[i].Value, Quantity: vs[i+1].Value})
-			}
+			costs = append(costs, ShopCost{Kind: "material", ItemID: vs[i].Value, Quantity: vs[i+1].Value})
 		}
 	}
 	return costs

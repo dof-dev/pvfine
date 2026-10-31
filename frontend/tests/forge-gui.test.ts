@@ -13,6 +13,17 @@ function fixture() {
  return { text: normalized.replaceAll("\n", "\r\n"), rows: [row("2 1 10000 1",1), row("3 2 5000 1.11",2)], grades: [row("96 3326 51",96,true), row("100 3326 51",100,true)], max: [{ level: 1, fields: [field("2", normalized.indexOf("[separate upgrade max]\n") + "[separate upgrade max]\n".length)], fieldsT2: [], costName: "" } as UpgradeRow] };
 }
 describe("锻造 GUI 源码编辑", () => {
+ it("六列布局的归一化字段保留附加系数，只更新成功率", () => {
+  const text = "[table]\n2 1 2.6 1 10000 1\n[/table]";
+  const start = text.indexOf("10000");
+  const row = { level: 1, fields: [
+   { value: 2, start: 8, end: 9, tokenType: 0 },
+   { value: 1, start: 10, end: 11, tokenType: 0 },
+   { value: 10000, start, end: start + 5, tokenType: 0 },
+   { value: 1, start: start + 6, end: start + 7, tokenType: 0 },
+  ], fieldsT2: [{ value: 2.6, start: 12, end: 15, tokenType: 2 }, { value: 1, start: 16, end: 17, tokenType: 0 }], costName: "" } as UpgradeRow;
+  expect(editForge(text, [row], "table", [{ column: 2, value: 75.25 }], 1)).toBe(text.replace("10000", "7525"));
+ });
  it("成功率使用万分比，批量保留属性系数和 CRLF", () => {
   const {text,rows}=fixture();
   expect(editForge(text,rows,"table",[{column:2,value:75.25}],2)).toBe(text.replace("10000 1","7525 1").replace("5000 1.11","7525 1.11"));

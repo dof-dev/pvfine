@@ -136,7 +136,8 @@
           "90CN": 7,
           "TW": 6,
           "100CN": 8,
-          "110US": 9
+          "110US": 9,
+          "115CN": 9
         },
         "offset": 1
       }
@@ -155,7 +156,8 @@
           "90CN": 7,
           "TW": 6,
           "100CN": 8,
-          "110US": 9
+          "110US": 9,
+          "115CN": 9
         }
       }
     },
@@ -261,7 +263,10 @@
         "section": "table"
       },
       "format": {
-        "tokensPerLine": 4
+        "tokensPerLine": 4,
+        "tokensPerLineByVersion": {
+          "115CN": 6
+        }
       }
     },
     {

@@ -20,6 +20,7 @@ const error = ref("");
 const section = ref<"table" | "grades" | "grades100">("table");
 const sections = computed(() => [{ value: "table" as const, label: "锻造等级" }, { value: "grades" as const, label: "材料消耗" }, ...(document.value?.grades100?.length ? [{ value: "grades100" as const, label: "材料消耗（100lv）" }] : [])]);
 const rows = computed(() => document.value?.[section.value === "table" ? "rows" : section.value] ?? []);
+const extraCoefficients = computed(() => section.value === "table" && rows.value.some(row => row.fieldsT2?.length));
 const columns = computed(() => section.value === "table" ? [{ column: 2, label: "成功率（%）" }, { column: 3, label: "材料消耗倍率" }] : [{ column: 0, label: "消耗道具" }, { column: 1, label: "数量基数" }]);
 const ready = computed(() => !loading.value && !error.value && sourceText.value === props.file.text);
 const canEdit = computed(() => ready.value && props.file.editable && !editor.saving && !editor.guiApplying);
@@ -88,9 +89,9 @@ function maximum(column: number) { return form.scope === "maximum" ? document.va
     <div class="forge-group-bar"><NButtonGroup size="small" aria-label="锻造配置分类"><NButton v-for="s in sections" :key="s.value" :type="section === s.value ? 'primary' : 'default'" :disabled="loading || form.show" @click="section = s.value">{{ s.label }}</NButton></NButtonGroup></div>
     <p class="forge-hint">{{ section === 'table' ? '锻造失败不会损坏或降级；属性系数 A/B 暂按原始值只读展示。' : '按装备等级设置材料和数量基数，实际消耗还受锻造倍率等参数影响。' }}</p>
     <div v-if="error" class="error" role="alert">{{ error }} <NButton size="small" @click="load">重新加载</NButton></div>
-    <NSpin :show="loading"><div v-if="rows.length" class="table-scroll"><table class="forge-table">
-      <thead><tr><th>{{ section === 'table' ? '等级' : '装备等级' }}</th><th v-for="c in columns" :key="c.column">{{ c.label }}</th><template v-if="section === 'table'"><th>属性系数 A</th><th>属性系数 B</th></template></tr></thead>
-      <tbody><tr v-for="row in rows" :key="row.level"><th>{{ section === 'table' ? '+' : '' }}{{ row.level }}</th><td v-for="c in columns" :key="c.column"><button :class="['forge-cell', { 'forge-material': section !== 'table' && c.column === 0 }]" :disabled="!canEdit || form.show" @click="openForm(row, c.column)"><template v-if="section !== 'table' && c.column === 0"><span>{{ row.costName || '物品' }}</span><small>#{{ row.fields?.[0]?.value }}</small></template><template v-else>{{ displayed(row, c.column) }}{{ section === 'table' && c.column === 2 ? '%' : '' }}</template></button></td><template v-if="section === 'table'"><td class="raw-cell">{{ row.fields?.[0]?.value }}</td><td class="raw-cell">{{ row.fields?.[1]?.value }}</td></template></tr></tbody>
+    <NSpin :show="loading"><div v-if="rows.length" class="table-scroll"><table class="forge-table" :class="{ 'forge-table-wide': extraCoefficients }">
+      <thead><tr><th>{{ section === 'table' ? '等级' : '装备等级' }}</th><th v-for="c in columns" :key="c.column">{{ c.label }}</th><template v-if="section === 'table'"><th>属性系数 A</th><th>属性系数 B</th><template v-if="extraCoefficients"><th>附加系数 1</th><th>附加系数 2</th></template></template></tr></thead>
+      <tbody><tr v-for="row in rows" :key="row.level"><th>{{ section === 'table' ? '+' : '' }}{{ row.level }}</th><td v-for="c in columns" :key="c.column"><button :class="['forge-cell', { 'forge-material': section !== 'table' && c.column === 0 }]" :disabled="!canEdit || form.show" @click="openForm(row, c.column)"><template v-if="section !== 'table' && c.column === 0"><span>{{ row.costName || '物品' }}</span><small>#{{ row.fields?.[0]?.value }}</small></template><template v-else>{{ displayed(row, c.column) }}{{ section === 'table' && c.column === 2 ? '%' : '' }}</template></button></td><template v-if="section === 'table'"><td class="raw-cell">{{ row.fields?.[0]?.value }}</td><td class="raw-cell">{{ row.fields?.[1]?.value }}</td><template v-if="extraCoefficients"><td class="raw-cell">{{ row.fieldsT2?.[0]?.value }}</td><td class="raw-cell">{{ row.fieldsT2?.[1]?.value }}</td></template></template></tr></tbody>
     </table></div><NEmpty v-else-if="!loading && !error" description="没有锻造数据" /></NSpin>
     <details v-if="document?.extras?.length" class="forge-extras"><summary>其他参数（只读）</summary><div v-for="extra in document.extras" :key="extra.name"><strong>[{{ extra.name }}]</strong><p>{{ extra.fields?.map(field => field.value).join('　') }}</p></div></details>
     <NModal v-model:show="form.show" preset="card" :title="dialogTitle" style="width: 560px; max-width: 95vw" :mask-closable="false">
@@ -121,6 +122,7 @@ function maximum(column: number) { return form.scope === "maximum" ? document.va
 .forge-group-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; }
 .table-scroll { overflow: auto; border: 1px solid var(--pvf-border-subtle); border-radius: 4px; max-height: 70vh; margin-top: 12px; }
 .forge-table { width: 100%; min-width: 650px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.forge-table-wide { min-width: 850px; }
 .forge-table th, .forge-table td { border-bottom: 1px solid var(--pvf-border-subtle); text-align: left; }
 .forge-table thead th { position: sticky; top: 0; z-index: 1; background: var(--pvf-surface-elevated); padding: 10px 12px; font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--pvf-text-secondary); }
 .forge-table tbody th { padding: 8px 12px; font-weight: 500; }
