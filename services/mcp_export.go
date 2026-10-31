@@ -26,7 +26,7 @@ func (s *MCPService) exportPrepare(a mcpArgs) (any, error) {
 	if pending {
 		return nil, fmt.Errorf("EXPORT_PLAN_PENDING")
 	}
-	preview, err := s.export.prepare(ExportRequest{Source: a.Source, Scopes: a.Scopes, Mode: a.Mode, Format: a.Format, Name: a.Name, Version: a.Version, CommitID: a.CommitID, IncludeDependencies: a.IncludeDependencies}, true)
+	preview, err := s.export.prepare(ExportRequest{Source: a.Source, Scopes: a.Scopes, Mode: a.Mode, Format: a.Format, Name: a.Name, Version: a.Version, ModID: a.ModID, CommitID: a.CommitID, IncludeDependencies: a.IncludeDependencies}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +140,9 @@ func (s *MCPService) exportExecute(a mcpArgs) (any, error) {
 	}
 	mode := p.request.Mode
 	name := p.request.Name
+	if mode == "mod" && p.request.Format == "115CN-mod" {
+		name += ".zip"
+	}
 	s.export.mu.Unlock()
 	parent, err := filepath.EvalSymlinks(a.OutputParent)
 	if err != nil {

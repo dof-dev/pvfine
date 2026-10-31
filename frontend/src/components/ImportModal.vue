@@ -3,6 +3,8 @@ import { computed, h, ref, watch, type VNodeChild } from "vue";
 import {
   NAlert,
   NButton,
+  NCheckbox,
+  NCheckboxGroup,
   NFormItem,
   NSelect,
   NModal,
@@ -36,8 +38,9 @@ const modFormat = ref("");
 const loadingModFormats = ref(false);
 const modFormatOptions = computed(() => modFormats.value.map((format) => ({ label: format.name, value: format.id })));
 const modExpandedKeys = ref<Array<string | number>>([]);
+const selectedComponents = ref<string[]>([]);
 const hasPreview = computed(() => !!importer.preview || !!modPreview.value);
-const operationLabel: Record<string, string> = { replace: "整文件替换", "merge-list": "按编号合并", "merge-strings": "按文字键合并" };
+const operationLabel: Record<string, string> = { add: "仅新增", replace: "整文件替换", "merge-list": "按编号合并", "merge-strings": "按文字键合并" };
 const modTree = computed<TreeOption[]>(() => (modPreview.value?.files ?? []).map((file) => ({
   key: file.path,
   label: `${file.path} · ${operationLabel[file.operation] ?? file.operation} · ${file.overwrite ? "已有文件" : "新增文件"}`,
@@ -237,7 +240,9 @@ async function chooseAndPreview(): Promise<void> {
   importer.error = "";
   try {
     if (importKind.value === "mod") {
+      await releaseModPreview();
       modPreview.value = await ModImportService.PrepareDialog(modFormat.value);
+      selectedComponents.value = modPreview.value?.selectedComponents ?? [];
       modExpandedKeys.value = [];
       return;
     }
@@ -262,6 +267,23 @@ async function chooseAndPreview(): Promise<void> {
       importer.error = text;
       message.error(`生成导入预览失败: ${text}`);
     }
+  } finally {
+    importer.running = false;
+  }
+}
+
+async function changeComponents(values: Array<string | number>): Promise<void> {
+  if (importer.running || !modPreview.value) return;
+  selectedComponents.value = values.map(String);
+  importer.running = true;
+  importer.error = "";
+  try {
+    const next = await ModImportService.SelectComponents(modPreview.value.id, selectedComponents.value);
+    if (!next) throw new Error("后端未返回组件预览");
+    modPreview.value = next;
+    selectedComponents.value = next.selectedComponents ?? [];
+  } catch (error: any) {
+    importer.error = String(error?.message ?? error);
   } finally {
     importer.running = false;
   }
@@ -365,7 +387,7 @@ function close(): void {
                 :placeholder="loadingModFormats ? '正在加载格式' : '暂无可导入的格式'" />
             </NFormItem>
             <NText depth="3" class="import-hint">
-              按所选格式读取 mod 目录，按包内路径导入归档根目录。<br />
+              按所选格式读取 mod 目录或 115CN ZIP / .dnfmod，按包内路径导入归档根目录。<br />
               确认后写入当前内存，再手动保存 PVF。
             </NText>
           </template>
@@ -378,6 +400,16 @@ function close(): void {
             <NTag type="success" :bordered="false">新增 {{ modPreview.importedCount }} 个文件</NTag>
             <NTag type="warning" :bordered="false">更新 {{ modPreview.overwrittenCount }} 个文件</NTag>
           </div>
+          <NCheckboxGroup v-if="modPreview.components?.length" :value="selectedComponents" :disabled="importer.running"
+            @update:value="changeComponents">
+            <div class="mod-components">
+              <NCheckbox v-for="component in modPreview.components" :key="component.id" :value="component.id"
+                :title="[component.description, component.requires?.length ? `依赖：${component.requires.join('、')}` : '', component.exclusiveGroup ? `互斥组：${component.exclusiveGroup}` : ''].filter(Boolean).join('\n')">
+                {{ component.title }}
+              </NCheckbox>
+            </div>
+          </NCheckboxGroup>
+          <NAlert v-for="warning in modPreview.warnings ?? []" :key="warning" type="warning" :show-icon="false">{{ warning }}</NAlert>
           <NAlert type="warning" :show-icon="false">整文件替换会覆盖当前内存内容；合并表同键覆盖，保留无关条目。展开文件可查看合并条目，悬停 ⓘ 查看原值和新值。</NAlert>
           <NTree v-model:expanded-keys="modExpandedKeys" :data="modTree" block-line virtual-scroll :animated="false" class="import-preview-tree" />
         </template>
@@ -428,13 +460,14 @@ function close(): void {
           <NButton quaternary :disabled="importer.running" @click="close">取消</NButton>
           <NButton type="primary" :loading="importer.running"
             :disabled="!archive.open || (importKind === 'mod' && (loadingModFormats || !modFormat))" @click="chooseAndPreview">
-            {{ importKind === "mod" ? "选择目录并预览" : "选择文件并预览" }}
+            {{ importKind === "mod" ? "选择 MOD 并预览" : "选择文件并预览" }}
           </NButton>
         </template>
         <template v-else>
           <NButton quaternary :disabled="importer.running" @click="backToOptions">返回修改</NButton>
           <NButton quaternary :disabled="importer.running" @click="close">取消</NButton>
-          <NButton type="primary" :loading="importer.running" @click="confirmImport">
+          <NButton type="primary" :loading="importer.running"
+            :disabled="importKind === 'mod' && (!!importer.error || !modPreview?.files?.length)" @click="confirmImport">
             确认导入
           </NButton>
         </template>
@@ -456,6 +489,11 @@ function close(): void {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.mod-components {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .import-field {
   flex-direction: column;

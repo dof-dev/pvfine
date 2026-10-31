@@ -6,5 +6,6 @@ export {
 } from "./models.js";
 
 export type {
+    Component,
     Descriptor
 } from "./models.js";

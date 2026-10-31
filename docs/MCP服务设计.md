@@ -61,8 +61,8 @@ workspace_info 与首次打开归档允许在空工作区调用。其余归档�
 | `pvf_import_preview` | importPlanId、cursor、limit | 分页返回源路径、归档目标路径、类型、大小、覆盖状态及差异 |
 | `pvf_import_apply` | importPlanId、expectedRevision、selectedKeys、overwriteKeys、requestId | 将明确选择的冻结内容应用到工作区，不保存源 PVF；返回 taskId 和最终 revision |
 | `pvf_import_discard` | importPlanId | 释放冻结内容与预览 |
-| `pvf_export_formats` | 无 | 格式 ID、读写能力与支持操作，首版可写 MOD 格式为 110USextend |
-| `pvf_export_prepare` | workspaceId、expectedRevision、source、scopes、mode、format、name、version、includeDependencies、来源附加参数、requestId | 准备普通/MOD 导出快照，返回 taskId；完成后取得 exportPlanId、总数与警告 |
+| `pvf_export_formats` | 无 | 格式 ID、读写能力与支持操作，可写 MOD 格式包括 110USextend 和 115CN-mod |
+| `pvf_export_prepare` | workspaceId、expectedRevision、source、scopes、mode、format、name、version、modId、includeDependencies、来源附加参数、requestId | 准备普通/MOD 导出快照，115CN-mod 必须提供唯一 modId；返回 taskId，完成后取得 exportPlanId、总数与警告 |
 | `pvf_export_preview` | exportPlanId、cursor、limit | 分页输出树、entryKey、依赖提示、跳过项与警告 |
 | `pvf_export_execute` | exportPlanId、outputParent、outputName（direct 必填）、selectedEntryKeys、acknowledgedWarningIds、requestId | 发布普通文件目录或 MOD 目录；返回 taskId，完成后返回实际输出路径和统计 |
 | `pvf_export_discard` | exportPlanId | 释放导出快照 |
@@ -172,6 +172,8 @@ includeDependencies 必须显式声明。预览返回依赖数量、缺失/跳�
 ### MOD 格式边界
 
 首版复用 internal/mod 注册的 110USextend Writer，输出为 `<outputParent>/<name>/`，含 pack.json 和所需的 pvf/、merge/，不是压缩成单个 .mod 文件。
+
+115CN-mod 扩展输出 `<outputParent>/<name>.zip`，包含根级 mod.json 和 pvf/ 载荷；`export_prepare` 的 `modId` 为稳定唯一 MOD ID，发布同包更新时复用，不能用显示名称替代。仍复用预览、筛选、依赖警告确认和拒绝覆盖的发布流程。MCP 不安装客户端资源，MOD 包导入使用 GUI。
 
 name、version 复用现有校验，版本省略或留空默认 1.0。普通脚本放入 pvf/；`.lst`、`.str` 按格式写入 merge/。工作区/提交来源有准确基线时输出新增或修改的表项；无基线的整表按现有格式规则跳过并返回警告，不回退为整表覆盖。
 

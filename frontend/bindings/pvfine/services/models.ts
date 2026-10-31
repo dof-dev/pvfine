@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mod$0 from "../internal/mod/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as pvf$0 from "../internal/pvf/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -494,6 +497,7 @@ export interface ExportRequest {
     "format": string;
     "name": string;
     "version": string;
+    "modId": string;
     "includeDependencies": boolean;
 }
 
@@ -813,6 +817,9 @@ export interface ModImportPreview {
     "importedCount": number;
     "overwrittenCount": number;
     "files": ModImportFile[] | null;
+    "components": mod$0.Component[] | null;
+    "selectedComponents": string[] | null;
+    "warnings": string[] | null;
 }
 
 /**

@@ -271,7 +271,7 @@ func TestModImportSelectedFormat(t *testing.T) {
 		}
 	}
 	formats := s.Formats()
-	if len(formats) != 3 {
+	if len(formats) != 4 {
 		t.Fatalf("readable formats = %#v", formats)
 	}
 	for _, format := range formats {

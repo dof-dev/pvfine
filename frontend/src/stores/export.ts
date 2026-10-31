@@ -22,6 +22,10 @@ export function modVersionError(version: string): string {
   return "";
 }
 
+export function modIDError(id: string): string {
+  return /^[a-z0-9_-]{1,64}$/.test(id) ? "" : "ID 仅支持小写字母、数字、-、_，长度为 1–64";
+}
+
 export const useExportStore = defineStore("export", () => {
   const visible = ref(false);
   const title = ref("");
@@ -29,6 +33,7 @@ export const useExportStore = defineStore("export", () => {
   const format = ref("110USextend");
   const name = ref("");
   const version = ref("1.0");
+  const modId = ref("");
   const includeDependencies = ref(false);
   const formats = ref<Descriptor[]>([]);
   const preview = ref<ExportPreview | null>(null);
@@ -46,7 +51,8 @@ export const useExportStore = defineStore("export", () => {
   const checkedKeys = computed(() => selectedFiles.value.map((file) => exportFileKey(file.path)));
   const nameError = computed(() => mode.value === "mod" ? modNameError(name.value) : "");
   const versionError = computed(() => mode.value === "mod" ? modVersionError(version.value) : "");
-  const canExport = computed(() => visible.value && !!preview.value && selectedCount.value > 0 && !preparing.value && !running.value && !nameError.value && !versionError.value);
+  const idError = computed(() => mode.value === "mod" && format.value === "115CN-mod" ? modIDError(modId.value) : "");
+  const canExport = computed(() => visible.value && !!preview.value && selectedCount.value > 0 && !preparing.value && !running.value && !nameError.value && !versionError.value && !idError.value);
   let generation = 0;
   let activePreviewID = "";
   let queue = Promise.resolve();
@@ -66,11 +72,11 @@ export const useExportStore = defineStore("export", () => {
     // version edits to reuse content without decoding files again.
     preview.value = null;
     error.value = "";
-    preparing.value = visible.value && !!source.value && !nameError.value && !versionError.value;
+    preparing.value = visible.value && !!source.value && !nameError.value && !versionError.value && !idError.value;
     if (!preparing.value) return Promise.resolve();
     const request: ExportRequest = {
       ...source.value!, mode: mode.value, format: format.value,
-      name: name.value, version: version.value, includeDependencies: mode.value === "mod" && includeDependencies.value,
+      name: name.value, version: version.value, modId: modId.value, includeDependencies: mode.value === "mod" && includeDependencies.value,
     };
     // Serialize preparations so an older backend request cannot replace the
     // latest preview, even when users change options quickly.
@@ -104,6 +110,7 @@ export const useExportStore = defineStore("export", () => {
     format.value = "110USextend";
     name.value = "";
     version.value = "1.0";
+    modId.value = `pvfine-${crypto.randomUUID()}`;
     includeDependencies.value = false;
     excludedPaths.value = [];
     source.value = { ...request, scopes: [...(request.scopes ?? [])] };
@@ -183,6 +190,9 @@ export const useExportStore = defineStore("export", () => {
   watch([mode, format, name, version, includeDependencies], () => {
     if (visible.value && !running.value) void refresh();
   });
+  watch(modId, () => {
+    if (visible.value && !running.value && mode.value === "mod" && format.value === "115CN-mod") void refresh();
+  });
   Events.On("archive:opened", close);
   Events.On("archive:closed", close);
   Events.On("archive:changed", () => invalidate());
@@ -191,7 +201,7 @@ export const useExportStore = defineStore("export", () => {
   Events.On("version:committed", () => invalidate());
   return {
     visible, title, mode, format, name, version, includeDependencies, formats, preview,
-    preparing, running, error, nameError, versionError, canExport, open, close, refresh, execute, invalidate,
+    modId, idError, preparing, running, error, nameError, versionError, canExport, open, close, refresh, execute, invalidate,
     excludedPaths, selectedCount, selectedDependencyCount, checkedKeys, selectFiles,
   };
 });

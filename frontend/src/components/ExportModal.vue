@@ -62,6 +62,11 @@ function renderLabel({ option }: { option: TreeOption }) {
             <NInput v-model:value="exporter.version" placeholder="1.0" :disabled="exporter.running" />
           </NFormItem>
         </div>
+        <NFormItem v-if="exporter.format === '115CN-mod'" label="MOD ID"
+          :validation-status="exporter.idError ? 'error' : undefined"
+          :feedback="exporter.idError" :show-feedback="!!exporter.idError">
+          <NInput v-model:value="exporter.modId" :disabled="exporter.running" placeholder="my-mod" />
+        </NFormItem>
         <div class="export-dependencies">
           <NText>补齐文字表与物品列表依赖</NText>
           <NSwitch v-model:value="exporter.includeDependencies" :disabled="exporter.running" />
@@ -76,7 +81,7 @@ function renderLabel({ option }: { option: TreeOption }) {
           <NText v-else depth="3">{{ exporter.preparing ? "准备中" : "尚无导出预览" }}</NText>
           <NTooltip>
             <template #trigger>
-              <NButton circle quaternary size="small" aria-label="重新准备导出" :disabled="exporter.running || exporter.preparing || !!exporter.nameError || !!exporter.versionError" @click="exporter.refresh()">
+              <NButton circle quaternary size="small" aria-label="重新准备导出" :disabled="exporter.running || exporter.preparing || !!exporter.nameError || !!exporter.versionError || !!exporter.idError" @click="exporter.refresh()">
                 <template #icon><NIcon><ArrowClockwise20Regular /></NIcon></template>
               </NButton>
             </template>
@@ -85,7 +90,7 @@ function renderLabel({ option }: { option: TreeOption }) {
         </div>
       </NSpin>
       <template v-if="exporter.preview">
-        <NText v-if="exporter.mode === 'mod'" depth="3">{{ exporter.name }}/</NText>
+        <NText v-if="exporter.mode === 'mod'" depth="3">{{ exporter.name }}{{ exporter.format === "115CN-mod" ? ".zip" : "/" }}</NText>
         <NTree
           checkable cascade check-strategy="child" block-line virtual-scroll
           :animated="false"

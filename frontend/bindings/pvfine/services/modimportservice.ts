@@ -40,3 +40,10 @@ export function PrepareDialog(formatID: string): $CancellablePromise<$models.Mod
 export function Release(id: string): $CancellablePromise<void> {
     return $Call.ByID(1706932729, id);
 }
+
+/**
+ * SelectComponents rebuilds the preview from the frozen package, not the ZIP.
+ */
+export function SelectComponents(id: string, ids: string[] | null): $CancellablePromise<$models.ModImportPreview | null> {
+    return $Call.ByID(4159525464, id, ids);
+}

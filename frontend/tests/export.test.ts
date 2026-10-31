@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../bindings/pvfine/services", () => ({ ExportService: mocks }));
 vi.mock("@wailsio/runtime", () => ({ Events: { On: (name: string, handler: () => void) => mocks.events.set(name, handler) } }));
 
-import { modNameError, modVersionError, useExportStore } from "../src/stores/export";
+import { modIDError, modNameError, modVersionError, useExportStore } from "../src/stores/export";
 import { buildExportTree, exportFileKey } from "../src/utils/export-tree";
 
 const files = [
@@ -93,6 +93,36 @@ test("名称验证覆盖路径和 Windows 保留名", () => {
     expect(modNameError(name), name).not.toBe("");
   }
   expect(modNameError("合法名称")).toBe("");
+});
+
+test("115CN 导出保持唯一 ID，允许更新时指定原 ID，非法 ID 阻止导出", async () => {
+  const store = useExportStore();
+  void store.open(source, "导出");
+  store.mode = "mod";
+  store.format = "115CN-mod";
+  store.name = "中文 MOD";
+  await settle();
+  const generated = store.modId;
+  expect(modIDError(generated)).toBe("");
+  expect(mocks.Prepare.mock.lastCall?.[0].modId).toBe(generated);
+  store.name = "改名";
+  await settle();
+  expect(store.modId).toBe(generated);
+  store.modId = "existing-mod-id";
+  await settle();
+  expect(mocks.Prepare.mock.lastCall?.[0].modId).toBe("existing-mod-id");
+  expect(store.canExport).toBe(true);
+  store.modId = "../invalid";
+  await settle();
+  expect(store.idError).not.toBe("");
+  expect(store.canExport).toBe(false);
+  for (const id of ["", "Upper", "a".repeat(65), "中文", "a.b"]) expect(modIDError(id)).not.toBe("");
+  store.format = "110USextend";
+  await settle();
+  expect(store.idError).toBe("");
+  store.close();
+  void store.open(source, "导出");
+  expect(store.modId).not.toBe(generated);
 });
 
 test("自定义版本传入元数据，无需释放旧快照，关闭后重置", async () => {

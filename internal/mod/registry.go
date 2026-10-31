@@ -2,6 +2,7 @@ package mod
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"sort"
 )
@@ -23,6 +24,10 @@ type Writer interface {
 	Validate(Package) error
 	Files(Package) []OutputFile
 	Write(root string, pkg Package) error
+}
+
+type ArchiveWriter interface {
+	WriteArchive(io.Writer, Package) error
 }
 
 // OutputFile maps a physical output back to its removable package entry.
@@ -48,6 +53,11 @@ func DefaultRegistry() *Registry {
 		Descriptor: Descriptor{ID: "110USextend", Name: "110USextend", Operations: []Operation{ReplaceFile, MergeList, MergeStrings}},
 		Writer:     Extend110Writer{},
 		Reader:     Extend110Reader{},
+	})
+	_ = r.Register(Format{
+		Descriptor: Descriptor{ID: CN115Format, Name: CN115Format, Operations: []Operation{AddFile, ReplaceFile, MergeList, MergeStrings}},
+		Writer:     CN115Writer{},
+		Reader:     CN115Reader{},
 	})
 	return r
 }

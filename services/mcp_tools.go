@@ -41,6 +41,7 @@ type mcpArgs struct {
 	Format                 string   `json:"format"`
 	Name                   string   `json:"name"`
 	Version                string   `json:"version"`
+	ModID                  string   `json:"modId"`
 	CommitID               string   `json:"commitId"`
 	IncludeDependencies    bool     `json:"includeDependencies"`
 	OutputParent           string   `json:"outputParent"`
@@ -51,7 +52,7 @@ type mcpArgs struct {
 
 func (s *MCPService) tools() []mcpserver.Tool {
 	properties := map[string]any{}
-	for _, key := range strings.Fields("workspaceId requestId path query scope mode source label topic taskId planId importPlanId exportPlanId filter dirtyPolicy targetDigest targetDir format name version commitId outputParent outputName") {
+	for _, key := range strings.Fields("workspaceId requestId path query scope mode source label topic taskId planId importPlanId exportPlanId filter dirtyPolicy targetDigest targetDir format name version modId commitId outputParent outputName") {
 		properties[key] = map[string]any{"type": "string", "maxLength": 4096}
 	}
 	properties["source"] = map[string]any{"type": "string", "maxLength": 1 << 20}
@@ -91,9 +92,9 @@ func (s *MCPService) tools() []mcpserver.Tool {
 		{"import_apply", "将冻结内容导入工作区，不保存 PVF。selectedKeys 选定条目，覆盖必须同时列入 overwriteKeys。", "workspaceId expectedRevision importPlanId selectedKeys overwriteKeys requestId", "workspaceId expectedRevision importPlanId selectedKeys requestId", false},
 		{"import_discard", "释放导入计划。", "importPlanId", "importPlanId", false},
 		{"export_formats", "列出可用 MOD 格式及支持操作。", "", "", true},
-		{"export_prepare", "准备导出。mode=direct/mod；source=selection/memory/working/commit；MOD 需 format/name，支持依赖补齐；不保存 PVF。", "workspaceId expectedRevision source scopes mode format name version commitId includeDependencies requestId", "workspaceId expectedRevision source mode includeDependencies requestId", false},
+		{"export_prepare", "准备导出。mode=direct/mod；source=selection/memory/working/commit；MOD 需 format/name，115CN-mod 另需唯一 modId，支持依赖补齐；不保存 PVF。", "workspaceId expectedRevision source scopes mode format name version modId commitId includeDependencies requestId", "workspaceId expectedRevision source mode includeDependencies requestId", false},
 		{"export_preview", "分页查看导出树、entryKey 和 warningId。", "exportPlanId cursor limit", "exportPlanId", true},
-		{"export_execute", "将已选内容发布到全新目录。direct 需 outputName；MOD 以 name 为目录名，不覆盖。需回传已查看的 warningId。", "exportPlanId outputParent outputName selectedEntryKeys acknowledgedWarningIds requestId", "exportPlanId outputParent selectedEntryKeys requestId", false},
+		{"export_execute", "发布已选内容。direct 需 outputName；115CN-mod 输出 name.zip，其他 MOD 输出 name 目录，不覆盖。需回传已查看的 warningId。", "exportPlanId outputParent outputName selectedEntryKeys acknowledgedWarningIds requestId", "exportPlanId outputParent selectedEntryKeys requestId", false},
 		{"export_discard", "释放导出预览。", "exportPlanId", "exportPlanId", false},
 	}
 	result := []mcpserver.Tool{}

@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,13 +25,16 @@ type ModImportFile struct {
 	Pairs     []ModImportPair `json:"pairs"`
 }
 type ModImportPreview struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	Version          string          `json:"version"`
-	Format           string          `json:"format"`
-	ImportedCount    int             `json:"importedCount"`
-	OverwrittenCount int             `json:"overwrittenCount"`
-	Files            []ModImportFile `json:"files"`
+	ID                 string             `json:"id"`
+	Name               string             `json:"name"`
+	Version            string             `json:"version"`
+	Format             string             `json:"format"`
+	ImportedCount      int                `json:"importedCount"`
+	OverwrittenCount   int                `json:"overwrittenCount"`
+	Files              []ModImportFile    `json:"files"`
+	Components         []modpkg.Component `json:"components"`
+	SelectedComponents []string           `json:"selectedComponents"`
+	Warnings           []string           `json:"warnings"`
 }
 type modImportPlan struct {
 	id                           string
@@ -42,6 +44,8 @@ type modImportPlan struct {
 	revision, generation, loadID uint64
 	head                         string
 	files                        []importFile
+	pkg                          modpkg.Package
+	format                       string
 }
 
 // ModImportService freezes decoded content so confirmation never re-reads disk.
@@ -83,7 +87,7 @@ func (s *ModImportService) PrepareDialog(formatID string) (*ModImportPreview, er
 	if _, err := s.readableFormat(formatID); err != nil {
 		return nil, err
 	}
-	dir, err := application.Get().Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).SetTitle("选择 mod 目录").PromptForSingleSelection()
+	dir, err := application.Get().Dialog.OpenFile().CanChooseFiles(formatID == modpkg.CN115Format).CanChooseDirectories(true).SetTitle("选择 mod 目录或 ZIP / .dnfmod").PromptForSingleSelection()
 	if err != nil || dir == "" {
 		return nil, err
 	}
@@ -95,21 +99,48 @@ func (s *ModImportService) Prepare(dir, formatID string) (*ModImportPreview, err
 	if err != nil {
 		return nil, err
 	}
-	root, err := os.OpenRoot(dir)
+	root, closer, err := modpkg.OpenSource(dir, formatID == modpkg.CN115Format)
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
-	detected, err := format.Reader.Detect(root.FS())
+	defer closer.Close()
+	detected, err := format.Reader.Detect(root)
 	if err != nil {
 		return nil, err
 	}
 	if !detected {
 		return nil, fmt.Errorf("所选目录不符合 mod 格式 %s", format.Descriptor.Name)
 	}
-	pkg, err := format.Reader.Read(root.FS())
+	pkg, err := format.Reader.Read(root)
 	if err != nil {
 		return nil, err
+	}
+	return s.preparePackage(pkg, formatID, nil, nil)
+}
+
+// SelectComponents rebuilds the preview from the frozen package, not the ZIP.
+func (s *ModImportService) SelectComponents(id string, ids []string) (*ModImportPreview, error) {
+	s.mu.Lock()
+	previous := s.plan
+	s.mu.Unlock()
+	if previous == nil || previous.id != id || previous.format != modpkg.CN115Format {
+		return nil, fmt.Errorf("mod 导入预览已过期，请重新预览")
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	return s.preparePackage(previous.pkg, previous.format, ids, previous)
+}
+
+func (s *ModImportService) preparePackage(pkg modpkg.Package, formatID string, ids []string, previous *modImportPlan) (*ModImportPreview, error) {
+	sourcePackage := pkg
+	selected := []string{}
+	if len(pkg.Components) > 0 {
+		var err error
+		pkg, selected, err = modpkg.SelectComponents(pkg, ids)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	finish := s.c.archiveTasks.begin()
@@ -122,8 +153,14 @@ func (s *ModImportService) Prepare(dir, formatID string) (*ModImportPreview, err
 	if err := s.c.ensureVersionReadyLocked(); err != nil {
 		return nil, err
 	}
-	plan := &modImportPlan{id: mcpID(), created: time.Now(), archive: s.c.archive, repo: s.c.versionRepo, revision: s.c.batchRevision, generation: s.c.archiveGeneration, loadID: s.c.versionLoadID, head: s.c.versionHead.ID}
-	preview := &ModImportPreview{ID: plan.id, Name: pkg.Metadata.Name, Version: pkg.Metadata.Version, Format: formatID, Files: []ModImportFile{}}
+	if previous != nil && (time.Since(previous.created) >= 10*time.Minute || previous.archive != s.c.archive || previous.repo != s.c.versionRepo || previous.revision != s.c.batchRevision || previous.generation != s.c.archiveGeneration || previous.loadID != s.c.versionLoadID || previous.head != s.c.versionHead.ID) {
+		return nil, fmt.Errorf("mod 导入预览已过期，请重新预览")
+	}
+	plan := &modImportPlan{id: mcpID(), created: time.Now(), archive: s.c.archive, repo: s.c.versionRepo, revision: s.c.batchRevision, generation: s.c.archiveGeneration, loadID: s.c.versionLoadID, head: s.c.versionHead.ID, pkg: sourcePackage, format: formatID}
+	if previous != nil {
+		plan.created = previous.created
+	}
+	preview := &ModImportPreview{ID: plan.id, Name: pkg.Metadata.Name, Version: pkg.Metadata.Version, Format: formatID, Files: []ModImportFile{}, Components: pkg.Components, SelectedComponents: selected, Warnings: append([]string{}, pkg.Warnings...)}
 	for _, entry := range pkg.Entries {
 		if err := modpkg.ValidatePath(entry.Path); err != nil {
 			return nil, err
@@ -136,7 +173,10 @@ func (s *ModImportService) Prepare(dir, formatID string) (*ModImportPreview, err
 		file := importFile{targetPath: target, sourcePath: entry.Path, dataType: entry.DataType, text: string(entry.Data)}
 		row := ModImportFile{Path: target, Operation: string(entry.Operation), Overwrite: exists, Pairs: []ModImportPair{}}
 		switch entry.Operation {
-		case modpkg.ReplaceFile:
+		case modpkg.AddFile, modpkg.ReplaceFile:
+			if entry.Operation == modpkg.AddFile && exists {
+				return nil, fmt.Errorf("add 目标已存在，不允许覆盖: %s", target)
+			}
 			if entry.Encoding != modpkg.Text || (entry.DataType != pvf.TypeScript && entry.DataType != pvf.TypeUnicode) {
 				return nil, fmt.Errorf("不支持的 mod 文件内容类型: %s", target)
 			}
@@ -170,30 +210,36 @@ func (s *ModImportService) Prepare(dir, formatID string) (*ModImportPreview, err
 			preview.ImportedCount++
 		}
 	}
-	stage := s.c.archive.CloneForBatch()
-	if _, err := applyPreparedImport(stage, plan.files, ImportModeText); err != nil {
-		return nil, err
-	}
-	if stage.FileCount() < largeArchiveIndexThreshold {
-		if _, _, err := buildIndex(stage); err != nil {
+	if len(plan.files) > 0 {
+		stage := s.c.archive.CloneForBatch()
+		if _, err := applyPreparedImport(stage, plan.files, ImportModeText); err != nil {
 			return nil, err
 		}
-	}
-	if s.c.versionRepo != nil {
-		paths := make([]string, 0, len(plan.files))
-		for _, f := range plan.files {
-			paths = append(paths, f.targetPath)
+		if stage.FileCount() < largeArchiveIndexThreshold {
+			if _, _, err := buildIndex(stage); err != nil {
+				return nil, err
+			}
 		}
-		if _, err := pvfversion.ContentSnapshotFromArchive(stage, paths); err != nil {
-			return nil, err
+		if s.c.versionRepo != nil {
+			paths := make([]string, 0, len(plan.files))
+			for _, f := range plan.files {
+				paths = append(paths, f.targetPath)
+			}
+			if _, err := pvfversion.ContentSnapshotFromArchive(stage, paths); err != nil {
+				return nil, err
+			}
 		}
 	}
 	s.mu.Lock()
+	if previous != nil && s.plan != previous {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("mod 导入预览已过期，请重新预览")
+	}
 	if s.expiry != nil {
 		s.expiry.Stop()
 	}
 	s.plan = plan
-	s.expiry = time.AfterFunc(10*time.Minute, func() { s.Release(plan.id) })
+	s.expiry = time.AfterFunc(time.Until(plan.created.Add(10*time.Minute)), func() { s.Release(plan.id) })
 	s.mu.Unlock()
 	return preview, nil
 }
@@ -227,6 +273,9 @@ func (s *ModImportService) Execute(id string) (*ImportResult, error) {
 	if plan == nil {
 		return nil, stale()
 	}
+	if len(plan.files) == 0 {
+		return nil, fmt.Errorf("没有选中的 PVF 操作；客户端资源请由登录器安装")
+	}
 	finish := s.c.archiveTasks.begin()
 	defer finish()
 	return NewArchiveService(s.c).importPreparedChecked(plan.files, "", ImportModeText, "导入 Mod", func() error {
@@ -238,6 +287,13 @@ func (s *ModImportService) Execute(id string) (*ImportResult, error) {
 }
 
 func mergeModTable(base string, entry modpkg.Entry) (string, []ModImportPair, error) {
+	terminator := ""
+	if entry.Operation == modpkg.MergeStrings {
+		// Retail Unicode tables can carry decoded trailing UTF-16 NULs.
+		content := strings.TrimRight(base, "\x00")
+		terminator = base[len(content):]
+		base = content
+	}
 	bom := ""
 	if strings.HasPrefix(base, "\ufeff") {
 		base = strings.TrimPrefix(base, "\ufeff")
@@ -310,5 +366,5 @@ func mergeModTable(base string, entry modpkg.Entry) (string, []ModImportPair, er
 			fmt.Fprintf(&text, "%s>%s\n", p.Key, p.Value)
 		}
 	}
-	return text.String(), rows, nil
+	return text.String() + terminator, rows, nil
 }

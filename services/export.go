@@ -31,6 +31,7 @@ type ExportRequest struct {
 	Format              string   `json:"format"`
 	Name                string   `json:"name"`
 	Version             string   `json:"version"`
+	ModID               string   `json:"modId"`
 	IncludeDependencies bool     `json:"includeDependencies"`
 }
 
@@ -123,6 +124,11 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 		if f.Writer == nil {
 			return nil, fmt.Errorf("该 mod 格式不支持导出")
 		}
+		if request.Format == modpkg.CN115Format {
+			if err := modpkg.ValidateID(request.ModID); err != nil {
+				return nil, err
+			}
+		}
 	}
 	s.c.mu.RLock()
 	defer s.c.mu.RUnlock()
@@ -135,7 +141,7 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 	if old := s.plan; s.validLocked(old) && sameExportContentRequest(old.request, request) {
 		next := *old
 		next.request = request
-		next.pkg.Metadata = modpkg.Metadata{Name: request.Name, Version: request.Version}
+		next.pkg.Metadata = modpkg.Metadata{ID: request.ModID, Name: request.Name, Version: request.Version}
 		if request.Mode == "mod" {
 			format, _ := s.registry.Get(request.Format)
 			if err := format.Writer.Validate(next.pkg); err != nil {
@@ -165,7 +171,7 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 		revision: s.c.batchRevision, generation: s.c.archiveGeneration,
 		loadID: s.c.versionLoadID, headID: s.c.versionHead.ID, created: time.Now(),
 		preview: ExportPreview{ID: fmt.Sprint(exportSequence.Add(1)), Warnings: []string{}},
-		pkg:     modpkg.Package{Metadata: modpkg.Metadata{Name: request.Name, Version: request.Version}},
+		pkg:     modpkg.Package{Metadata: modpkg.Metadata{ID: request.ModID, Name: request.Name, Version: request.Version}},
 	}
 	format, _ := s.registry.Get(request.Format)
 	supportsDelete := false
@@ -530,6 +536,9 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 	if err := writer.Validate(pkg); err != nil {
 		return "", err
 	}
+	if zipWriter, ok := writer.(modpkg.ArchiveWriter); ok {
+		return writeModZIP(parent, pkg, zipWriter)
+	}
 	dest := filepath.Join(parent, pkg.Metadata.Name)
 	// Windows directory identity is case-insensitive, including when tests
 	// run on another host filesystem.
@@ -557,6 +566,40 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 		return "", err
 	}
 	if err := publishModDirectory(temp, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+func writeModZIP(parent string, pkg modpkg.Package, writer modpkg.ArchiveWriter) (string, error) {
+	name := pkg.Metadata.Name + ".zip"
+	siblings, err := os.ReadDir(parent)
+	if err != nil {
+		return "", err
+	}
+	for _, sibling := range siblings {
+		if strings.EqualFold(sibling.Name(), name) {
+			return "", fmt.Errorf("同名 MOD ZIP 已存在，请修改名称或目标目录: %s", name)
+		}
+	}
+	temp, err := os.CreateTemp(parent, ".pvfine-mod-*.zip")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(temp.Name())
+	defer temp.Close()
+	if err := writer.WriteArchive(temp, pkg); err != nil {
+		return "", err
+	}
+	if err := temp.Sync(); err != nil {
+		return "", err
+	}
+	if err := temp.Close(); err != nil {
+		return "", err
+	}
+	dest := filepath.Join(parent, name)
+	// Link publishes the completed file atomically and refuses existing targets.
+	if err := os.Link(temp.Name(), dest); err != nil {
 		return "", err
 	}
 	return dest, nil

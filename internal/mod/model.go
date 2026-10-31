@@ -13,6 +13,7 @@ type Operation string
 type Encoding string
 
 const (
+	AddFile      Operation = "add"
 	ReplaceFile  Operation = "replace"
 	MergeList    Operation = "merge-list"
 	MergeStrings Operation = "merge-strings"
@@ -22,6 +23,7 @@ const (
 )
 
 type Metadata struct {
+	ID      string
 	Name    string
 	Version string
 }
@@ -49,6 +51,7 @@ type Pair struct {
 // Entry keeps payload representation explicit. Merge entries contain semantic
 // pairs rather than format-specific source lines.
 type Entry struct {
+	Component string
 	Path      string
 	Operation Operation
 	Encoding  Encoding
@@ -58,8 +61,19 @@ type Entry struct {
 }
 
 type Package struct {
-	Metadata Metadata
-	Entries  []Entry
+	Metadata   Metadata
+	Entries    []Entry
+	Components []Component
+	Warnings   []string
+}
+
+type Component struct {
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Description     string   `json:"description"`
+	DefaultSelected bool     `json:"defaultSelected"`
+	Requires        []string `json:"requires"`
+	ExclusiveGroup  string   `json:"exclusiveGroup"`
 }
 
 func ValidateName(name string) error {

@@ -25,17 +25,25 @@ func (Extend110Writer) Files(pkg Package) []OutputFile {
 }
 
 func (Extend110Writer) Validate(pkg Package) error {
+	return validateTextPackage(pkg, "110USextend")
+}
+
+func validateTextPackage(pkg Package, format string) error {
 	if err := ValidateName(pkg.Metadata.Name); err != nil {
 		return err
 	}
 	if err := ValidateVersion(pkg.Metadata.Version); err != nil {
 		return err
 	}
-	if len(pkg.Entries) == 0 {
+	return validateTextEntries(pkg.Entries, format)
+}
+
+func validateTextEntries(entries []Entry, format string) error {
+	if len(entries) == 0 {
 		return fmt.Errorf("没有可应用的 mod 内容")
 	}
 	seen := make(map[string]bool)
-	for _, e := range pkg.Entries {
+	for _, e := range entries {
 		if err := ValidatePath(e.Path); err != nil {
 			return err
 		}
@@ -47,7 +55,7 @@ func (Extend110Writer) Validate(pkg Package) error {
 		switch e.Operation {
 		case ReplaceFile:
 			if e.Encoding != Text || (e.DataType != 1 && e.DataType != 3) || !utf8.Valid(e.Data) || strings.HasPrefix(string(e.Data), "\ufeff") {
-				return fmt.Errorf("110USextend 不支持文件的内容类型或编码: %s", e.Path)
+				return fmt.Errorf("%s 不支持文件的内容类型或编码: %s", format, e.Path)
 			}
 		case MergeList, MergeStrings:
 			want := ".lst"
@@ -66,17 +74,17 @@ func (Extend110Writer) Validate(pkg Package) error {
 				if e.Operation == MergeList {
 					n, err := strconv.ParseUint(pair.Key, 10, 32)
 					if err != nil || strconv.FormatUint(n, 10) != pair.Key || strings.Contains(pair.Value, "`") {
-						return fmt.Errorf("110USextend 列表编号或路径无法表达: %s / %s", e.Path, pair.Key)
+						return fmt.Errorf("%s 列表编号或路径无法表达: %s / %s", format, e.Path, pair.Key)
 					}
 					if err := ValidatePath(pair.Value); err != nil {
 						return err
 					}
 				} else if strings.Contains(pair.Key, ">") || strings.HasPrefix(pair.Key, "//") || strings.HasPrefix(pair.Key, "\ufeff") {
-					return fmt.Errorf("110USextend 文字表键无法表达: %s / %s", e.Path, pair.Key)
+					return fmt.Errorf("%s 文字表键无法表达: %s / %s", format, e.Path, pair.Key)
 				}
 			}
 		default:
-			return fmt.Errorf("110USextend 不支持操作 %s: %s", e.Operation, e.Path)
+			return fmt.Errorf("%s 不支持操作 %s: %s", format, e.Operation, e.Path)
 		}
 	}
 	// Detect file/directory collisions too, including across pvf and merge.
