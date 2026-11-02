@@ -86,6 +86,14 @@ export const guiProviders: readonly GUIProvider[] = [
     matches: (file) => normalizePath(file.path) === "etc/craneminigameitem.etc",
     component: defineAsyncComponent(() => import("../components/gui/CraneMinigameViewer.vue")),
   },
+  {
+    id: "cera-shop",
+    label: "商城",
+    launcher: { fileTypes: "etc/(r)cerashop.etc", paths: ["etc/(r)cerashop.etc"], queries: ["etc/*cerashop*.etc"] },
+    readOnly: false,
+    matches: (file) => /^etc\/(?:\([rf]\))?cerashop(?:_first|_devtest)?\.etc$/.test(normalizePath(file.path)),
+    component: defineAsyncComponent(() => import("../components/gui/CeraShopViewer.vue")),
+  },
 ];
 
 export function getGUIProvider(file: GUIFile): GUIProvider | null {

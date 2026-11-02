@@ -26853,6 +26853,19 @@
         "type": "reference",
         "relation": "物品"
       }
+    },
+    {
+      "match": {
+        "glob": "etc/(r)cerashop.etc"
+      },
+      "target": {
+        "kind": "path"
+      },
+      "annotation": {
+        "type": "text",
+        "title": "商城"
+      },
+      "id": "Cerashop"
     }
   ],
   "fields": [

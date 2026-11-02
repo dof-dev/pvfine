@@ -166,7 +166,7 @@
         },
         {
           "path": "etc/independent_drop.etc",
-          "name": "independent_drop.etc"
+          "name": "独立掉落"
         }
       ]
     },
@@ -183,8 +183,16 @@
   ],
   "entries": [
     {
-      "path": "equipment/character/common/belt/larmor/100220443.equ",
-      "name": "100220443.equ"
+      "path": "etc/disjoint.etc",
+      "name": "分解装备"
+    },
+    {
+      "path": "etc/pcroom.vm",
+      "name": "黑钻抽奖机"
+    },
+    {
+      "path": "etc/pcroom4.vm",
+      "name": "pcroom4.vm"
     }
   ]
 }
