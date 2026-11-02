@@ -35,6 +35,10 @@ export const useExportStore = defineStore("export", () => {
   const version = ref("1.0");
   const modId = ref("");
   const includeDependencies = ref(false);
+  const mergePath = ref("");
+  const versionNotice = ref("");
+  const packageName = computed(() => `${name.value}-${version.value || (format.value === "115CN-mod" ? "1.0.0" : "1.0")}${format.value === "115CN-mod" ? ".zip" : "/"}`);
+  const selectingMerge = ref(false);
   const formats = ref<Descriptor[]>([]);
   const preview = ref<ExportPreview | null>(null);
   const preparing = ref(false);
@@ -52,7 +56,7 @@ export const useExportStore = defineStore("export", () => {
   const nameError = computed(() => mode.value === "mod" ? modNameError(name.value) : "");
   const versionError = computed(() => mode.value === "mod" ? modVersionError(version.value) : "");
   const idError = computed(() => mode.value === "mod" && format.value === "115CN-mod" ? modIDError(modId.value) : "");
-  const canExport = computed(() => visible.value && !!preview.value && selectedCount.value > 0 && !preparing.value && !running.value && !nameError.value && !versionError.value && !idError.value);
+  const canExport = computed(() => visible.value && !!preview.value && selectedCount.value > 0 && !preparing.value && !running.value && !selectingMerge.value && !nameError.value && !versionError.value && !idError.value);
   let generation = 0;
   let activePreviewID = "";
   let queue = Promise.resolve();
@@ -77,6 +81,7 @@ export const useExportStore = defineStore("export", () => {
     const request: ExportRequest = {
       ...source.value!, mode: mode.value, format: format.value,
       name: name.value, version: version.value, modId: modId.value, includeDependencies: mode.value === "mod" && includeDependencies.value,
+      mergePath: mode.value === "mod" ? mergePath.value : "",
     };
     // Serialize preparations so an older backend request cannot replace the
     // latest preview, even when users change options quickly.
@@ -112,6 +117,8 @@ export const useExportStore = defineStore("export", () => {
     version.value = "1.0";
     modId.value = `pvfine-${crypto.randomUUID()}`;
     includeDependencies.value = false;
+    mergePath.value = "";
+    versionNotice.value = "";
     excludedPaths.value = [];
     source.value = { ...request, scopes: [...(request.scopes ?? [])] };
     title.value = label;
@@ -129,6 +136,27 @@ export const useExportStore = defineStore("export", () => {
     });
     void refresh();
     return result;
+  }
+
+  async function selectMerge(): Promise<void> {
+    if (running.value || selectingMerge.value) return;
+    const session = complete;
+    const selectedFormat = format.value;
+    selectingMerge.value = true;
+    try {
+      const selected = await ExportService.SelectMergeDialog(selectedFormat);
+      if (selected && visible.value && complete === session && format.value === selectedFormat && mode.value === "mod") {
+        excludedPaths.value = [];
+        mergePath.value = selected.path;
+        name.value = selected.name;
+        version.value = selected.version;
+        versionNotice.value = selected.versionNotice;
+      }
+    } catch (value: any) {
+      if (visible.value && complete === session) error.value = String(value?.message ?? value);
+    } finally {
+      selectingMerge.value = false;
+    }
   }
 
   function finish(path: string): void {
@@ -187,9 +215,10 @@ export const useExportStore = defineStore("export", () => {
     ];
   }
 
-  watch([mode, format, name, version, includeDependencies], () => {
+  watch([mode, format, name, version, includeDependencies, mergePath], () => {
     if (visible.value && !running.value) void refresh();
   });
+  watch(format, () => { mergePath.value = ""; });
   watch(modId, () => {
     if (visible.value && !running.value && mode.value === "mod" && format.value === "115CN-mod") void refresh();
   });
@@ -202,6 +231,6 @@ export const useExportStore = defineStore("export", () => {
   return {
     visible, title, mode, format, name, version, includeDependencies, formats, preview,
     modId, idError, preparing, running, error, nameError, versionError, canExport, open, close, refresh, execute, invalidate,
-    excludedPaths, selectedCount, selectedDependencyCount, checkedKeys, selectFiles,
+    mergePath, versionNotice, packageName, selectingMerge, selectMerge, excludedPaths, selectedCount, selectedDependencyCount, checkedKeys, selectFiles,
   };
 });

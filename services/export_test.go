@@ -677,7 +677,7 @@ func TestModPublishRejectsDestinationCreatedDuringWrite(t *testing.T) {
 			pkg := modpkg.Package{Metadata: modpkg.Metadata{Name: "test"}, Entries: []modpkg.Entry{
 				{Path: "a.etc", Operation: modpkg.ReplaceFile, Encoding: modpkg.Text, DataType: 1, Data: []byte("1")},
 			}}
-			dest := filepath.Join(parent, pkg.Metadata.Name)
+			dest := filepath.Join(parent, "test-1.0")
 			writer := concurrentDestinationModWriter{createDestination: func() error {
 				if kind == "file" {
 					return os.WriteFile(dest, []byte("existing"), 0o644)
@@ -694,7 +694,7 @@ func TestModPublishRejectsDestinationCreatedDuringWrite(t *testing.T) {
 				t.Fatal("destination created during export was overwritten")
 			}
 			entries, err := os.ReadDir(parent)
-			if err != nil || len(entries) != 1 || entries[0].Name() != pkg.Metadata.Name {
+			if err != nil || len(entries) != 1 || entries[0].Name() != "test-1.0" {
 				t.Fatalf("destination removed or temporary directory leaked: %#v, %v", entries, err)
 			}
 			if kind == "empty directory" {

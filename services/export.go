@@ -33,6 +33,7 @@ type ExportRequest struct {
 	Version             string   `json:"version"`
 	ModID               string   `json:"modId"`
 	IncludeDependencies bool     `json:"includeDependencies"`
+	MergePath           string   `json:"mergePath,omitempty"`
 }
 
 type ExportPreview struct {
@@ -124,6 +125,10 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 		if f.Writer == nil {
 			return nil, fmt.Errorf("该 mod 格式不支持导出")
 		}
+		_, zipOutput := f.Writer.(modpkg.ArchiveWriter)
+		if _, err := modOutputName(modpkg.Metadata{Name: request.Name, Version: request.Version}, zipOutput); err != nil {
+			return nil, err
+		}
 		if request.Format == modpkg.CN115Format {
 			if err := modpkg.ValidateID(request.ModID); err != nil {
 				return nil, err
@@ -138,7 +143,7 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 	}
 	// Metadata never affects scope, content or dependencies. Reuse only a
 	// still-valid snapshot; every response gets its own task identity.
-	if old := s.plan; s.validLocked(old) && sameExportContentRequest(old.request, request) {
+	if old := s.plan; request.MergePath == "" && s.validLocked(old) && sameExportContentRequest(old.request, request) {
 		next := *old
 		next.request = request
 		next.pkg.Metadata = modpkg.Metadata{ID: request.ModID, Name: request.Name, Version: request.Version}
@@ -235,6 +240,21 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 		if source.diagnostics.skipped > 0 {
 			p.preview.Warnings = append(p.preview.Warnings, fmt.Sprintf("跳过 %d 处无法解析或补齐的内容，详情已记录到日志；导出内容或依赖可能不完整", source.diagnostics.skipped))
 		}
+		dependencies := make(map[string]int)
+		for _, entry := range p.pkg.Entries {
+			dependencies[entry.Path] = len(entry.Pairs) - explicitPairs[entry.Path]
+		}
+		if request.MergePath != "" {
+			base, err := s.readMergePackage(request.MergePath, request.Format)
+			if err != nil {
+				return nil, err
+			}
+			p.pkg, err = mergeExportPackages(base, p.pkg)
+			if err != nil {
+				return nil, err
+			}
+			p.preview.Warnings = append(p.preview.Warnings, base.Warnings...)
+		}
 		p.preview.FileCount = len(p.pkg.Entries)
 		if p.preview.SkippedDeletes > 0 {
 			p.preview.Warnings = append(p.preview.Warnings, fmt.Sprintf("%s 无法应用删除，跳过 %d 个文件或表条目删除", format.Descriptor.Name, p.preview.SkippedDeletes))
@@ -248,10 +268,6 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 		}
 		if err := format.Writer.Validate(p.pkg); err != nil {
 			return nil, err
-		}
-		dependencies := make(map[string]int)
-		for _, entry := range p.pkg.Entries {
-			dependencies[entry.Path] = len(entry.Pairs) - explicitPairs[entry.Path]
 		}
 		for _, file := range format.Writer.Files(p.pkg) {
 			p.preview.Files = append(p.preview.Files, ExportPreviewFile{
@@ -295,7 +311,7 @@ func (s *ExportService) prepare(request ExportRequest, mcpOwned bool) (result *E
 
 func sameExportContentRequest(a, b ExportRequest) bool {
 	return a.Source == b.Source && a.CommitID == b.CommitID && a.DiffID == b.DiffID && a.Reverse == b.Reverse && a.Mode == b.Mode &&
-		a.Format == b.Format && a.IncludeDependencies == b.IncludeDependencies &&
+		a.Format == b.Format && a.MergePath == b.MergePath && a.IncludeDependencies == b.IncludeDependencies &&
 		slices.Equal(a.Scopes, b.Scopes)
 }
 
@@ -532,6 +548,25 @@ func writeDirectDirectory(dir string, files []exportFile) error {
 	return nil
 }
 
+// Use the same default version as the format writer while leaving manifest metadata intact.
+func modOutputName(metadata modpkg.Metadata, zipOutput bool) (string, error) {
+	version := metadata.Version
+	if version == "" {
+		version = "1.0"
+		if zipOutput {
+			version = "1.0.0"
+		}
+	}
+	name := metadata.Name + "-" + version
+	if zipOutput {
+		name += ".zip"
+	}
+	if err := modpkg.ValidateName(name); err != nil {
+		return "", fmt.Errorf("MOD 包名无效，请调整名称或版本号: %w", err)
+	}
+	return name, nil
+}
+
 func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) (string, error) {
 	if err := writer.Validate(pkg); err != nil {
 		return "", err
@@ -539,7 +574,11 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 	if zipWriter, ok := writer.(modpkg.ArchiveWriter); ok {
 		return writeModZIP(parent, pkg, zipWriter)
 	}
-	dest := filepath.Join(parent, pkg.Metadata.Name)
+	name, err := modOutputName(pkg.Metadata, false)
+	if err != nil {
+		return "", err
+	}
+	dest := filepath.Join(parent, name)
 	// Windows directory identity is case-insensitive, including when tests
 	// run on another host filesystem.
 	siblings, err := os.ReadDir(parent)
@@ -547,12 +586,12 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 		return "", err
 	}
 	for _, sibling := range siblings {
-		if strings.EqualFold(sibling.Name(), pkg.Metadata.Name) {
-			return "", fmt.Errorf("同名 mod 文件夹已存在，请修改名称或目标目录: %s", pkg.Metadata.Name)
+		if strings.EqualFold(sibling.Name(), name) {
+			return "", fmt.Errorf("同名 mod 文件夹已存在，请修改名称或版本号或目标目录: %s", name)
 		}
 	}
 	if _, err := os.Lstat(dest); err == nil {
-		return "", fmt.Errorf("同名 mod 文件夹已存在，请修改名称或目标目录: %s", pkg.Metadata.Name)
+		return "", fmt.Errorf("同名 mod 文件夹已存在，请修改名称或版本号或目标目录: %s", name)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
@@ -572,7 +611,10 @@ func writeModDirectory(parent string, pkg modpkg.Package, writer modpkg.Writer) 
 }
 
 func writeModZIP(parent string, pkg modpkg.Package, writer modpkg.ArchiveWriter) (string, error) {
-	name := pkg.Metadata.Name + ".zip"
+	name, err := modOutputName(pkg.Metadata, true)
+	if err != nil {
+		return "", err
+	}
 	siblings, err := os.ReadDir(parent)
 	if err != nil {
 		return "", err

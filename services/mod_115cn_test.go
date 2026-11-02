@@ -246,7 +246,7 @@ func TestCN115MCPExportZIP(t *testing.T) {
 	done := mcpCall(t, s, "export_execute", exec)
 	requireMCPCompleted(t, done)
 	output := done.Result.(map[string]any)["outputPath"].(string)
-	if filepath.Base(output) != "MCP-115CN.zip" {
+	if filepath.Base(output) != "MCP-115CN-1.0.0.zip" {
 		t.Fatal("unexpected output", output)
 	}
 	root, closer, err := modpkg.OpenSource(output, true)

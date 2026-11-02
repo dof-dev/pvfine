@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   Release: vi.fn(),
   ExecuteSelectionDialog: vi.fn(),
   Formats: vi.fn(),
+  SelectMergeDialog: vi.fn(),
   events: new Map<string, () => void>(),
 }));
 vi.mock("../bindings/pvfine/services", () => ({ ExportService: mocks }));
@@ -300,4 +301,73 @@ test("归档差异传递快照和方向，普通编辑不使固定快照失效�
   expect(store.canExport).toBe(true);
   mocks.events.get("archive:reloaded")?.();
   expect(store.canExport).toBe(false);
+});
+
+
+test("合并来源只用于 MOD，切换格式或重新打开时清除", async () => {
+  const store = useExportStore();
+  void store.open(source, "导出");
+  store.mode = "mod";
+  store.name = "合并MOD";
+  await settle();
+  mocks.SelectMergeDialog.mockResolvedValue({ path: "/mods/existing", name: "已有MOD", version: "1.2.4", versionNotice: "" });
+  await store.selectMerge();
+  await settle();
+  expect(mocks.SelectMergeDialog).toHaveBeenCalledWith("110USextend");
+  expect(store.name).toBe("已有MOD");
+  expect(store.version).toBe("1.2.4");
+  expect(store.packageName).toBe("已有MOD-1.2.4/");
+  expect(mocks.Prepare.mock.lastCall?.[0].mergePath).toBe("/mods/existing");
+  store.mode = "direct";
+  await settle();
+  expect(mocks.Prepare.mock.lastCall?.[0].mergePath).toBe("");
+  store.mode = "mod";
+  store.format = "115CN-mod";
+  await settle();
+  expect(store.mergePath).toBe("");
+  store.mergePath = "/mods/another";
+  store.close();
+  void store.open(source, "导出");
+  await settle();
+  expect(store.mergePath).toBe("");
+});
+
+test("取消选择保留原有合并来源，关闭后忽略迟到的选择结果", async () => {
+  const store = useExportStore();
+  void store.open(source, "导出");
+  store.mode = "mod";
+  store.name = "合并MOD";
+  store.mergePath = "/mods/original";
+  await settle();
+  mocks.SelectMergeDialog.mockResolvedValue(null);
+  await store.selectMerge();
+  expect(store.mergePath).toBe("/mods/original");
+  const pending = deferred<{ path: string; name: string; version: string; versionNotice: string }>();
+  mocks.SelectMergeDialog.mockReturnValue(pending.promise);
+  const selecting = store.selectMerge();
+  expect(store.canExport).toBe(false);
+  store.close();
+  void store.open(source, "新导出");
+  pending.resolve({ path: "/mods/late", name: "迟到", version: "9.9", versionNotice: "" });
+  await selecting;
+  await settle();
+  expect(store.mergePath).toBe("");
+});
+
+
+test("特殊版本保留原值并显示手动修改提示，包名使用格式默认版本", async () => {
+ const store = useExportStore();
+ void store.open(source, "导出");
+ store.mode = "mod";
+ mocks.SelectMergeDialog.mockResolvedValue({ path: "/mods/special", name: "特殊MOD", version: "beta", versionNotice: "请手动修改版本号" });
+ await store.selectMerge();
+ await settle();
+ expect(store.name).toBe("特殊MOD");
+ expect(store.version).toBe("beta");
+ expect(store.versionNotice).toBe("请手动修改版本号");
+ expect(mocks.Prepare.mock.lastCall?.[0]).toMatchObject({ name: "特殊MOD", version: "beta", mergePath: "/mods/special" });
+ store.version = "";
+ expect(store.packageName).toBe("特殊MOD-1.0/");
+ store.format = "115CN-mod";
+ expect(store.packageName).toBe("特殊MOD-1.0.0.zip");
 });

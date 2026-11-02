@@ -95,6 +95,7 @@ export type {
     EquipmentSetAbility,
     EquipmentSetPreviewDocument,
     EquipmentSkillLevelup,
+    ExportMergeSource,
     ExportPreview,
     ExportPreviewFile,
     ExportRequest,

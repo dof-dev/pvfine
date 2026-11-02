@@ -472,6 +472,13 @@ export interface EquipmentSkillLevelup {
     "level": number;
 }
 
+export interface ExportMergeSource {
+    "path": string;
+    "name": string;
+    "version": string;
+    "versionNotice": string;
+}
+
 export interface ExportPreview {
     "id": string;
     "fileCount": number;
@@ -499,6 +506,7 @@ export interface ExportRequest {
     "version": string;
     "modId": string;
     "includeDependencies": boolean;
+    "mergePath"?: string;
 }
 
 /**

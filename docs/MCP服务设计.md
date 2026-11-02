@@ -171,9 +171,9 @@ includeDependencies 必须显式声明。预览返回依赖数量、缺失/跳�
 
 ### MOD 格式边界
 
-首版复用 internal/mod 注册的 110USextend Writer，输出为 `<outputParent>/<name>/`，含 pack.json 和所需的 pvf/、merge/，不是压缩成单个 .mod 文件。
+首版复用 internal/mod 注册的 110USextend Writer，输出为 `<outputParent>/<name>-<version>/`，含 pack.json 和所需的 pvf/、merge/，不是压缩成单个 .mod 文件。
 
-115CN-mod 扩展输出 `<outputParent>/<name>.zip`，包含根级 mod.json 和 pvf/ 载荷；`export_prepare` 的 `modId` 为稳定唯一 MOD ID，发布同包更新时复用，不能用显示名称替代。仍复用预览、筛选、依赖警告确认和拒绝覆盖的发布流程。MCP 不安装客户端资源，MOD 包导入使用 GUI。
+115CN-mod 扩展输出 `<outputParent>/<name>-<version>.zip`，包含根级 mod.json 和 pvf/ 载荷；`export_prepare` 的 `modId` 为稳定唯一 MOD ID，发布同包更新时复用，不能用显示名称替代。仍复用预览、筛选、依赖警告确认和拒绝覆盖的发布流程。MCP 不安装客户端资源，MOD 包导入使用 GUI。
 
 name、version 复用现有校验，版本省略或留空默认 1.0。普通脚本放入 pvf/；`.lst`、`.str` 按格式写入 merge/。工作区/提交来源有准确基线时输出新增或修改的表项；无基线的整表按现有格式规则跳过并返回警告，不回退为整表覆盖。
 

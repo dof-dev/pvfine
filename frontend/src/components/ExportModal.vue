@@ -59,9 +59,10 @@ function renderLabel({ option }: { option: TreeOption }) {
             :feedback="exporter.versionError"
             :show-feedback="!!exporter.versionError"
           >
-            <NInput v-model:value="exporter.version" placeholder="1.0" :disabled="exporter.running" />
+            <NInput v-model:value="exporter.version" @update:value="exporter.versionNotice = ''" placeholder="1.0" :disabled="exporter.running" />
           </NFormItem>
         </div>
+        <NAlert v-if="exporter.versionNotice" type="warning">{{ exporter.versionNotice }}</NAlert>
         <NFormItem v-if="exporter.format === '115CN-mod'" label="MOD ID"
           :validation-status="exporter.idError ? 'error' : undefined"
           :feedback="exporter.idError" :show-feedback="!!exporter.idError">
@@ -71,6 +72,16 @@ function renderLabel({ option }: { option: TreeOption }) {
           <NText>补齐文字表与物品列表依赖</NText>
           <NSwitch v-model:value="exporter.includeDependencies" :disabled="exporter.running" />
         </div>
+        <NFormItem label="合并已有 MOD（可选）" :show-feedback="false">
+          <NSpace vertical style="width: 100%">
+            <NSpace>
+              <NButton :loading="exporter.selectingMerge" :disabled="exporter.running || exporter.selectingMerge" @click="exporter.selectMerge()">选择已有 MOD</NButton>
+              <NButton v-if="exporter.mergePath" :disabled="exporter.running || exporter.selectingMerge" @click="exporter.mergePath = ''">移除</NButton>
+            </NSpace>
+            <NText v-if="exporter.mergePath" class="export-merge-path">{{ exporter.mergePath }}</NText>
+            <NText depth="3">选择与导出格式相同的 MOD，仅合并 PVF 内容；同路径文件和同键条目以本次导出为准，保留其他 PVF 内容，结果另存。组件将合并为基础内容，互斥组件无法合并。</NText>
+          </NSpace>
+        </NFormItem>
       </template>
       <NSpin :show="exporter.preparing">
         <div class="export-summary">
@@ -90,7 +101,7 @@ function renderLabel({ option }: { option: TreeOption }) {
         </div>
       </NSpin>
       <template v-if="exporter.preview">
-        <NText v-if="exporter.mode === 'mod'" depth="3">{{ exporter.name }}{{ exporter.format === "115CN-mod" ? ".zip" : "/" }}</NText>
+        <NText v-if="exporter.mode === 'mod'" depth="3">{{ exporter.packageName }}</NText>
         <NTree
           checkable cascade check-strategy="child" block-line virtual-scroll
           :animated="false"
@@ -133,6 +144,7 @@ function renderLabel({ option }: { option: TreeOption }) {
 .export-summary { min-height: 36px; }
 .export-summary :deep(.n-text) { overflow-wrap: anywhere; }
 .export-dependencies :deep(.n-text) { min-width: 0; flex: 1; }
+.export-merge-path { overflow-wrap: anywhere; }
 .export-metadata { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
 @media (max-width: 480px) {
   .export-metadata { grid-template-columns: minmax(0, 1fr); }

@@ -45,3 +45,10 @@ export function Prepare(request: $models.ExportRequest): $CancellablePromise<$mo
 export function Release(id: string): $CancellablePromise<void> {
     return $Call.ByID(999072264, id);
 }
+
+/**
+ * SelectMergeDialog reads metadata only after a source has been selected and validated.
+ */
+export function SelectMergeDialog(formatID: string): $CancellablePromise<$models.ExportMergeSource | null> {
+    return $Call.ByID(254498909, formatID);
+}
