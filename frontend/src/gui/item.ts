@@ -35,7 +35,7 @@ export const itemGroups: { label: string; fields: ItemField[] }[] = [
     { name: 'field image', label: '地面图像', kinds: ['string', 'integer'] },
   ] },
 ];
-export function parseItem(text: string): ItemSection[] {
+export function parseItem(text: string, closingAliases: Readonly<Record<string, string>> = {}): ItemSection[] {
   const lex: (ItemToken & { tag?: string })[] = [];
   let i = 0;
   const quoted = () => {
@@ -65,7 +65,10 @@ export function parseItem(text: string): ItemSection[] {
     else if (text[i] === '[') {
       const end = text.indexOf(']', i);
       if (end < 0) throw new Error('标签未闭合，请先在 DSL 中修复');
-      tag = text.slice(++i, end).trim().toLowerCase(); value = tag; i = end + 1;
+      tag = text.slice(++i, end).trim().toLowerCase();
+      // Known format-specific aliases affect matching only; source offsets and text stay exact.
+      if (tag.startsWith('/')) tag = '/' + (closingAliases[tag.slice(1).trim()] ?? tag.slice(1).trim());
+      value = tag; i = end + 1;
     } else if (text[i] === '{') {
       i++;
       while (i < text.length && text[i] !== '}') { if (text[i] === '`') quoted(); else i++; }

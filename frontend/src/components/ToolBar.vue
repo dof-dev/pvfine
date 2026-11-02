@@ -341,7 +341,13 @@ function onArchiveDiff(): void {
 
 async function onToolSelect(key: string): Promise<void> {
   if (key.startsWith("file-gui:")) {
-    if (archive.open) selectedGUIProvider.value = fileGUITools.find(provider => `file-gui:${provider.id}` === key) ?? null;
+    if (!archive.open) return;
+    if (key === "file-gui:cera-shop") {
+      try { await editor.openCeraShop(); }
+      catch (err: any) { message.error(`打开商城失败: ${err?.message ?? err}`); }
+    } else {
+      selectedGUIProvider.value = fileGUITools.find(provider => `file-gui:${provider.id}` === key) ?? null;
+    }
     return;
   }
   if (key === "forge") {

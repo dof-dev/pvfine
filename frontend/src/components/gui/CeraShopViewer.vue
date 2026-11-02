@@ -4,7 +4,7 @@ import { NButton, NEmpty, NInput, NModal, NPagination, NSelect, useMessage } fro
 import { ArchiveService, FileGUIService } from '../../../bindings/pvfine/services';
 import type { ItemAppearance } from '../../../bindings/pvfine/services/models';
 import type { GUIFile } from '../../gui/types';
-import { ceraDate, ceraFieldLabel, ceraSchemas, ceraTabLabels, ceraTabProducts, changeCeraProduct, newCeraValues, readCeraShop, type CeraDocument, type CeraProduct } from '../../gui/ceraShop';
+import { ceraDate, ceraFieldLabel, ceraQuantityIndex, ceraSchemas, ceraTabLabels, ceraTabProducts, changeCeraProduct, newCeraValues, readCeraShop, type CeraDocument, type CeraProduct } from '../../gui/ceraShop';
 import { useEditorStore } from '../../stores/editor';
 import { useFileGUIStore } from '../../stores/fileGUI';
 import { rarityTextStyle } from '../../rarity';
@@ -23,23 +23,24 @@ const names = shallowRef<Record<string, string>>({}), appearances = shallowRef<R
 const metadataError = ref(''), namesLoading = ref(false);
 let generation = 0, iconGeneration = 0, disposed = false;
 const form = reactive({ show: false, action: 'add' as 'add' | 'edit' | 'delete', section: 'item', values: [] as string[], target: undefined as CeraProduct | undefined, text: '', index: -1, path: '', epoch: 0, revision: 0 });
-const schema = computed(() => ceraSchemas[form.section]!);
+const schemas = computed(() => doc.value?.schemas ?? ceraSchemas);
+const schema = computed(() => schemas.value[form.section] ?? ceraSchemas.item!);
 const canEdit = computed(() => props.active && props.file.editable && !error.value && !editor.saving && !editor.guiApplying);
 const dirty = computed(() => { const draft = editor.getFileDraft(props.file.index); return !!draft && draft.path === props.file.path && editor.isTextDirty(draft); });
 const tabs = computed(() => doc.value?.tabs.filter(t => t !== 'exit') ?? []);
 const tabCounts = computed(() => Object.fromEntries(tabs.value.map(t => [t, doc.value ? ceraTabProducts(doc.value, t).length : 0])));
 const tabProducts = computed(() => doc.value ? ceraTabProducts(doc.value, tab.value) : []);
-const categories = computed(() => Object.entries(ceraSchemas).filter(([name, value]) => value.tab === tab.value || tabProducts.value.some(p => p.section === name)).map(([value, schema]) => ({ value, label: schema.label + (doc.value?.blocked.has(value) ? '（布局未识别）' : '') })));
-const editCategories = computed(() => Object.entries(ceraSchemas).filter(([name]) => !doc.value?.blocked.has(name)).map(([value, schema]) => ({ value, label: schema.label })));
+const categories = computed(() => Object.entries(schemas.value).filter(([name, value]) => value.tab === tab.value || tabProducts.value.some(p => p.section === name)).map(([value, schema]) => ({ value, label: schema.label + (doc.value?.blocked.has(value) ? '（布局未识别）' : '') })));
+const editCategories = computed(() => Object.entries(schemas.value).filter(([name]) => !doc.value?.blocked.has(name) && !schemas.value[name]!.readOnly).map(([value, schema]) => ({ value, label: schema.label })));
 const products = computed(() => {
   const q = query.value.trim().toLocaleLowerCase();
   return tabProducts.value.filter(p => (!category.value || p.section === category.value) && (!q || `${p.id} ${p.itemId} ${p.name} ${names.value[p.itemId] ?? ''}`.toLocaleLowerCase().includes(q)));
 });
 const shown = computed(() => products.value.slice((page.value - 1) * pageSize, page.value * pageSize));
-const primaryFields = computed(() => [0, 1, ...(schema.value.layout === 'item' ? [2] : []), ...(schema.value.name >= 0 ? [schema.value.name] : []), schema.value.gold, schema.value.cash, schema.value.date]);
+const primaryFields = computed(() => [...new Set([0, 1, ceraQuantityIndex(schema.value), schema.value.name, schema.value.gold, schema.value.cash, schema.value.date].filter(i => i >= 0))]);
 const extraFields = computed(() => Array.from({ length: schema.value.width }, (_, i) => i).filter(i => !primaryFields.value.includes(i)));
 const number = (value: string) => Number(value).toLocaleString('zh-CN');
-function displayedName(p: CeraProduct) { return nameMode.value === 'item' ? names.value[p.itemId] || `物品 #${p.itemId}` : p.name || names.value[p.itemId] || `商品 #${p.id}`; }
+function displayedName(p: CeraProduct) { if (Number(p.itemId) <= 0) return p.name || `商品 #${p.id}`; return nameMode.value === 'item' ? names.value[p.itemId] || `物品 #${p.itemId}` : p.name || names.value[p.itemId] || `商品 #${p.id}`; }
 const openingItem = ref(false);
 async function openItemFile(event: MouseEvent, itemId: string) {
   if (!event.metaKey && !event.ctrlKey) return;
@@ -61,7 +62,7 @@ function read() {
   form.show = false;
   try {
     doc.value = readCeraShop(props.file.text); error.value = '';
-    if (!tabs.value.includes(tab.value)) tab.value = tabs.value[0] ?? '';
+    if (!tabs.value.includes(tab.value)) tab.value = tabs.value.find(t => ceraTabProducts(doc.value!, t).length > 0) ?? tabs.value[0] ?? '';
   } catch (cause) { error.value = String(cause); doc.value = null; }
 }
 watch(() => [props.file.index, props.file.path, props.file.text, gui.epoch], read, { immediate: true });
@@ -77,7 +78,7 @@ watch(shown, () => { if (props.active) void loadIcons(); });
 async function loadNames() {
   const request = ++generation;
   const visible = shown.value.map(p => p.itemId), all = doc.value?.products.map(p => p.itemId) ?? [];
-  const ids = [...new Set([...visible, ...all])].filter(id => !Object.hasOwn(names.value, id));
+  const ids = [...new Set([...visible, ...all])].filter(id => Number(id) > 0 && !Object.hasOwn(names.value, id));
   namesLoading.value = !!ids.length;
   try {
     for (let i = 0; i < ids.length; i += 400) {
@@ -90,7 +91,7 @@ async function loadNames() {
 }
 async function loadIcons() {
   const request = ++iconGeneration;
-  const ids = [...new Set(shown.value.map(p => p.itemId))].filter(id => !Object.hasOwn(appearances.value, id));
+  const ids = [...new Set(shown.value.map(p => p.itemId))].filter(id => Number(id) > 0 && !Object.hasOwn(appearances.value, id));
   if (!ids.length) return;
   try {
     const result = await FileGUIService.ReadItemAppearances(ids);
@@ -105,9 +106,9 @@ function setFormSection(value: string) {
   catch (cause) { message.error(String(cause)); }
 }
 function openForm(action: 'add' | 'edit' | 'delete', product?: CeraProduct) {
-  if (!canEdit.value || !doc.value) return;
+  if (!canEdit.value || !doc.value || product && schemas.value[product.section]?.readOnly) return;
   try {
-    const section = product?.section ?? (category.value && !doc.value.blocked.has(category.value) ? category.value : categories.value.find(c => !doc.value!.blocked.has(c.value))?.value ?? 'item');
+    const section = product?.section ?? (category.value && !doc.value.blocked.has(category.value) && !schemas.value[category.value]?.readOnly ? category.value : categories.value.find(c => !doc.value!.blocked.has(c.value) && !schemas.value[c.value]?.readOnly)?.value ?? 'item');
     const values = product ? product.fields.map(t => t.value) : newCeraValues(doc.value, section);
     Object.assign(form, { show: true, action, section, values, target: product, text: props.file.text, index: props.file.index, path: props.file.path, epoch: gui.epoch, revision: gui.revision });
   } catch (cause) { message.error(String(cause)); }
@@ -117,7 +118,7 @@ function apply() {
     if (!canEdit.value || form.text !== props.file.text || form.index !== props.file.index || form.path !== props.file.path || form.epoch !== gui.epoch || form.revision !== gui.revision) throw new Error('文件或归档已变化，请重新打开表单');
     editor.updateContent(props.file.index, changeCeraProduct(form.text, form.action, form.section, form.values, form.target));
     form.show = false;
-    if (form.action === 'add') { tab.value = ceraSchemas[form.section]!.tab; category.value = form.section; query.value = ''; }
+    if (form.action === 'add') { tab.value = schemas.value[form.section]!.tab; category.value = form.section; query.value = ''; }
     message.success('已更新商城草稿，保存后写入工作区');
   } catch (cause) { message.error(String(cause)); }
 }
@@ -133,7 +134,7 @@ async function save() {
   <section class="cera-shop" aria-label="商城 GUI">
     <div class="cera-toolbar">
       <div class="cera-name-mode" role="group" aria-label="名称显示方式"><button type="button" :aria-pressed="nameMode === 'product'" @click="nameMode = 'product'">商品名</button><button type="button" :aria-pressed="nameMode === 'item'" @click="nameMode = 'item'">物品名</button></div>
-      <div class="cera-toolbar-actions"><NButton size="small" :disabled="!canEdit" @click="openForm('add')">新增商品</NButton><NButton size="small" type="primary" :loading="editor.saving" :disabled="!canEdit || !dirty || form.show" @click="save">保存商城{{ dirty ? ' *' : '' }}</NButton></div>
+      <div class="cera-toolbar-actions"><NButton size="small" :disabled="!canEdit || tab === 'derivative'" @click="openForm('add')">新增商品</NButton><NButton size="small" type="primary" :loading="editor.saving" :disabled="!canEdit || !dirty || form.show" @click="save">保存商城{{ dirty ? ' *' : '' }}</NButton></div>
     </div>
     <div v-if="error" class="cera-error" role="alert">{{ error }}<NButton size="tiny" @click="read">重新加载</NButton></div>
     <template v-else-if="doc">
@@ -141,16 +142,17 @@ async function save() {
       <div class="cera-filters"><NInput v-model:value="query" size="small" clearable placeholder="搜索商品名、物品名或编号" aria-label="搜索商城商品" /><NSelect v-model:value="category" size="small" :options="[{ value: '', label: '全部分类' }, ...categories]" aria-label="商品子分类" /></div>
       <p v-if="tab === 'mileage'" class="cera-hint">按商品积分配置聚合；这里显示商品售价，积分参数保持原值。</p>
       <p v-if="tab === 'hotandnew'" class="cera-hint">按热卖与新品配置聚合，编辑与删除会同步到原商品分类。</p>
+      <p v-if="tab === 'derivative'" class="cera-hint">周边商品为外部链接配置，仅展示原始名称和价格参数。</p>
       <div v-if="metadataError" class="cera-error" role="alert">{{ metadataError }}<NButton size="tiny" @click="retryMetadata">重试</NButton></div>
       <div class="cera-products" role="tabpanel" :aria-label="ceraTabLabels[tab] ?? tab">
         <div v-if="shown.length" class="cera-grid">
           <article v-for="p in shown" :key="`${p.section}:${p.row}`" class="cera-card">
             <div class="cera-icon"><ImageThumbnail :reference="appearances[p.itemId]?.icon" :size="40" show-fallback animated /></div>
-            <div class="cera-card-content"><div class="cera-product-name" :style="rarityTextStyle(appearances[p.itemId]?.rarity)" :title="`${p.name || '未配置商品名'}\n${names[p.itemId] || '物品 #' + p.itemId}`">{{ displayedName(p) }}</div><div class="cera-ids" :title="`商品编号 ${p.id} / 物品编号 ${p.itemId}`">#{{ p.id }} <button type="button" class="cera-item-link" :disabled="openingItem || editor.saving || editor.guiApplying || !active" :aria-label="`物品编号 ${p.itemId}，Cmd 或 Ctrl 点击打开物品文件`" title="Cmd / Ctrl + 点击打开物品文件" @click="openItemFile($event, p.itemId)">物品 {{ p.itemId }}</button></div><div class="cera-price"><span v-if="Number(p.cash) > 0" class="cera-cash">{{ number(p.cash) }} <small>点券</small></span><span v-if="Number(p.gold) > 0" class="cera-gold">{{ number(p.gold) }} <small>金币</small></span><span v-if="Number(p.cash) <= 0 && Number(p.gold) <= 0" class="cera-zero">价格 0</span><span v-if="ceraSchemas[p.section]!.layout === 'item' && p.fields[2]!.value !== '1'" class="cera-quantity">×{{ p.fields[2]!.value }}</span></div><div v-if="p.date" class="cera-date" title="尚未确认此参数是否代表过期时间">日期参数 {{ ceraDate(p.date) }}</div></div>
-            <div class="cera-card-actions"><button type="button" :disabled="!canEdit" :aria-label="`编辑商品 ${p.id}`" @click="openForm('edit', p)">编辑</button><button type="button" class="cera-delete" :disabled="!canEdit" :aria-label="`删除商品 ${p.id}`" @click="openForm('delete', p)">删除</button></div>
+            <div class="cera-card-content"><div class="cera-product-name" :style="rarityTextStyle(appearances[p.itemId]?.rarity)" :title="`${p.name || '未配置商品名'}\n${names[p.itemId] || '物品 #' + p.itemId}`">{{ displayedName(p) }}</div><div class="cera-ids" :title="`商品编号 ${p.id} / 物品编号 ${p.itemId}`"><span>{{ p.id ? '#' + p.id : '外部商品' }}</span> <button v-if="Number(p.itemId) > 0" type="button" class="cera-item-link" :disabled="openingItem || editor.saving || editor.guiApplying || !active" :aria-label="`物品编号 ${p.itemId}，Cmd 或 Ctrl 点击打开物品文件`" title="Cmd / Ctrl + 点击打开物品文件" @click="openItemFile($event, p.itemId)">物品 {{ p.itemId }}</button></div><div class="cera-price"><span v-if="Number(p.cash) > 0" class="cera-cash">{{ number(p.cash) }} <small>{{ schemas[p.section]?.readOnly ? '价格参数' : '点券' }}</small></span><span v-if="Number(p.gold) > 0" class="cera-gold">{{ number(p.gold) }} <small>金币</small></span><span v-if="Number(p.cash) <= 0 && Number(p.gold) <= 0" class="cera-zero">{{ !p.cash && !p.gold ? '未配置价格' : '价格 0' }}</span><span v-if="Number(p.quantity) > 1" class="cera-quantity">×{{ p.quantity }}</span></div><div v-if="p.date" class="cera-date" title="尚未确认此参数是否代表过期时间">日期参数 {{ ceraDate(p.date) }}</div></div>
+            <div v-if="!schemas[p.section]?.readOnly" class="cera-card-actions"><button type="button" :disabled="!canEdit" :aria-label="`编辑商品 ${p.id}`" @click="openForm('edit', p)">编辑</button><button type="button" class="cera-delete" :disabled="!canEdit" :aria-label="`删除商品 ${p.id}`" @click="openForm('delete', p)">删除</button></div>
           </article>
         </div>
-        <NEmpty v-else description="当前分类没有匹配商品" class="cera-empty"><template #extra><NButton size="small" :disabled="!canEdit" @click="openForm('add')">新增商品</NButton></template></NEmpty>
+        <NEmpty v-else description="当前分类没有匹配商品" class="cera-empty"><template #extra><NButton size="small" :disabled="!canEdit || tab === 'derivative'" @click="openForm('add')">新增商品</NButton></template></NEmpty>
       </div>
       <footer class="cera-footer"><span>{{ products.length.toLocaleString('zh-CN') }} 件匹配商品{{ namesLoading ? ' · 正在加载物品名…' : '' }}</span><NPagination v-model:page="page" :page-size="pageSize" :item-count="products.length" :page-slot="5" simple /></footer>
       <details v-if="doc.issues.length" class="cera-issues"><summary>{{ doc.issues.length }} 条数据提示</summary><p v-for="(issue, i) in doc.issues" :key="i">{{ issue }}</p></details>

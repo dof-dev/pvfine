@@ -855,6 +855,23 @@ export const useEditorStore = defineStore("editor", () => {
     return true;
   }
 
+  async function openCeraShop(requestedPaneId?: EditorPaneId): Promise<boolean> {
+    const targetPaneId = resolvePaneId(requestedPaneId);
+    const gui = useFileGUIStore(), epoch = gui.epoch;
+    const paths = ["etc/cerashop.etc", "etc/(r)cerashop.etc"];
+    const nodes = await ArchiveService.ResolveFiles(paths);
+    if (epoch !== gui.epoch) return false;
+    const target = paths.map(path => nodes?.find(node => node && !node.isDir && node.fileIndex >= 0 && node.path.toLowerCase() === path)).find(node => !!node);
+    if (!target) throw new Error(`归档中未找到商城文件 ${paths.join(" 或 ")}`);
+    await openFile(target.fileIndex, targetPaneId);
+    if (epoch !== gui.epoch) return false;
+    const tab = tabs.value.find(tab => tab.index === target.fileIndex);
+    if (!tab) return false;
+    if (tab.loadError) throw new Error(tab.loadError);
+    setGUIMode(target.fileIndex, "gui", targetPaneId);
+    return true;
+  }
+
   /** 打开或激活归档对比特殊 Tab */
   function openCompareTab(requestedPaneId?: EditorPaneId): void {
     const targetPaneId = resolvePaneId(requestedPaneId);
@@ -1424,6 +1441,7 @@ export const useEditorStore = defineStore("editor", () => {
     archiveDiffDrafts,
     openUpgrade,
     openForge,
+    openCeraShop,
     openCompareTab,
     saveActiveTab,
     saveAllDirty,
