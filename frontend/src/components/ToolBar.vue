@@ -57,7 +57,7 @@ import type { GUIProvider } from "../gui/types";
 const SkillBrowser = defineAsyncComponent(() => import("./gui/SkillBrowser.vue"));
 const FileGUILauncher = defineAsyncComponent(() => import("./gui/FileGUILauncher.vue"));
 const selectedGUIProvider = ref<GUIProvider | null>(null);
-const fileGUITools = guiProviders.filter(provider => ["shop", "quest", "item", "vending-machine"].includes(provider.id));
+const fileGUITools = guiProviders.filter(provider => ["shop", "quest", "item", "vending-machine", "crane-minigame"].includes(provider.id));
 const archive = useArchiveStore();
 const editor = useEditorStore();
 const advancedSearch = useAdvancedSearchStore();
@@ -134,6 +134,7 @@ function getFileGUIIcon(id: string) {
     case "item":
       return Backpack24Regular;
     case "vending-machine":
+    case "crane-minigame":
     case "independent-drop":
       return Reward24Regular;
     default:

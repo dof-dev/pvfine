@@ -78,6 +78,14 @@ export const guiProviders: readonly GUIProvider[] = [
     matches: (file) => file.path.toLowerCase().endsWith(".vm"),
     component: defineAsyncComponent(() => import("../components/gui/VendingMachineViewer.vue")),
   },
+  {
+    id: "crane-minigame",
+    label: "娃娃机",
+    launcher: { fileTypes: "etc/craneminigameitem.etc", paths: ["etc/craneminigameitem.etc"], queries: ["etc/craneminigameitem.etc"] },
+    readOnly: false,
+    matches: (file) => normalizePath(file.path) === "etc/craneminigameitem.etc",
+    component: defineAsyncComponent(() => import("../components/gui/CraneMinigameViewer.vue")),
+  },
 ];
 
 export function getGUIProvider(file: GUIFile): GUIProvider | null {
