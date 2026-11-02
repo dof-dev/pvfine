@@ -1376,6 +1376,25 @@ export interface UpgradeRow {
     "costName": string;
 }
 
+export interface VendingDocument {
+    "groups": VendingGroup[] | null;
+}
+
+export interface VendingGroup {
+    "start": number;
+    "end": number;
+    "number": SkillNumber;
+    "material": SkillNumber[] | null;
+    "materialName": string;
+    "rewards": VendingReward[] | null;
+    "outputClose": number;
+}
+
+export interface VendingReward {
+    "fields": SkillNumber[] | null;
+    "name": string;
+}
+
 /**
  * VersionChange is a path-level worktree or commit change.
  */

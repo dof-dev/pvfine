@@ -58,6 +58,13 @@ export function ListSkills(): $CancellablePromise<$models.SkillEntry[] | null> {
     return $Call.ByID(3606807130);
 }
 
+/**
+ * ListVendingMachines uses the registered LST, including relative and archive-root paths.
+ */
+export function ListVendingMachines(): $CancellablePromise<$models.SearchHit[] | null> {
+    return $Call.ByID(1304220627);
+}
+
 export function ReadForge(fileIndex: number, text: string): $CancellablePromise<$models.ForgeDocument | null> {
     return $Call.ByID(1666123291, fileIndex, text);
 }
@@ -131,6 +138,10 @@ export function ReadSkillTreeDraft(job: string, kind: string, text: string): $Ca
 
 export function ReadUpgrade(fileIndex: number, text: string): $CancellablePromise<$models.UpgradeDocument | null> {
     return $Call.ByID(4242154256, fileIndex, text);
+}
+
+export function ReadVendingMachine(fileIndex: number, text: string): $CancellablePromise<$models.VendingDocument | null> {
+    return $Call.ByID(580116406, fileIndex, text);
 }
 
 /**

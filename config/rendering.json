@@ -418,6 +418,21 @@
         "tokensPerLine": 3,
         "offset": 1
       }
+    },
+    {
+      "id": "user.rule.1d7969fe-999b-4129-87bd-161e033bbcb0",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "section",
+        "section": "output"
+      },
+      "format": {
+        "tokensPerLine": 4
+      }
     }
   ]
 }

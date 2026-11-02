@@ -9,7 +9,7 @@ const result = (hits: SearchHit[], nextCursor = -1) => ({ hits, nextCursor }) as
 
 describe("文件 GUI 工具入口", () => {
   it("每个 GUI 都提供可识别的新建路径和类型搜索入口", () => {
-    expect(guiProviders.map(item => item.id)).toEqual(["shop", "world-drop", "skill", "quest", "upgrade", "forge", "item", "independent-drop"]);
+    expect(guiProviders.map(item => item.id)).toEqual(["shop", "world-drop", "skill", "quest", "upgrade", "forge", "item", "independent-drop", "vending-machine"]);
     for (const item of guiProviders) {
       expect(item.launcher.queries.length).toBeGreaterThan(0);
       for (const path of item.launcher.paths) {

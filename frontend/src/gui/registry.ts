@@ -70,6 +70,14 @@ export const guiProviders: readonly GUIProvider[] = [
     matches: (file) => normalizePath(file.path) === "etc/independent_drop.etc" || /^etc\/independentdrop\/.+\.etc$/.test(normalizePath(file.path)),
     component: defineAsyncComponent(() => import("../components/gui/IndependentDropViewer.vue")),
   },
+  {
+    id: "vending-machine",
+    label: "抽奖机",
+    launcher: { fileTypes: ".vm（etc/vendingmachine.lst）", paths: ["etc/vendingmachine/new.vm"], queries: ["*.vm"] },
+    readOnly: false,
+    matches: (file) => file.path.toLowerCase().endsWith(".vm"),
+    component: defineAsyncComponent(() => import("../components/gui/VendingMachineViewer.vue")),
+  },
 ];
 
 export function getGUIProvider(file: GUIFile): GUIProvider | null {

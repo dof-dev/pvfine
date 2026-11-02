@@ -7196,7 +7196,7 @@
         "kind": "path"
       },
       "annotation": {
-        "title": "抽奖机",
+        "title": "黑钻抽奖机",
         "type": "text"
       },
       "group": "path"
@@ -7224,8 +7224,8 @@
         "kind": "path"
       },
       "annotation": {
-        "title": "赛丽亚贩卖机",
-        "type": "text"
+        "type": "text",
+        "title": "高级黑钻抽奖机"
       },
       "group": "path"
     },

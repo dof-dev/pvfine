@@ -190,21 +190,6 @@
       "group": "global"
     },
     {
-      "id": "global.output",
-      "match": {},
-      "target": {
-        "kind": "token",
-        "section": "output",
-        "index": 0
-      },
-      "annotation": {
-        "title": "未知ID",
-        "type": "reference",
-        "relation": "物品"
-      },
-      "group": "global"
-    },
-    {
       "id": "global.icon",
       "match": {},
       "target": {
@@ -26599,6 +26584,135 @@
         "title": "守护者",
         "type": "text"
       }
+    },
+    {
+      "id": "vm.output.item",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output",
+        "index": 0,
+        "recordTokens": 4
+      },
+      "annotation": {
+        "title": "物品 ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "vm"
+    },
+    {
+      "id": "vm.output.weight",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output",
+        "index": 1,
+        "recordTokens": 4
+      },
+      "annotation": {
+        "title": "权重",
+        "type": "text"
+      },
+      "group": "vm"
+    },
+    {
+      "id": "vm.output.quantity",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output",
+        "index": 2,
+        "recordTokens": 4
+      },
+      "annotation": {
+        "title": "数量",
+        "type": "text"
+      },
+      "group": "vm"
+    },
+    {
+      "id": "vm.output.announce",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "output",
+        "index": 3,
+        "recordTokens": 4
+      },
+      "annotation": {
+        "title": "是否公告",
+        "type": "text"
+      },
+      "group": "vm"
+    },
+    {
+      "id": "global.output",
+      "match": {},
+      "target": {
+        "kind": "token",
+        "section": "output",
+        "index": 0
+      },
+      "annotation": {
+        "title": "未知ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "global"
+    },
+    {
+      "id": "vm.material.item",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "material",
+        "index": 0
+      },
+      "annotation": {
+        "title": "所需材料 ID",
+        "type": "reference",
+        "relation": "物品"
+      },
+      "group": "vm"
+    },
+    {
+      "id": "vm.material.quantity",
+      "match": {
+        "extensions": [
+          ".vm"
+        ]
+      },
+      "target": {
+        "kind": "token",
+        "section": "material",
+        "index": 1
+      },
+      "annotation": {
+        "title": "数量",
+        "type": "text"
+      },
+      "group": "vm"
     }
   ],
   "fields": [

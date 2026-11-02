@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { NAlert, NButton, NEmpty, NInput, NModal, NSelect, NText, useMessage } from "naive-ui";
-import { ArchiveService } from "../../../bindings/pvfine/services";
+import { ArchiveService, FileGUIService } from "../../../bindings/pvfine/services";
 import type { SearchHit } from "../../../bindings/pvfine/services/models";
+import { filterVendingMachines } from "../../gui/vendingMachine";
 import type { GUIProvider } from "../../gui/types";
 import { guiPathMatches, newGUIFilePath, searchGUIFiles, type GUISearchCursor } from "../../gui/launcher";
 import { useArchiveStore } from "../../stores/archive";
@@ -28,6 +29,13 @@ async function search(more = false) {
   loading.value = true; error.value = "";
   if (!more) { hits.value = []; cursor.value = null; }
   try {
+    if (props.provider.id === "vending-machine") {
+      const entries = await FileGUIService.ListVendingMachines();
+      if (!current()) return;
+      hits.value = filterVendingMachines(entries ?? [], query.value);
+      cursor.value = null;
+      return;
+    }
     const result = await searchGUIFiles(props.provider, query.value, more && cursor.value ? cursor.value : { queryIndex: 0, offset: 0 }, ArchiveService.Search, current);
     if (!current()) return;
     hits.value = [...new Map([...(more ? hits.value : []), ...result.hits].map(hit => [hit.fileIndex, hit])).values()];
@@ -97,15 +105,15 @@ void search();
       </div>
       <NText v-if="error" type="error" role="alert">{{ error }}</NText>
       <div class="results" :aria-busy="loading">
-        <button v-for="hit in hits" :key="hit.fileIndex" type="button" :disabled="busy || loading" @click="openHit(hit)">
+        <button v-for="hit in hits" :key="`${hit.fileIndex}:${hit.id}`" type="button" :disabled="busy || loading" @click="openHit(hit)">
           <strong>{{ hit.name || hit.path.split('/').at(-1) }}{{ hit.id ? ` #${hit.id}` : '' }}</strong>
           <small>{{ hit.path }}</small>
         </button>
-        <NEmpty v-if="!hits.length && !loading" :description="cursor ? '本批未匹配到此类型文件，可继续搜索' : '未找到此类型文件，可更换关键词或新建文件'" />
+        <NEmpty v-if="!hits.length && !loading" :description="provider.id === 'vending-machine' ? '未找到已注册的抽奖机，请检查 etc/vendingmachine.lst 或更换关键词' : cursor ? '本批未匹配到此类型文件，可继续搜索' : '未找到此类型文件，可更换关键词或新建文件'" />
         <NText v-if="loading">正在搜索…</NText>
       </div>
       <NButton v-if="cursor" :loading="loading" :disabled="busy" @click="search(true)">继续搜索 / 加载更多</NButton>
-      <div class="creation">
+      <div v-if="provider.id !== 'vending-machine'" class="creation">
         <strong>新建{{ provider.label }}文件</strong>
         <NText depth="3">创建空白脚本文件，在文本模式补充内容后切换 GUI；需要注册的文件可通过文件树菜单添加 lst 注册。</NText>
         <NSelect v-if="pathOptions.length > 1" :options="pathOptions" :value="null" placeholder="选择文件类型或固定路径" :disabled="busy" @update:value="value => path = value" />
