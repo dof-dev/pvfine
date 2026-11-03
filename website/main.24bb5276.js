@@ -57,7 +57,7 @@ async function loadGitHubReleaseInfo(detectedOs) {
   const repo = 'dof-dev/pvfine';
   const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
   const defaultReleaseUrl = `https://github.com/${repo}/releases/latest`;
-  const cacheKey = 'pvfine_latest_release_v2';
+  const cacheKey = 'pvfine_latest_release_v3';
 
   // Try session cache first to avoid GitHub API 60/hr rate limit on rapid refreshes
   try {
@@ -98,7 +98,7 @@ function formatFileSize(bytes) {
 }
 
 function applyReleaseData(data, detectedOs, defaultReleaseUrl) {
-  const tag = data.tag_name || 'v0.20.0';
+  const tag = data.tag_name || 'v1.0.0';
   const releaseUrl = data.html_url || defaultReleaseUrl;
   const assets = Array.isArray(data.assets) ? data.assets : [];
 
@@ -1556,16 +1556,16 @@ function initReleaseNotesModal() {
 
   if (!dialog) return;
 
-  // Provide rich v0.20.0 fallback release notes if GitHub API hasn't populated yet
+  // Provide rich v1.0.0 fallback release notes if GitHub API hasn't populated yet
   if (notesBody && notesBody.textContent.includes('正在从 GitHub')) {
     notesBody.textContent = [
-      '✨ pvfine v0.20.0 核心更新亮点：',
+      '✨ pvfine v1.0.0 正式版里程碑核心亮点：',
+      '• 发布首个稳定正式版，汇集多版本 PVF 无损读写、结构化 GUI 编辑、归档对比合并、本地版本控制、MOD 导入导出及 MCP 服务等核心能力。',
       '• 新增商城、抽奖机和娃娃机图形界面，支持可视化查看和编辑相关数据。',
       '• MOD 导出支持合并同格式的已有 MOD，并自动递增版本号。',
       '• 内置 115CN 分页归档解析支持，适配对应标注、渲染、GUI 编辑及 115CN-mod 压缩包导入导出。',
       '• 内置本机 MCP 服务 (:19245) 与 5 类领域 AI Skill（掉率/技能数值/强化锻造/商店/任务）。',
-      '• 内嵌双栏归档差异对比与实时合并工作台 (CompareWorkbench)。',
-      '• 新增技能树可视化编辑、独立掉落编辑器、物品/礼包 GUI 与装备粒子效果预览。'
+      '• 内嵌双栏归档差异对比与实时合并工作台 (CompareWorkbench)。'
     ].join('\n');
   }
 
