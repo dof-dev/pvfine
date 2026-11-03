@@ -25,6 +25,9 @@ import {
   ClipboardTask24Regular,
   Backpack24Regular,
   Reward24Regular,
+  Lottery24Regular,
+  Games24Regular,
+  ShoppingBag24Regular,
   Key24Regular,
   Settings24Regular,
   Toolbox24Regular,
@@ -128,14 +131,17 @@ const versionTooltip = computed(() => {
 function getFileGUIIcon(id: string) {
   switch (id) {
     case "shop":
-    case "cera-shop":
       return BuildingShop24Regular;
+    case "cera-shop":
+      return ShoppingBag24Regular;
     case "quest":
       return ClipboardTask24Regular;
     case "item":
       return Backpack24Regular;
     case "vending-machine":
+      return Lottery24Regular;
     case "crane-minigame":
+      return Games24Regular;
     case "independent-drop":
       return Reward24Regular;
     default:
