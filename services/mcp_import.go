@@ -89,7 +89,7 @@ func (s *MCPService) importPrepare(a mcpArgs) (any, error) {
 			return nil, fmt.Errorf("IMPORT_LIMIT: 单文件最多 8 MiB，总计最多 64 MiB")
 		}
 	}
-	if err := readMCPImportFiles(files, mode); err != nil {
+	if err := readMCPImportFiles(files, mode, s.c.preferredImportEncoding()); err != nil {
 		return nil, err
 	}
 	total = 0
@@ -222,7 +222,7 @@ func (s *MCPService) importApply(a mcpArgs) (any, error) {
 	return map[string]any{"import": r, "revision": revision, "sourceDirty": workspace["sourceDirty"], "workspace": workspace}, nil
 }
 
-func readMCPImportFiles(files []importFile, mode string) error {
+func readMCPImportFiles(files []importFile, mode, preferredEncoding string) error {
 	var total int64
 	for i := range files {
 		file := &files[i]
@@ -255,7 +255,7 @@ func readMCPImportFiles(files []importFile, mode string) error {
 		file.data = data
 		file.dataType = importDataType(file.targetPath)
 		if mode == ImportModeText {
-			if err := file.decodeText(); err != nil {
+			if err := file.decodeText(preferredEncoding); err != nil {
 				return fmt.Errorf("INVALID_ENCODING: %w", err)
 			}
 		}

@@ -19,10 +19,18 @@ A1 的签名之后，或其余版本的版本号之后，均为三个小端 uint
 
 文本修改按原编码保存（默认 GBK，原有 UTF-8 BOM 文件继续使用 UTF-8 BOM），不能用 GBK 表示的字符会报错并保留待保存修改。新增文件路径按 CP949 编码。导入的令牌脚本在保存时转为文本源码，重新打开后继续提供 `TypeScript` 语义视图。直接文本编辑保留原始排版与注释，仅修改注释或空白也会被记录；GUI/令牌编辑按脚本渲染规则输出源码，内部块字符串标记不会写入原生 ACT60 文本。二进制 ANI 可原样保留或替换原始载荷，支持只读文本解码与预览，尚不支持文本重编译。保存前重新解析并校验所有文件，写入失败时不清除内存修改。
 
+文本导入（含 MCP）在识别 Unicode BOM、无 BOM UTF-16 和有效 UTF-8 后，优先尝试当前档案编码（ACT60 自动模式为 GBK）。只有解码后重新编码能逐字节还原来源时才采用；否则回退统计探测。这样可避免短文本及 `itemshop/magic2.shp` 这类同时兼容 GBK/EUC-KR 的文件被误判为韩文，随后无法用 GBK 保存。
+
 实现位于 `internal/pvf/act60.go` 和 `internal/pvf/act60_save.go`，合成回归覆盖两种目录布局、GBK 文本、二进制、空文件、克隆、比较、原样导出、编辑、增删、连续保存、UTF-8 BOM 保留、编码/写入失败重试与损坏/截断数据。真实样本验证使用：
 
 ```sh
-PVF_TESTFILE=/path/to/Script.pvf go test ./internal/pvf -run '^TestRealACT60(Parse|EditRoundTrip)$' -v -count=1
+PVF_TESTFILE=/path/to/Script.pvf go test ./internal/pvf -run '^TestRealACT60(Parse|EditRoundTrip|AmbiguousShopEditRoundTrip)$' -v -count=1
+```
+
+导入预览、普通导入和 MCP 文本读取的真实样本回归：
+
+```sh
+PVF_ACT60_TESTFILE=/path/to/Script.pvf go test ./services -run '^TestRealACT60ImportNativeEncoding$' -v -count=1
 ```
 
 ## pvfUtility 对照

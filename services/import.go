@@ -92,7 +92,7 @@ func (s *ArchiveService) SelectImportFilesDialog() ([]string, error) {
 // archive. It also stages the files on an isolated archive to catch encoding
 // and index-building errors before the user confirms the operation.
 func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode string) (*ImportPreview, error) {
-	files, targetDir, mode, err := prepareImportFiles(sourcePaths, targetDir, mode)
+	files, targetDir, mode, err := prepareImportFiles(sourcePaths, targetDir, mode, s.c.preferredImportEncoding())
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 // files or directories. All source data is read and staged before the live
 // archive is replaced, so an error leaves the current archive unchanged.
 func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode string) (*ImportResult, error) {
-	files, targetDir, mode, err := prepareImportFiles(sourcePaths, targetDir, mode)
+	files, targetDir, mode, err := prepareImportFiles(sourcePaths, targetDir, mode, s.c.preferredImportEncoding())
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +317,7 @@ func errorsNoImportFiles() error {
 	return fmt.Errorf("没有可导入的文件")
 }
 
-func prepareImportFiles(sourcePaths []string, targetDir, mode string) ([]importFile, string, string, error) {
+func prepareImportFiles(sourcePaths []string, targetDir, mode, preferredEncoding string) ([]importFile, string, string, error) {
 	var err error
 	targetDir, err = normalizeImportTargetDir(targetDir)
 	if err != nil {
@@ -334,7 +334,7 @@ func prepareImportFiles(sourcePaths []string, targetDir, mode string) ([]importF
 	if len(files) == 0 {
 		return files, targetDir, mode, nil
 	}
-	if err := readImportFiles(files, mode); err != nil {
+	if err := readImportFiles(files, mode, preferredEncoding); err != nil {
 		return nil, "", "", err
 	}
 	return files, targetDir, mode, nil
@@ -512,7 +512,7 @@ func isPathWithin(root, candidate string) bool {
 	return !strings.HasPrefix(relative, prefix)
 }
 
-func readImportFiles(files []importFile, mode string) error {
+func readImportFiles(files []importFile, mode, preferredEncoding string) error {
 	for index := range files {
 		file := &files[index]
 		data, err := os.ReadFile(file.sourcePath)
@@ -522,7 +522,7 @@ func readImportFiles(files []importFile, mode string) error {
 		file.data = data
 		file.dataType = importDataType(file.targetPath)
 		if mode == ImportModeText {
-			if err := file.decodeText(); err != nil {
+			if err := file.decodeText(preferredEncoding); err != nil {
 				return err
 			}
 		}

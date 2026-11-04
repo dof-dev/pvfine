@@ -219,3 +219,46 @@ func TestRealACT60EditRoundTrip(t *testing.T) {
 	}
 	t.Logf("validated edit/add/delete and %d untouched payloads", original.FileCount()-2)
 }
+
+func TestRealACT60AmbiguousShopEditRoundTrip(t *testing.T) {
+	a := openReal(t)
+	defer a.Release()
+	if a.Format() != FormatACT60 {
+		t.Skip("not ACT60")
+	}
+	index, ok := a.Find("itemshop/magic2.shp")
+	if !ok {
+		t.Skip("magic2.shp missing")
+	}
+	original, err := a.act60.payload(a.data, a.items[index].chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := a.Text(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back, err := a.encodeNativeText(text); err != nil || !bytes.Equal(back, original) {
+		t.Fatal("native interpretation does not round trip", err)
+	}
+	text += "\r\n// native encoding regression\r\n"
+	if err := a.SetText(index, text); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := a.SaveTo(&out); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Parse(out.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Release()
+	index, ok = b.Find("itemshop/magic2.shp")
+	if !ok {
+		t.Fatal("shop missing after save")
+	}
+	if got, err := b.Text(index); err != nil || got != text {
+		t.Fatal("edited shop did not round trip", err)
+	}
+}

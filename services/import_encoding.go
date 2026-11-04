@@ -11,14 +11,17 @@ import (
 	"github.com/saintfish/chardet"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/encoding/korean"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	textunicode "golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/encoding/unicode/utf32"
+
+	"pvfine/internal/pvf"
 )
 
 // decodeImportText normalizes source text without changing the source bytes.
 // Unicode BOMs take precedence, since UTF-16/32 can also be valid UTF-8 bytes.
-func decodeImportText(data []byte) (string, string, error) {
+func decodeImportText(data []byte, preferredEncoding string) (string, string, error) {
 	for _, bom := range []struct {
 		prefix []byte
 		name   string
@@ -71,6 +74,19 @@ func decodeImportText(data []byte) (string, string, error) {
 	// NULs are usually binary data or BOM-less UTF-16/32, not a legacy charset.
 	if bytes.IndexByte(data, 0) >= 0 {
 		return "", "", fmt.Errorf("无法可靠识别文本编码，请先将文件转换为 UTF-8（Unicode 文件请保留 BOM）")
+	}
+	// Short East Asian scripts are statistically ambiguous. Prefer the target
+	// archive's codec whenever decoding and re-encoding preserves every byte.
+	if preferredEncoding != "" && preferredEncoding != "UTF-8" {
+		codec, err := htmlindex.Get(preferredEncoding)
+		if preferredEncoding == "CP949" {
+			codec, err = korean.EUCKR, nil
+		}
+		if err == nil {
+			if text, err := decodeImportEncoding(data, codec); err == nil {
+				return text, preferredEncoding, nil
+			}
+		}
 	}
 	// Bound detector work for large files. Decoding still validates the entire file.
 	sample := data
@@ -150,12 +166,37 @@ func validImportText(text string) bool {
 	return true
 }
 
-func (file *importFile) decodeText() error {
-	text, sourceEncoding, err := decodeImportText(file.data)
+func (file *importFile) decodeText(preferredEncoding string) error {
+	text, sourceEncoding, err := decodeImportText(file.data, preferredEncoding)
 	if err != nil {
 		return fmt.Errorf("文本文件 %q: %w", file.sourcePath, err)
 	}
 	file.text = text
 	file.sourceEncoding = sourceEncoding
 	return nil
+}
+
+// Auto follows the native container convention; binary PVF imports continue
+// to use Unicode detection unless the session explicitly selects a codec.
+func preferredImportEncoding(a *pvf.Archive) string {
+	if name := a.TextEncoding(); name != "auto" {
+		return name
+	}
+	switch a.Format() {
+	case pvf.FormatACT60:
+		return "GBK"
+	case pvf.FormatTW:
+		return "Big5"
+	default:
+		return ""
+	}
+}
+
+func (c *core) preferredImportEncoding() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.archive == nil {
+		return ""
+	}
+	return preferredImportEncoding(c.archive)
 }

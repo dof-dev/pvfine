@@ -250,7 +250,7 @@ func TestImportNutSourceKeepsSourceText(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := []importFile{{sourcePath: path, targetPath: "sqr/common.NUT"}}
-	if err := readImportFiles(files, ImportModeText); err != nil {
+	if err := readImportFiles(files, ImportModeText, ""); err != nil {
 		t.Fatal(err)
 	}
 	a := pvf.New()
