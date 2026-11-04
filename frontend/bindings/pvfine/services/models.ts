@@ -623,8 +623,7 @@ export interface ImageReference {
 
 /**
  * ImportPreview describes the validated changes without modifying the live
- * archive. Entries is capped for large directory imports; the counters remain
- * complete.
+ * archive. All entries are included so the user can select every file.
  */
 export interface ImportPreview {
     "targetDir": string;

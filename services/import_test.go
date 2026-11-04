@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,5 +275,84 @@ func TestImportNutSourceKeepsSourceText(t *testing.T) {
 	}
 	if text, err := b.Text(index); err != nil || text != source {
 		t.Fatalf("NUT source changed: %v", err)
+	}
+}
+
+func TestImportSelectedFilesPreservesMappingAndSkipsUnchecked(t *testing.T) {
+	source := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(source, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, text := range map[string]string{"keep.str": "不要覆盖", "nested/add.str": "选中的文件"} {
+		if err := os.WriteFile(filepath.Join(source, path), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := NewCore()
+	a := pvf.New()
+	root := "target/" + filepath.Base(source)
+	if _, err := a.AddFileText(root+"/keep.str", "原内容", pvf.TypeUnicode); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.setArchive(a); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	svc := NewArchiveService(c)
+	preview, err := svc.PreviewImport([]string{source}, "target", ImportModeText)
+	if err != nil || preview.TotalFiles != 2 {
+		t.Fatal("preview failed", err)
+	}
+	// Even a source changed to invalid text after preview must be ignored if
+	// unchecked; source roots must not flatten when selecting nested files.
+	if err := os.WriteFile(filepath.Join(source, "keep.str"), []byte{0, 1, 2}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	selected := root + "/nested/add.str"
+	result, err := svc.ImportSelectedFiles([]string{source}, "target", ImportModeText, []string{selected, selected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ImportedCount != 1 || result.OverwrittenCount != 0 || c.archive.FileCount() != 2 {
+		t.Fatalf("incorrect selection result: %+v", result)
+	}
+	for path, expected := range map[string]string{selected: "选中的文件", root + "/keep.str": "原内容"} {
+		index, ok := c.archive.Find(path)
+		if !ok {
+			t.Fatal("missing mapped file", path)
+		}
+		if text, err := c.archive.Text(index); err != nil || text != expected {
+			t.Fatal("wrong selected content", err)
+		}
+	}
+	before := c.archive
+	for _, selection := range [][]string{nil, {}, {root + "/missing.str"}} {
+		if _, err := svc.ImportSelectedFiles([]string{source}, "target", ImportModeText, selection); err == nil {
+			t.Fatal("accepted empty or stale selection")
+		}
+		if c.archive != before {
+			t.Fatal("invalid selection changed archive")
+		}
+	}
+}
+
+func TestImportPreviewIncludesEverySelectableFile(t *testing.T) {
+	source := t.TempDir()
+	for i := 0; i < 501; i++ {
+		if err := os.WriteFile(filepath.Join(source, fmt.Sprintf("%03d.str", i)), []byte("text"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := NewCore()
+	if err := c.setArchive(pvf.New()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.closeArchive)
+	preview, err := NewArchiveService(c).PreviewImport([]string{source}, "", ImportModeText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.TotalFiles != 501 || len(preview.Entries) != 501 || preview.EntriesTruncated {
+		t.Fatal("preview hid selectable files")
 	}
 }

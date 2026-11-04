@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ImportPreview } from "../../bindings/pvfine/services/models";
 
 export type ImportMode = "text" | "raw";
@@ -11,6 +11,24 @@ export const useImportStore = defineStore("import", () => {
   const mode = ref<ImportMode>("text");
   const sourcePaths = ref<string[]>([]);
   const preview = ref<ImportPreview | null>(null);
+  const checkedKeys = ref<Array<string | number>>([]);
+  const entries = computed(() => (preview.value?.entries ?? []).filter(entry => !!entry));
+  const selectedEntries = computed(() => {
+    const checked = new Set(checkedKeys.value);
+    return entries.value.filter(entry => checked.has(entry.targetPath));
+  });
+  const allChecked = computed(() => entries.value.length > 0 && selectedEntries.value.length === entries.value.length);
+  const partiallyChecked = computed(() => selectedEntries.value.length > 0 && !allChecked.value);
+  const selectedAddedCount = computed(() => selectedEntries.value.filter(entry => !entry.overwrite).length);
+  const selectedOverwriteCount = computed(() => selectedEntries.value.length - selectedAddedCount.value);
+  const selectedConvertedCount = computed(() => selectedEntries.value.filter(entry => entry.sourceEncoding && entry.sourceEncoding !== "UTF-8").length);
+
+  function selectAll(checked: boolean): void {
+    checkedKeys.value = checked ? entries.value.map(entry => entry.targetPath) : [];
+  }
+
+  watch(preview, () => selectAll(true), { flush: "sync" });
+
   const running = ref(false);
   const error = ref("");
 
@@ -38,6 +56,14 @@ export const useImportStore = defineStore("import", () => {
     mode,
     sourcePaths,
     preview,
+    checkedKeys,
+    selectedEntries,
+    allChecked,
+    partiallyChecked,
+    selectedAddedCount,
+    selectedOverwriteCount,
+    selectedConvertedCount,
+    selectAll,
     running,
     error,
     open,

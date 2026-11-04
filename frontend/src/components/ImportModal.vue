@@ -300,13 +300,13 @@ function backToOptions(): void {
 async function confirmImport(): Promise<void> {
   const preview = importer.preview;
   if (importer.running || !hasPreview.value || !archive.open) return;
-  if (importKind.value === "files" && (!preview || importer.sourcePaths.length === 0)) return;
+  if (importKind.value === "files" && (!preview || importer.selectedEntries.length === 0)) return;
   importer.running = true;
   importer.error = "";
   try {
     const result = importKind.value === "mod" && modPreview.value
       ? await ModImportService.Execute(modPreview.value.id)
-      : await ArchiveService.ImportFiles(importer.sourcePaths, importer.targetDir, importer.mode);
+      : await ArchiveService.ImportSelectedFiles(importer.sourcePaths, importer.targetDir, importer.mode, importer.selectedEntries.map(entry => entry.targetPath));
     if (!result) throw new Error("后端未返回导入结果");
 
     await editor.refreshAfterArchiveChange(result.changedPaths ?? []);
@@ -420,20 +420,27 @@ function close(): void {
             <NTag size="small" :bordered="false">{{ modeLabel(importer.preview.mode) }}</NTag>
           </div>
           <div class="import-summary">
+            <NCheckbox :checked="importer.allChecked" :indeterminate="importer.partiallyChecked"
+              :disabled="importer.running" @update:checked="importer.selectAll">全选</NCheckbox>
             <NTag type="info" :bordered="false">
-              共 {{ importer.preview.totalFiles.toLocaleString() }} 个文件
+              已选 {{ importer.selectedEntries.length.toLocaleString() }} / {{ importer.preview.totalFiles.toLocaleString() }} 个文件
             </NTag>
             <NTag type="success" :bordered="false">
-              新增 {{ importer.preview.importedCount.toLocaleString() }}
+              新增 {{ importer.selectedAddedCount.toLocaleString() }}
             </NTag>
-            <NTag v-if="importer.preview.overwrittenCount" type="warning" :bordered="false">
-              覆盖 {{ importer.preview.overwrittenCount.toLocaleString() }}
+            <NTag v-if="importer.selectedOverwriteCount" type="warning" :bordered="false">
+              覆盖 {{ importer.selectedOverwriteCount.toLocaleString() }}
             </NTag>
           </div>
-          <NAlert v-if="importer.preview.convertedCount" type="info" :show-icon="false">
-            自动识别到 {{ importer.preview.convertedCount.toLocaleString() }} 个非 UTF-8 文件，将转为 UTF-8 导入，源文件保持不变。文件旁显示识别编码；自动识别可能存在偏差，请确认后导入。
+          <NAlert v-if="importer.selectedConvertedCount" type="info" :show-icon="false">
+            自动识别到 {{ importer.selectedConvertedCount.toLocaleString() }} 个非 UTF-8 文件，将转为 UTF-8 导入，源文件保持不变。文件旁显示识别编码；自动识别可能存在偏差，请确认后导入。
           </NAlert>
           <NTree
+            v-model:checked-keys="importer.checkedKeys"
+            checkable
+            cascade
+            check-strategy="child"
+            :disabled="importer.running"
             block-line
             :data="treeData"
             :expanded-keys="expandedTreeKeys"
@@ -443,9 +450,7 @@ function close(): void {
             virtual-scroll
             class="import-preview-tree"
           />
-          <NText v-if="importer.preview.entriesTruncated" depth="3">
-            文件较多，仅显示前 500 项；上方统计包含全部文件。
-          </NText>
+          <NText depth="3">仅导入勾选的文件；勾选目录可批量选择其下文件。</NText>
         </template>
 
         <NAlert v-if="importer.error" type="error" :show-icon="false">
@@ -467,7 +472,7 @@ function close(): void {
           <NButton quaternary :disabled="importer.running" @click="backToOptions">返回修改</NButton>
           <NButton quaternary :disabled="importer.running" @click="close">取消</NButton>
           <NButton type="primary" :loading="importer.running"
-            :disabled="importKind === 'mod' && (!!importer.error || !modPreview?.files?.length)" @click="confirmImport">
+            :disabled="importKind === 'mod' ? (!!importer.error || !modPreview?.files?.length) : importer.selectedEntries.length === 0" @click="confirmImport">
             确认导入
           </NButton>
         </template>

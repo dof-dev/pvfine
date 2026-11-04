@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	ImportModeText          = "text"
-	ImportModeRaw           = "raw"
-	maxImportPreviewEntries = 500
+	ImportModeText = "text"
+	ImportModeRaw  = "raw"
 )
 
 // ImportResult describes one atomically applied import operation.
@@ -30,8 +29,7 @@ type ImportResult struct {
 }
 
 // ImportPreview describes the validated changes without modifying the live
-// archive. Entries is capped for large directory imports; the counters remain
-// complete.
+// archive. All entries are included so the user can select every file.
 type ImportPreview struct {
 	TargetDir        string                `json:"targetDir"`
 	Mode             string                `json:"mode"`
@@ -129,18 +127,14 @@ func (s *ArchiveService) PreviewImport(sourcePaths []string, targetDir, mode str
 		} else {
 			preview.ImportedCount++
 		}
-		if len(preview.Entries) < maxImportPreviewEntries {
-			preview.Entries = append(preview.Entries, &ImportPreviewEntry{
-				SourcePath:     file.sourcePath,
-				TargetPath:     file.targetPath,
-				DataType:       file.dataType,
-				Size:           int64(len(file.data)),
-				Overwrite:      overwrite,
-				SourceEncoding: file.sourceEncoding,
-			})
-		} else {
-			preview.EntriesTruncated = true
-		}
+		preview.Entries = append(preview.Entries, &ImportPreviewEntry{
+			SourcePath:     file.sourcePath,
+			TargetPath:     file.targetPath,
+			DataType:       file.dataType,
+			Size:           int64(len(file.data)),
+			Overwrite:      overwrite,
+			SourceEncoding: file.sourceEncoding,
+		})
 	}
 
 	stage := a.CloneForBatch()
@@ -180,6 +174,19 @@ func (s *ArchiveService) ImportFiles(sourcePaths []string, targetDir, mode strin
 		return nil, errorsNoImportFiles()
 	}
 
+	return s.importPrepared(files, targetDir, mode)
+}
+
+// ImportSelectedFiles imports only the preview target paths the user checked.
+// Mapping still uses the original source selections to preserve directory roots.
+func (s *ArchiveService) ImportSelectedFiles(sourcePaths []string, targetDir, mode string, selectedTargetPaths []string) (*ImportResult, error) {
+	if len(selectedTargetPaths) == 0 {
+		return nil, errorsNoImportFiles()
+	}
+	files, targetDir, mode, err := prepareSelectedImportFiles(sourcePaths, targetDir, mode, s.c.preferredImportEncoding(), selectedTargetPaths)
+	if err != nil {
+		return nil, err
+	}
 	return s.importPrepared(files, targetDir, mode)
 }
 
@@ -318,6 +325,10 @@ func errorsNoImportFiles() error {
 }
 
 func prepareImportFiles(sourcePaths []string, targetDir, mode, preferredEncoding string) ([]importFile, string, string, error) {
+	return prepareSelectedImportFiles(sourcePaths, targetDir, mode, preferredEncoding, nil)
+}
+
+func prepareSelectedImportFiles(sourcePaths []string, targetDir, mode, preferredEncoding string, selectedTargetPaths []string) ([]importFile, string, string, error) {
 	var err error
 	targetDir, err = normalizeImportTargetDir(targetDir)
 	if err != nil {
@@ -330,6 +341,23 @@ func prepareImportFiles(sourcePaths []string, targetDir, mode, preferredEncoding
 	files, err := collectImportFiles(sourcePaths, targetDir)
 	if err != nil {
 		return nil, "", "", err
+	}
+	if selectedTargetPaths != nil {
+		selected := make(map[string]bool, len(selectedTargetPaths))
+		for _, path := range selectedTargetPaths {
+			selected[path] = true
+		}
+		filtered := make([]importFile, 0, len(selected))
+		for _, file := range files {
+			if selected[file.targetPath] {
+				filtered = append(filtered, file)
+				delete(selected, file.targetPath)
+			}
+		}
+		if len(selected) != 0 {
+			return nil, "", "", fmt.Errorf("所选文件已不在导入来源中，请重新预览")
+		}
+		files = filtered
 	}
 	if len(files) == 0 {
 		return files, targetDir, mode, nil

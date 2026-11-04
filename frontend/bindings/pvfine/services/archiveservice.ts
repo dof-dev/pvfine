@@ -96,6 +96,14 @@ export function ImportFilesDialog(targetDir: string, mode: string): $Cancellable
 }
 
 /**
+ * ImportSelectedFiles imports only the preview target paths the user checked.
+ * Mapping still uses the original source selections to preserve directory roots.
+ */
+export function ImportSelectedFiles(sourcePaths: string[] | null, targetDir: string, mode: string, selectedTargetPaths: string[] | null): $CancellablePromise<$models.ImportResult | null> {
+    return $Call.ByID(535219466, sourcePaths, targetDir, mode, selectedTargetPaths);
+}
+
+/**
  * IndexHashTargets lists the available list/indexhash pairs in a Paged110
  * archive. Older archive layouts intentionally return an error.
  */
