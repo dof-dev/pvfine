@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h, ref, watch, type VNodeChild } from "vue";
+import { computed, h, onMounted, onUnmounted, ref, watch, type VNodeChild } from "vue";
+import { Events } from "@wailsio/runtime";
 import {
   NAlert,
   NButton,
@@ -233,6 +234,64 @@ function closeAfterCancel(): void {
   importer.error = "";
 }
 
+/** 对给定的文件/目录路径生成导入预览（文件选择框和拖入共用）。 */
+async function previewPaths(paths: string[]): Promise<void> {
+  const preview = await ArchiveService.PreviewImport(
+    paths,
+    importer.targetDir,
+    importer.mode
+  );
+  if (!preview) throw new Error("后端未返回导入预览");
+  importer.sourcePaths = paths;
+  importer.preview = preview;
+}
+
+function parseDroppedPaths(event: any): string[] {
+  try {
+    const raw = typeof event === "string" ? event : event?.data;
+    const value = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(value) ? value.filter((path: unknown): path is string => typeof path === "string" && path !== "") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 把文件或文件夹拖进窗口：未打开导入窗口时自动打开，并直接生成预览。 */
+async function onFilesDropped(event: any): Promise<void> {
+  const paths = parseDroppedPaths(event);
+  if (paths.length === 0 || importer.running) return;
+  if (!archive.open) {
+    message.warning("请先打开 PVF 归档，再拖入要导入的文件或文件夹");
+    return;
+  }
+  if (!importer.visible) {
+    importer.open("");
+  } else if (importKind.value === "mod") {
+    message.warning("当前是 MOD 导入，请先切换到「文件」再拖入");
+    return;
+  }
+  importer.running = true;
+  importer.error = "";
+  try {
+    await previewPaths(paths);
+  } catch (error: any) {
+    const text = String(error?.message ?? error);
+    importer.error = text;
+    message.error(`生成导入预览失败: ${text}`);
+  } finally {
+    importer.running = false;
+  }
+}
+
+let offFilesDropped: (() => void) | null = null;
+onMounted(() => {
+  offFilesDropped = Events.On("import:files-dropped", onFilesDropped);
+});
+onUnmounted(() => {
+  offFilesDropped?.();
+  offFilesDropped = null;
+});
+
 async function chooseAndPreview(): Promise<void> {
   if (importer.running || !archive.open) return;
   if (importKind.value === "mod" && (loadingModFormats.value || !modFormat.value)) return;
@@ -251,14 +310,7 @@ async function chooseAndPreview(): Promise<void> {
       closeAfterCancel();
       return;
     }
-    const preview = await ArchiveService.PreviewImport(
-      paths,
-      importer.targetDir,
-      importer.mode
-    );
-    if (!preview) throw new Error("后端未返回导入预览");
-    importer.sourcePaths = paths;
-    importer.preview = preview;
+    await previewPaths(paths);
   } catch (error: any) {
     const text = String(error?.message ?? error);
     if (text.toLowerCase().includes("cancel")) {
@@ -340,6 +392,7 @@ function close(): void {
 <template>
   <NModal
     :show="importer.visible"
+    to=".app-root"
     preset="card"
     title="导入"
     :closable="!importer.running"
@@ -375,7 +428,7 @@ function close(): void {
             </div>
 
             <NText depth="3" class="import-hint">
-              可在系统文件选择器中多选文件或目录；目录会递归导入并保留目录名。<br />
+              可在系统文件选择器中选择文件或目录，也可以直接把文件夹或文件拖进窗口（可一次拖入多个）；目录会递归导入并保留目录名。<br />
               预览确认后才会修改内存归档；冲突文件将覆盖内存内容。<br />
               <template v-if="importer.mode === 'text'">自动识别文本编码，非 UTF-8 文件将转为 UTF-8 导入，源文件保持不变。</template>
             </NText>
