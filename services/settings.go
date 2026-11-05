@@ -49,6 +49,9 @@ type AppSettings struct {
 	// value explicitly disables a command's default binding.
 	ShortcutOverrides map[string]string `json:"shortcutOverrides"`
 	MaxEditableSizeMB int               `json:"maxEditableSizeMB"`
+	// ScriptTagTooltipEnabled controls the [section] hover annotation fed by
+	// the read-only dcn86.xml translation file. It is on by default.
+	ScriptTagTooltipEnabled bool `json:"scriptTagTooltipEnabled"`
 }
 
 func DefaultAppSettings() AppSettings {
@@ -65,6 +68,7 @@ func DefaultAppSettings() AppSettings {
 		AutosaveIntervalSeconds: DefaultAutosaveIntervalSeconds,
 		ShortcutOverrides:       map[string]string{},
 		MaxEditableSizeMB:       DefaultMaxEditableSizeMB,
+		ScriptTagTooltipEnabled: true,
 	}
 }
 

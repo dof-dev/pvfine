@@ -7,6 +7,7 @@ import {
   Bug24Regular,
   CheckmarkCircle24Regular,
   Code24Regular,
+  Comment24Regular,
   Copy24Regular,
   CursorHover24Regular,
   Desktop24Regular,
@@ -255,6 +256,14 @@ async function onExplorerOpenModeChange(value: string | number | boolean) {
 async function onVimModeChange(value: boolean) {
   try {
     await settings.saveVimMode(value);
+  } catch (error: any) {
+    message.error(`保存设置失败: ${error?.message ?? error}`);
+  }
+}
+
+async function onScriptTagTooltipChange(value: boolean) {
+  try {
+    await settings.saveScriptTagTooltipEnabled(value);
   } catch (error: any) {
     message.error(`保存设置失败: ${error?.message ?? error}`);
   }
@@ -1038,6 +1047,25 @@ function formatBytes(bytes: number): string {
                     </div>
                     <div class="setting-item-control">
                       <NSwitch :value="settings.vimMode" @update:value="onVimModeChange" />
+                    </div>
+                  </div>
+
+                  <div class="setting-card-divider" />
+
+                  <div class="setting-item">
+                    <div class="setting-item-icon">
+                      <NIcon :size="18"><Comment24Regular /></NIcon>
+                    </div>
+                    <div class="setting-item-content">
+                      <div class="setting-item-label-row">
+                        <span class="setting-item-label">标签悬停注释</span>
+                      </div>
+                      <div class="setting-item-desc">
+                        鼠标悬停在 [标签] 上时，从 dcn86.xml 翻译表弹出对应注释（支持代码块与多行文本）
+                      </div>
+                    </div>
+                    <div class="setting-item-control">
+                      <NSwitch :value="settings.scriptTagTooltipEnabled" @update:value="onScriptTagTooltipChange" />
                     </div>
                   </div>
 

@@ -381,10 +381,47 @@ func parseEquipmentAttribute(occurrence annotationrules.PreviewFieldValue, text 
 		return EquipmentPreviewAttribute{}, false
 	}
 	value := signedNumber(number)
-	if format == "percent" {
-		value += "%"
+	negative := number < 0
+	switch format {
+	case "percent":
+		// DNF stores speed/critical/hit-rate style attributes as 10x
+		// percentage points (e.g. 30 means +3%). Divide by ten before
+		// showing the %, except for critical-hit fields whose PVF values
+		// are already real percentages and must be shown as-is.
+		if isCriticalHitField(occurrence.Field.ID) {
+			value = signedNumber(number) + "%"
+		} else {
+			value = signedNumber(number/10) + "%"
+		}
+	case "percent-flip":
+		// [stuck] hit-rate bonus is stored as a negative number in PVF:
+		// -3 means +3% hit rate. Always present the absolute value as a
+		// positive bonus.
+		value = "+" + formatNumber(math.Abs(number)) + "%"
+		negative = false
+	case "rate-percent":
+		// [room list move speed rate] is a normalized rate: 0.3 means +30%.
+		value = signedNumber(number*100) + "%"
+	case "weight":
+		// [inventory limit] is stored in grams (300000 means 300kg).
+		value = formatNumber(number/1000) + "kg"
 	}
-	return EquipmentPreviewAttribute{Label: label, Value: value, Negative: number < 0}, true
+	return EquipmentPreviewAttribute{Label: label, Value: value, Negative: negative}, true
+}
+
+// isCriticalHitField reports whether a field ID belongs to the physical or
+// magical critical hit group (including their "add" variants). These PVF
+// values are already real percentages and must be shown without dividing by
+// ten; keying on the annotation field ID is more stable than on labels.
+func isCriticalHitField(fieldID string) bool {
+	switch fieldID {
+	case "equ.physical-critical-hit",
+		"equ.magical-critical-hit",
+		"equ.add-physical-critical-hit",
+		"equ.add-magical-critical-hit":
+		return true
+	}
+	return false
 }
 
 func formatMinimumLevel(occurrence annotationrules.PreviewFieldValue, text string, issues *[]PreviewIssue) string {

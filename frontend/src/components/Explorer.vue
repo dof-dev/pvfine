@@ -136,6 +136,10 @@ const contextMenuOptions = computed(() => [
     disabled: copyMenuDisabled.value,
     children: [
       {
+        label: "复制文件",
+        key: "copy-file",
+      },
+      {
         label: "文件路径",
         key: "copy-paths",
       },
@@ -568,6 +572,43 @@ async function onCopy(kind: CopyKind, items: TreeItem[]): Promise<void> {
   }
 }
 
+async function onCopyFiles(items: TreeItem[]): Promise<void> {
+  if (copying.value) return;
+  const archivePath = archive.info?.path ?? "";
+  const session = fileSets.sessionId;
+  hideContextMenu();
+  copying.value = true;
+  try {
+    const nodes = await collectNodes(items);
+    if (session !== fileSets.sessionId || archive.info?.path !== archivePath) return;
+    if (nodes.length === 0) {
+      message.info("选中的目录中没有可复制的文件");
+      return;
+    }
+    const copied: TreeNode[] = [];
+    for (const node of nodes) {
+      const result = await ArchiveService.CopyFile(node.path);
+      if (result) copied.push(result);
+    }
+    if (copied.length === 0) return;
+    await editor.refreshAfterArchiveChange([]);
+    await archive.refreshInfo();
+    await explorer.reload();
+    await editor.openFile(copied[0].fileIndex);
+    message.success(
+      copied.length === 1
+        ? `已复制为 ${copied[0].path}`
+        : `已复制 ${copied.length} 个文件`
+    );
+  } catch (error: any) {
+    if (session === fileSets.sessionId && archive.info?.path === archivePath) {
+      message.error(`复制文件失败: ${error?.message ?? error}`);
+    }
+  } finally {
+    copying.value = false;
+  }
+}
+
 function bookmarkInputs(items: TreeItem[]): BookmarkInput[] {
   const result: BookmarkInput[] = [];
   const seen = new Set<string>();
@@ -662,6 +703,10 @@ async function onContextMenuSelect(key: string | number): Promise<void> {
   }
   if (key === "export") {
     await onExportSelected(contextMenu.value.items);
+    return;
+  }
+  if (key === "copy-file") {
+    await onCopyFiles(contextMenu.value.items);
     return;
   }
   if (key === "copy-paths") {

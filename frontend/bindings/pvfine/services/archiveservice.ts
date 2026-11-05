@@ -46,6 +46,16 @@ export function Close(): $CancellablePromise<void> {
 }
 
 /**
+ * CopyFile duplicates an existing file inside the same directory with an
+ * auto-unique name (原名_copy.ext, then 原名_copy2.ext...), returning the
+ * newly created node. Raw bytes are preserved so encodings like .str UTF-16
+ * stay intact; the caller can open the returned file and edit it freely.
+ */
+export function CopyFile(path: string): $CancellablePromise<$models.TreeNode | null> {
+    return $Call.ByID(954363004, path);
+}
+
+/**
  * CreateFile adds an empty editable file to the current archive. dataType is
  * pvf.TypeScript or pvf.TypeUnicode; the caller can fill its content through
  * EditorService.SetText afterwards.

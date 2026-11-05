@@ -34,7 +34,9 @@ const { document, loading, error, tabIndex, categoryID } = session;
 
 const items = computed(() => document.value?.tabs?.[tabIndex.value]?.groups
   ?.filter((group) => !!group)
-  .filter((group) => !document.value?.categoryType || group.categoryId === categoryID.value)
+  // 86A21-fix-shop-nocategory: 无分类商品的 group（tab 下直接是 [item list]，没有 [category entry]）始终展示；
+  // 有分类的 group 才按当前选中的分类过滤。
+  .filter((group) => !document.value?.categoryType || !group.categoryId || group.categoryId === categoryID.value)
   .flatMap((group) => group.items ?? []) ?? []);
 
 const currentCategoryName = computed(() => {
