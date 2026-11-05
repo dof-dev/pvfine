@@ -167,8 +167,10 @@ function isCancel(e: any): boolean {
             <ArrowDownload24Regular />
           </NIcon>
         </div>
-        <div class="dropzone-title">释放以打开 PVF 归档</div>
-        <div class="dropzone-subtitle">支持直接拖入 .pvf 归档文件并立即解析</div>
+        <div class="dropzone-title">{{ archive.open ? "释放以导入文件" : "释放以打开 PVF 归档" }}</div>
+        <div class="dropzone-subtitle">
+          {{ archive.open ? "文件夹或文件会先显示导入预览，确认后才修改归档；拖入 .pvf 则打开该归档" : "支持直接拖入 .pvf 归档文件并立即解析" }}
+        </div>
       </div>
     </div>
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"log"
 	"log/slog"
 	"strings"
@@ -255,12 +256,18 @@ func main() {
 		if ctx == nil {
 			return
 		}
-		for _, file := range ctx.DroppedFiles() {
+		files := ctx.DroppedFiles()
+		for _, file := range files {
 			if strings.HasSuffix(strings.ToLower(file), ".pvf") {
 				emitPVFOpenPath(file)
-				break
+				return
 			}
 		}
+		// Anything else (typically folders dragged from the file manager) is
+		// handed to the frontend, which shows an import preview. This is the
+		// way to import several folders at once on platforms whose native
+		// picker cannot multi-select folders (e.g. Linux/GTK).
+		emitImportFilesDropped(app, files)
 	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationOpenedWithFile, func(event *application.ApplicationEvent) {
 		if event == nil || event.Context() == nil {
@@ -277,6 +284,19 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatalf("[ERR] %v", err)
 	}
+}
+
+// emitImportFilesDropped sends dropped paths to the frontend as a JSON array
+// string, so the payload survives however the event layer wraps arguments.
+func emitImportFilesDropped(app *application.App, files []string) {
+	if len(files) == 0 {
+		return
+	}
+	payload, err := json.Marshal(files)
+	if err != nil {
+		return
+	}
+	app.Event.Emit("import:files-dropped", string(payload))
 }
 
 func configureUpdater(app *application.App) bool {
